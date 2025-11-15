@@ -14,8 +14,9 @@ export async function startTelegramBot(): Promise<void> {
   const bot = new TelegramBot(token, { polling: true });
 
   bot.on("message", async (msg) => {
-    // Handle text messages (addresses, usernames, etc.)
-    // Commands are handled by onText handlers below
+    // Handle text messages (addresses, usernames, etc.) - NOT commands
+    // Commands (starting with /) are handled by onText handlers below
+    // Commands work in groups without mentioning the bot
     if (msg.text && !msg.text.startsWith("/")) {
       await handleTelegramMessage(bot, msg);
     }
