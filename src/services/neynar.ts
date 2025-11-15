@@ -89,10 +89,8 @@ export async function findUserByXHandle(handle: string): Promise<User | null> {
     const headers: Record<string, string> = {
       accept: "application/json",
       "api-key": requireEnv(env.neynarApiKey, "NEYNAR_API_KEY"),
+      "x-neynar-experimental": "true", // Always enable experimental for X handle lookups
     };
-    if (process.env.NEYNAR_EXPERIMENTAL?.toLowerCase() === "true") {
-      headers["x-neynar-experimental"] = "true";
-    }
 
     const response = await fetch(url, { headers });
 

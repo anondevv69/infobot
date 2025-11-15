@@ -86,34 +86,75 @@ function formatFieldValue(value: string): string {
   // Handle inline code (`code`)
   value = value.replace(/`([^`]+)`/g, "`$1`");
 
-  // Remove @ symbols from usernames (Telegram auto-links @ mentions)
-  // Process before link preservation to avoid breaking links
-  // Remove @ from common patterns: "Handle: @username", "Farcaster: @username", "@username"
-  // But preserve @ in URLs (they contain :// or are in markdown links)
-  value = value.replace(/@([a-zA-Z0-9_]+)/g, (match, username, offset, fullString) => {
-    // Check if this @ is part of a URL or markdown link
+  // Convert usernames to clickable links in Telegram
+  // Match patterns like: "Handle: @username", "Farcaster: @username", "Username: @username"
+  // Convert to: "Handle: [username](url)", "Farcaster: [username](url)", etc.
+  const { buildFarcasterProfileUrl } = require("../../../utils/farcasterLinks");
+  
+  // First, convert labeled usernames (Handle:, Farcaster:, Username:)
+  value = value.replace(/(Handle|Farcaster|Username):\s*@([a-zA-Z0-9_]+)/g, (match, label, username, offset, fullString) => {
+    // Check if this is already inside a markdown link
     const before = fullString.substring(0, offset);
-    const after = fullString.substring(offset + match.length);
-    
-    // Check if it's in a URL (has http:// or https:// before it)
-    if (/https?:\/\/[^\s]*$/.test(before)) {
-      return match; // Keep @ in URLs
-    }
-    
-    // Check if it's inside a markdown link [text](url)
-    // Look backwards for [ and forwards for ](
     const linkStart = before.lastIndexOf('[');
-    const linkEnd = after.indexOf('](');
-    if (linkStart !== -1 && linkEnd !== -1 && linkStart < offset) {
-      // Check if there's no ] between linkStart and our position
+    const linkEnd = fullString.substring(offset + match.length).indexOf('](');
+    if (linkStart !== -1 && linkEnd !== -1) {
       const between = before.substring(linkStart);
       if (!between.includes(']')) {
-        return match; // Keep @ if it's inside markdown link text
+        return match; // Already in a link, don't modify
       }
     }
     
-    return username; // Remove @ for standalone usernames
+    // Build Farcaster profile URL
+    const url = buildFarcasterProfileUrl(username);
+    return `${label}: [${username}](${url})`;
   });
+  
+  // Then handle standalone @username patterns (not in a label and not already converted)
+  // Process from end to start to avoid index issues
+  let processedValue = value;
+  const usernameRegex = /@([a-zA-Z0-9_]+)/g;
+  const matches: Array<{ match: string; username: string; offset: number }> = [];
+  let match;
+  
+  while ((match = usernameRegex.exec(value)) !== null) {
+    const before = value.substring(0, match.index);
+    const after = value.substring(match.index + match[0].length);
+    
+    // Skip if it's in a URL
+    if (/https?:\/\/[^\s]*$/.test(before)) {
+      continue;
+    }
+    
+    // Skip if it's already in a markdown link
+    const linkStart = before.lastIndexOf('[');
+    const linkEnd = after.indexOf('](');
+    if (linkStart !== -1 && linkEnd !== -1) {
+      const between = before.substring(linkStart);
+      if (!between.includes(']')) {
+        continue; // Already in a link
+      }
+    }
+    
+    // Skip if it's part of a label we already processed (Handle:, Farcaster:, Username:)
+    if (/(Handle|Farcaster|Username):\s*\[/.test(before)) {
+      continue;
+    }
+    
+    matches.push({
+      match: match[0],
+      username: match[1],
+      offset: match.index,
+    });
+  }
+  
+  // Replace from end to start to preserve offsets
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const { match: matchStr, username, offset } = matches[i];
+    const url = buildFarcasterProfileUrl(username);
+    processedValue = processedValue.substring(0, offset) + `[${username}](${url})` + processedValue.substring(offset + matchStr.length);
+  }
+  
+  value = processedValue;
 
   // Clean up separators and extra formatting
   value = value
@@ -139,27 +180,60 @@ function cleanMarkdownText(text: string): string {
   // Remove code block markers that weren't processed
   text = text.replace(/```/g, "");
   
-  // Remove @ symbols from usernames (Telegram auto-links @ mentions)
-  // But preserve @ in URLs and markdown links
-  text = text.replace(/@([a-zA-Z0-9_]+)/g, (match, username, offset, fullString) => {
-    // Check if it's in a URL
-    const before = fullString.substring(0, offset);
+  // Convert usernames to clickable links (same logic as formatFieldValue)
+  const { buildFarcasterProfileUrl } = require("../../../utils/farcasterLinks");
+  
+  // Convert labeled usernames
+  text = text.replace(/(Handle|Farcaster|Username):\s*@([a-zA-Z0-9_]+)/g, (match, label, username) => {
+    const url = buildFarcasterProfileUrl(username);
+    return `${label}: [${username}](${url})`;
+  });
+  
+  // Convert standalone @username patterns
+  let processedText = text;
+  const usernameRegex = /@([a-zA-Z0-9_]+)/g;
+  const matches: Array<{ match: string; username: string; offset: number }> = [];
+  let match;
+  
+  while ((match = usernameRegex.exec(text)) !== null) {
+    const before = text.substring(0, match.index);
+    const after = text.substring(match.index + match[0].length);
+    
+    // Skip if it's in a URL
     if (/https?:\/\/[^\s]*$/.test(before)) {
-      return match; // Keep @ in URLs
+      continue;
     }
     
-    // Check if it's inside a markdown link [text](url)
+    // Skip if it's already in a markdown link
     const linkStart = before.lastIndexOf('[');
-    const linkEnd = fullString.substring(offset + match.length).indexOf('](');
+    const linkEnd = after.indexOf('](');
     if (linkStart !== -1 && linkEnd !== -1) {
       const between = before.substring(linkStart);
       if (!between.includes(']')) {
-        return match; // Keep @ if it's inside markdown link text
+        continue;
       }
     }
     
-    return username; // Remove @ for standalone usernames
-  });
+    // Skip if it's part of a label we already processed
+    if (/(Handle|Farcaster|Username):\s*\[/.test(before)) {
+      continue;
+    }
+    
+    matches.push({
+      match: match[0],
+      username: match[1],
+      offset: match.index,
+    });
+  }
+  
+  // Replace from end to start
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const { match: matchStr, username, offset } = matches[i];
+    const url = buildFarcasterProfileUrl(username);
+    processedText = processedText.substring(0, offset) + `[${username}](${url})` + processedText.substring(offset + matchStr.length);
+  }
+  
+  text = processedText;
   
   // Clean up extra whitespace
   text = text.replace(/\n{3,}/g, "\n\n");
