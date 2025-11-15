@@ -76,9 +76,36 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
  * Format field value for Telegram - handle code blocks, links, etc.
  */
 function formatFieldValue(value: string): string {
-  // Don't use placeholders - Telegram handles markdown links fine
-  // Just process the value directly, preserving existing links
-  // We'll escape markdown but keep links intact
+  // First, preserve existing markdown links by extracting them
+  // We'll restore them at the end after all processing
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const existingLinks: Array<{ full: string; text: string; url: string; placeholder: string }> = [];
+  let linkMatch;
+  let linkIndex = 0;
+  const seenLinks = new Map<string, number>();
+  
+  // Extract all existing links first
+  let tempValue = value;
+  while ((linkMatch = linkRegex.exec(value)) !== null) {
+    const fullMatch = linkMatch[0];
+    const linkText = linkMatch[1];
+    const linkUrl = linkMatch[2];
+    const linkKey = `${linkText}|${linkUrl}`;
+    
+    if (!seenLinks.has(linkKey)) {
+      const placeholder = `__EXISTING_LINK_${linkIndex}__`;
+      seenLinks.set(linkKey, linkIndex);
+      existingLinks.push({
+        full: fullMatch,
+        text: linkText,
+        url: linkUrl,
+        placeholder,
+      });
+      tempValue = tempValue.replace(fullMatch, placeholder);
+      linkIndex++;
+    }
+  }
+  value = tempValue;
 
   // Handle code blocks (```address```) - convert addresses/contracts to clickable code links
   // For Telegram: use code formatting with clickable links [code](url)
@@ -207,7 +234,7 @@ function formatFieldValue(value: string): string {
   
   // Remove __underline__ (Telegram doesn't support underline)
   // But preserve our temporary link placeholders
-  value = value.replace(/__(?!TEMP_LINK_|LINK_PLACEHOLDER_)([^_]+)__/g, "$1");
+  value = value.replace(/__(?!TEMP_LINK_|LINK_PLACEHOLDER_|EXISTING_LINK_)([^_]+)__/g, "$1");
 
   // Convert usernames to clickable links in Telegram
   // Match patterns like: "Handle: @username", "Farcaster: @username", "Username: @username"
@@ -288,8 +315,15 @@ function formatFieldValue(value: string): string {
     .replace(/^None$/gm, "") // Remove standalone "None" values
     .replace(/\*None\*/g, ""); // Remove bold "None"
 
-  // Preserve existing markdown links by escaping everything except links
-  // Use a simple approach: escape markdown but preserve [text](url) patterns
+  // Restore the original links we preserved at the start (BEFORE escaping)
+  existingLinks.forEach((link) => {
+    const placeholderRegex = new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    value = value.replace(placeholderRegex, `[${link.text}](${link.url})`);
+  });
+
+  // Now escape markdown but preserve all links (both original and newly created)
+  // This function will extract ALL links (including ones we just restored and newly created),
+  // escape markdown, then restore them
   value = escapeMarkdownButPreserveLinks(value);
 
   return value.trim();
