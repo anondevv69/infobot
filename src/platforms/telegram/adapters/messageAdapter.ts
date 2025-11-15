@@ -103,19 +103,124 @@ function formatFieldValue(value: string): string {
   }
   value = tempValue;
 
-  // Handle code blocks (```address```) - convert to plain text for addresses
+  // Handle code blocks (```address```) - convert addresses to clickable links
   value = value.replace(/```([^`]+)```/g, (match, content) => {
-    const trimmed = content.trim();
-    // For addresses, just show them plain (Telegram doesn't support code blocks well)
-    if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed) || /^[1-9A-HJ-NP-Za-km-z]{32,48}$/i.test(trimmed)) {
-      return trimmed; // Plain address, no formatting
-    }
-    // Multiple addresses
-    return trimmed.split("\n").map((line: string) => line.trim()).join("\n");
+    const lines = content.trim().split("\n");
+    return lines.map((line: string) => {
+      const trimmed = line.trim();
+      // Check if it's an Ethereum address
+      if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
+        // Default to Base chain (8453) for most addresses, but could be Ethereum
+        // We'll use Basescan for Base addresses, Etherscan for others
+        const basescanUrl = `https://basescan.org/address/${trimmed}`;
+        const etherscanUrl = `https://etherscan.io/address/${trimmed}`;
+        // Use Basescan by default (most addresses are on Base)
+        return `[${trimmed}](${basescanUrl})`;
+      }
+      // Check if it's a Solana address
+      if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(trimmed)) {
+        const solscanUrl = `https://solscan.io/account/${trimmed}`;
+        return `[${trimmed}](${solscanUrl})`;
+      }
+      // Not an address, return as-is
+      return trimmed;
+    }).join("\n");
   });
 
-  // Handle inline code (`code`) - remove backticks, keep text
-  value = value.replace(/`([^`]+)`/g, "$1");
+  // Handle inline code (`code`) - convert addresses to clickable links
+  value = value.replace(/`([^`]+)`/g, (match, content) => {
+    const trimmed = content.trim();
+    // Check if it's an Ethereum address
+    if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
+      const basescanUrl = `https://basescan.org/address/${trimmed}`;
+      return `[${trimmed}](${basescanUrl})`;
+    }
+    // Check if it's a Solana address
+    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(trimmed)) {
+      const solscanUrl = `https://solscan.io/account/${trimmed}`;
+      return `[${trimmed}](${solscanUrl})`;
+    }
+    // Not an address, return as plain text (remove backticks)
+    return trimmed;
+  });
+  
+  // Convert plain addresses (not in links) to clickable links
+  // Process addresses that appear in plain text (after code blocks are processed)
+  // Find all addresses and convert them if they're not already in links
+  const ethAddressRegex = /\b(0x[a-fA-F0-9]{40})\b/gi;
+  const ethMatches: Array<{ address: string; index: number }> = [];
+  let ethMatch;
+  let originalValue = value;
+  
+  while ((ethMatch = ethAddressRegex.exec(originalValue)) !== null) {
+    const before = originalValue.substring(0, ethMatch.index);
+    const after = originalValue.substring(ethMatch.index + ethMatch[0].length);
+    
+    // Skip if it's already in a markdown link [text](url)
+    const linkStart = before.lastIndexOf('[');
+    const linkEnd = after.indexOf('](');
+    if (linkStart !== -1 && linkEnd !== -1) {
+      const between = before.substring(linkStart);
+      if (!between.includes(']')) {
+        continue; // Already in a link
+      }
+    }
+    
+    // Skip if it's in a URL
+    if (/https?:\/\/[^\s]*$/.test(before)) {
+      continue;
+    }
+    
+    ethMatches.push({
+      address: ethMatch[1],
+      index: ethMatch.index,
+    });
+  }
+  
+  // Replace from end to start to preserve indices
+  for (let i = ethMatches.length - 1; i >= 0; i--) {
+    const { address, index } = ethMatches[i];
+    const basescanUrl = `https://basescan.org/address/${address}`;
+    value = value.substring(0, index) + `[${address}](${basescanUrl})` + value.substring(index + address.length);
+  }
+  
+  // Convert Solana addresses
+  const solAddressRegex = /\b([1-9A-HJ-NP-Za-km-z]{32,44})\b/gi;
+  const solMatches: Array<{ address: string; index: number }> = [];
+  let solMatch;
+  originalValue = value; // Use updated value
+  
+  while ((solMatch = solAddressRegex.exec(originalValue)) !== null) {
+    const before = originalValue.substring(0, solMatch.index);
+    const after = originalValue.substring(solMatch.index + solMatch[0].length);
+    
+    // Skip if it's already in a markdown link
+    const linkStart = before.lastIndexOf('[');
+    const linkEnd = after.indexOf('](');
+    if (linkStart !== -1 && linkEnd !== -1) {
+      const between = before.substring(linkStart);
+      if (!between.includes(']')) {
+        continue; // Already in a link
+      }
+    }
+    
+    // Skip if it's in a URL
+    if (/https?:\/\/[^\s]*$/.test(before)) {
+      continue;
+    }
+    
+    solMatches.push({
+      address: solMatch[1],
+      index: solMatch.index,
+    });
+  }
+  
+  // Replace from end to start
+  for (let i = solMatches.length - 1; i >= 0; i--) {
+    const { address, index } = solMatches[i];
+    const solscanUrl = `https://solscan.io/account/${address}`;
+    value = value.substring(0, index) + `[${address}](${solscanUrl})` + value.substring(index + address.length);
+  }
   
   // Remove Discord markdown that Telegram doesn't support well
   // Convert **bold** to *bold* (Telegram uses single asterisk)
@@ -402,15 +507,20 @@ function preserveMarkdownLinks(text: string): string {
 }
 
 /**
- * Format address for Telegram
+ * Format address for Telegram - makes it clickable
  */
 export function formatAddressForTelegram(address: string, chainId?: number): string {
-  const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
-  const basescanUrl = chainId === 8453 
-    ? `https://basescan.org/address/${address}`
-    : `https://etherscan.io/address/${address}`;
-  
-  return `[${shortAddress}](${basescanUrl})`;
+  // For Telegram, show full address as clickable link
+  // Users can long-press to copy, or click to open in browser
+  if (chainId === 8453) {
+    return `[${address}](https://basescan.org/address/${address})`;
+  }
+  // Check if it's a Solana address
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(address)) {
+    return `[${address}](https://solscan.io/account/${address})`;
+  }
+  // Default to Etherscan for Ethereum addresses
+  return `[${address}](https://etherscan.io/address/${address})`;
 }
 
 /**
