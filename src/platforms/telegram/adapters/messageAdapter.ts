@@ -111,9 +111,9 @@ function formatFieldValue(value: string): string {
       const trimmed = line.trim();
       // Check if it's an Ethereum address/contract
       if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
-        // Make it clickable code: [address](url) - Telegram will show as clickable code
+        // Make it clickable - Telegram will show as clickable link
         const basescanUrl = `https://basescan.org/address/${trimmed}`;
-        return `[\`${trimmed}\`](${basescanUrl})`;
+        return `[${trimmed}](${basescanUrl})`;
       }
       // Check if it's a Solana address
       if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(trimmed)) {
