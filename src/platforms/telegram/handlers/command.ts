@@ -4,7 +4,7 @@ import { findBestZoraSummary } from "../../../services/zora";
 import { fetchTokensByQuery, fetchTokensByAddress } from "../../../services/clanker";
 import { findUserByUsername, findUserByWallet } from "../../../services/neynar";
 import { buildZoraProfileEmbed, appendZoraSummaryFields } from "../../../utils/zoraEmbeds";
-import { buildTokenEmbed } from "../../../utils/clankerEmbeds";
+import { sendClankerTokenPages } from "./clankerHandler";
 import { buildFarcasterPresentation } from "../../../utils/farcasterPresentation";
 import { buildWalletProfileResponse } from "../../../utils/walletEmbed";
 import { embedsToTelegram } from "../adapters/telegramAdapter";
@@ -103,14 +103,9 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
     if (isEthAddress(query) || isSolAddress(query)) {
       const address = extractFirstAddress(query);
       if (address) {
-        // Try Clanker
-        const tokens = await fetchTokensByAddress(address);
-        if (tokens && tokens.length > 0) {
-          const embed = await buildTokenEmbed(tokens[0]);
-          const messages = embedsToTelegram([embed]);
-          for (const msg of messages) {
-            await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
-          }
+        // Try Clanker (build all pages)
+        const clankerSent = await sendClankerTokenPages(bot, chatId, address);
+        if (clankerSent) {
           return;
         }
 
@@ -226,13 +221,8 @@ async function handleClankerQuery(bot: TelegramBot, chatId: number, query: strin
     if (isEthAddress(query)) {
       const address = extractFirstAddress(query);
       if (address) {
-        const tokens = await fetchTokensByAddress(address);
-        if (tokens && tokens.length > 0) {
-          const embed = await buildTokenEmbed(tokens[0]);
-          const messages = embedsToTelegram([embed]);
-          for (const msg of messages) {
-            await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
-          }
+        const sent = await sendClankerTokenPages(bot, chatId, address);
+        if (sent) {
           return;
         }
       }
@@ -241,12 +231,13 @@ async function handleClankerQuery(bot: TelegramBot, chatId: number, query: strin
     // Try as token name/symbol search
     const tokens = await fetchTokensByQuery(query);
     if (tokens && tokens.length > 0) {
-      const embed = await buildTokenEmbed(tokens[0]);
-      const messages = embedsToTelegram([embed]);
-      for (const msg of messages) {
-        await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+      const address = tokens[0].contract_address;
+      if (address) {
+        const sent = await sendClankerTokenPages(bot, chatId, address);
+        if (sent) {
+          return;
+        }
       }
-      return;
     }
 
     await bot.sendMessage(chatId, `No Clanker results found for: ${query}`);

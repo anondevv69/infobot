@@ -83,18 +83,19 @@ function preserveMarkdownLinks(text: string): string {
     });
   }
   
-  // Replace links with placeholders
+  // Replace links with placeholders (replace all occurrences)
   let processed = text;
   links.forEach((link, index) => {
-    processed = processed.replace(link.full, `__LINK_${index}__`);
+    // Use global replace with a function to replace all occurrences
+    processed = processed.split(link.full).join(`__LINK_${index}__`);
   });
   
   // Escape markdown in the rest of the text
   processed = escapeMarkdown(processed);
   
-  // Restore links
+  // Restore links (replace all occurrences)
   links.forEach((link, index) => {
-    processed = processed.replace(`__LINK_${index}__`, `[${link.text}](${link.url})`);
+    processed = processed.split(`__LINK_${index}__`).join(`[${link.text}](${link.url})`);
   });
   
   return processed;

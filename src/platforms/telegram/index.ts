@@ -13,6 +13,17 @@ export async function startTelegramBot(): Promise<void> {
 
   const bot = new TelegramBot(token, { polling: true });
 
+  // Set up bot commands for Telegram command suggestions
+  // This makes commands show up when users type "/" in groups
+  await bot.setMyCommands([
+    { command: "start", description: "Start the bot and see help" },
+    { command: "help", description: "Show help and available commands" },
+    { command: "search", description: "Search wallets, contracts, Farcaster profiles, or Zora accounts" },
+    { command: "zora", description: "Search Zora accounts, contracts, or creator coins" },
+    { command: "clanker", description: "Search Clanker deployments" },
+    { command: "casts", description: "Search Farcaster casts by keyword" },
+  ]);
+
   bot.on("message", async (msg) => {
     // Handle text messages (addresses, usernames, etc.) - NOT commands
     // Commands (starting with /) are handled by onText handlers below

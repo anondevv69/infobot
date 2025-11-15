@@ -1,9 +1,8 @@
 import TelegramBot from "node-telegram-bot-api";
 import { isEthAddress, isSolAddress, extractFirstAddress, extractZoraContractReference } from "../../../utils/address";
-import { fetchTokensByAddress } from "../../../services/clanker";
 import { findBestZoraSummary, fetchZoraCoin } from "../../../services/zora";
 import { findUserByUsername, findUserByWallet } from "../../../services/neynar";
-import { buildTokenEmbed } from "../../../utils/clankerEmbeds";
+import { sendClankerTokenPages } from "./clankerHandler";
 import { buildZoraProfileEmbed, appendZoraSummaryFields } from "../../../utils/zoraEmbeds";
 import { buildFarcasterPresentation } from "../../../utils/farcasterPresentation";
 import { buildWalletProfileResponse } from "../../../utils/walletEmbed";
@@ -51,14 +50,9 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
     if (isEthAddress(text)) {
       const address = extractFirstAddress(text);
       if (address) {
-        // Try Clanker first
-        const tokens = await fetchTokensByAddress(address);
-        if (tokens && tokens.length > 0) {
-          const embed = await buildTokenEmbed(tokens[0]);
-          const messages = embedsToTelegram([embed]);
-          for (const msg of messages) {
-            await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
-          }
+        // Try Clanker first (build all pages)
+        const clankerSent = await sendClankerTokenPages(bot, chatId, address);
+        if (clankerSent) {
           return;
         }
 
