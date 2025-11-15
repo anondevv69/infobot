@@ -153,7 +153,7 @@ export function buildZoraCoinEmbed(
 
   // Only add creator field if not excluded (for pagination)
   if (!options?.excludeCreatorField) {
-    const creatorField = buildCreatorField(coin, farcasterUser, options?.includeCreatorWallets ?? false);
+    const creatorField = buildCreatorField(coin, farcasterUser, options?.includeCreatorWallets ?? false, profile);
     if (creatorField) {
       fields.push(creatorField);
     }
@@ -308,13 +308,17 @@ export function buildCreatorField(
   coin: ZoraCoin,
   farcasterUser?: User | null,
   includeWallets = false,
+  zoraProfile?: { farcasterHandle?: string | null } | null,
 ): { name: string; value: string; inline: boolean } | null {
   const lines: string[] = [];
   const creatorAddress = coin.creatorAddress ?? null;
   
-  // Only show Farcaster if we have an actual verified Farcaster user object
-  // Don't show just a handle string from coin.creatorProfile?.handle as it may not be verified
-  if (farcasterUser?.username) {
+  // Only show Farcaster if:
+  // 1. We have a verified Farcaster user object (farcasterUser)
+  // 2. AND it's explicitly linked in the Zora profile (zoraProfile?.farcasterHandle)
+  // This prevents showing Farcaster accounts that aren't actually linked to the Zora profile
+  const hasZoraFarcasterLink = zoraProfile?.farcasterHandle || coin.creatorProfile?.socialAccounts?.farcaster?.username;
+  if (farcasterUser?.username && hasZoraFarcasterLink) {
     const normalized = farcasterUser.username.replace(/^@/, "");
     lines.push(`**Farcaster:** [@${normalized}](${buildFarcasterProfileUrl(normalized)})`);
   }

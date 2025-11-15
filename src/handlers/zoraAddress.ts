@@ -104,19 +104,26 @@ export async function buildZoraCoinResponse(
       ? fetchBaseTokenData(coin.address).catch(() => null)
       : Promise.resolve(null),
     
-    // Fetch Farcaster user - check profile first (for creator coins), then coin creator
+    // Fetch Farcaster user - ONLY if explicitly linked in Zora profile/coin
+    // Don't use coin.creatorProfile?.handle as it may not be a verified Farcaster link
     (async () => {
-      // For creator coins, prioritize the profile's Farcaster handle
+      // Only use Farcaster handles that are explicitly in the Zora profile or coin's socialAccounts
+      // This ensures we only show Farcaster when it's actually linked to the Zora account
       const farcasterHandle = profile?.farcasterHandle ?? coin.creatorProfile?.socialAccounts?.farcaster?.username;
-      if (farcasterHandle) {
-        try {
-          return await findUserByUsername(farcasterHandle.replace(/^@/, ""));
-        } catch (error) {
-          console.warn("Failed to fetch Farcaster profile for Zora coin:", error);
-          return null;
-        }
+      
+      // Only proceed if we have an explicit Farcaster handle from Zora data
+      if (!farcasterHandle) {
+        return null;
       }
-      return null;
+      
+      try {
+        const user = await findUserByUsername(farcasterHandle.replace(/^@/, ""));
+        // Verify the user exists and is valid before returning
+        return user || null;
+      } catch (error) {
+        console.warn("Failed to fetch Farcaster profile for Zora coin:", error);
+        return null;
+      }
     })(),
     
     // Fetch creator coin data if available
@@ -296,7 +303,7 @@ export async function buildZoraCoinResponse(
     if (farcasterUser) {
       // Add creator field with full wallet details for page 2
       const { buildCreatorField } = await import("../utils/zoraEmbeds");
-      const creatorFieldWithWallets = buildCreatorField(coin, farcasterUser, true);
+      const creatorFieldWithWallets = buildCreatorField(coin, farcasterUser, true, profile);
       if (creatorFieldWithWallets) {
         page2Embed.addFields(creatorFieldWithWallets);
       }
