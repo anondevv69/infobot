@@ -352,12 +352,16 @@ function escapeMarkdownButPreserveLinks(text: string): string {
     linkIndex++;
   }
   
-  // Replace links with temporary placeholders
+  // Replace links with temporary placeholders (replace from end to start to preserve indices)
   let processed = text;
-  links.forEach((link) => {
-    // Use replace with a function to replace only the first occurrence
-    processed = processed.replace(link.full, link.placeholder);
-  });
+  for (let i = links.length - 1; i >= 0; i--) {
+    const link = links[i];
+    // Replace only the first occurrence of this link (from the end)
+    const lastIndex = processed.lastIndexOf(link.full);
+    if (lastIndex !== -1) {
+      processed = processed.substring(0, lastIndex) + link.placeholder + processed.substring(lastIndex + link.full.length);
+    }
+  }
   
   // Escape markdown in the rest
   processed = escapeMarkdown(processed);
