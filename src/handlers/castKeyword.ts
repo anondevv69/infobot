@@ -6,7 +6,7 @@ import { buildPaginationButtons } from "../utils/pagination";
 import { storeEmbedForPagination } from "./pagination";
 import { buildCastUrl } from "../utils/farcasterLinks";
 
-const CAST_KEYWORD_REGEX = /(?:^|\s)(?:cast|search|find)\s+([^\s]+)/i;
+const CAST_KEYWORD_REGEX = /(?:^|\s)(?:cast|find)\s+([^\s]+)/i;
 
 export async function handleCastKeywordMessage(message: Message): Promise<boolean> {
   if (message.author.bot || !message.content) {
