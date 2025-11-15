@@ -6,7 +6,9 @@ import { buildPaginationButtons } from "../utils/pagination";
 import { storeEmbedForPagination } from "./pagination";
 import { buildCastUrl } from "../utils/farcasterLinks";
 
-const CAST_KEYWORD_REGEX = /(?:^|\s)(?:cast|find)\s+([^\s]+)/i;
+const CAST_KEYWORD_REGEX = /(?:^|\s)cast\s+([^\s]+)/i;
+const FAR_SEARCH_REGEX = /(?:^|\s)far\s+(.+)/i;
+const ZORA_SEARCH_REGEX = /(?:^|\s)zora\s+(.+)/i;
 
 export async function handleCastKeywordMessage(message: Message): Promise<boolean> {
   if (message.author.bot || !message.content) {

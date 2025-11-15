@@ -164,6 +164,188 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       }
     }
 
+    // Check for keyword searches: "cast <keyword>", "far <query>", "zora <query>"
+    const castMatch = text.match(/(?:^|\s)cast\s+([^\s]+)/i);
+    if (castMatch) {
+      const keyword = castMatch[1].trim();
+      if (keyword && keyword.length >= 2) {
+        const { searchCastsByKeyword } = await import("../../../services/neynar");
+        try {
+          const { firstMatch, recent } = await searchCastsByKeyword(keyword, 2);
+          const castsToShow = [];
+          if (firstMatch) castsToShow.push(firstMatch);
+          castsToShow.push(...recent.slice(0, 2));
+          
+          if (castsToShow.length > 0) {
+            const { buildCastEmbed } = await import("../../../handlers/castLink");
+            const { buildCastUrl } = await import("../../../utils/farcasterLinks");
+            const embeds = castsToShow.map((cast: any, index: number) => {
+              if (index === 0 && firstMatch && cast.hash === firstMatch.hash) {
+                return buildCastEmbed(cast, buildCastUrl(cast.author.username, cast.hash), {
+                  title: `🔹 Earliest cast mentioning "${keyword}"`,
+                  color: 0xfbbf24,
+                  variant: "full",
+                });
+              }
+              const recentIndex = index - (firstMatch ? 1 : 0);
+              return buildCastEmbed(cast, buildCastUrl(cast.author.username, cast.hash), {
+                title: `Recent cast #${recentIndex + 1} mentioning "${keyword}"`,
+                color: 0x4338ca,
+                footer: `Matched keyword: ${keyword}`,
+                variant: "compact",
+              });
+            });
+            const identifier = `cast_search_${keyword}`;
+            await sendPaginatedTelegramMessage(bot, chatId, embeds, identifier);
+            return;
+          } else {
+            await bot.sendMessage(chatId, `No casts found matching \`${keyword}\`.`);
+            return;
+          }
+        } catch (error) {
+          console.error("Error searching casts:", error);
+        }
+      }
+    }
+
+    const farMatch = text.match(/(?:^|\s)far\s+(.+)/i);
+    if (farMatch) {
+      const query = farMatch[1].trim();
+      if (query) {
+        // Try as wallet address first
+        if (isEthAddress(query) || isSolAddress(query)) {
+          try {
+            const user = await findUserByWallet(query);
+            if (user) {
+              const [tokens, latestCast, zoraSummary] = await Promise.all([
+                safeFetchTokensByFid(user.fid),
+                safeFetchMostRecentCast(user.fid),
+                findBestZoraSummary(collectZoraIdentifiers(user)),
+              ]);
+              const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
+
+              const walletResponse = await buildWalletProfileResponse({
+                wallet: query,
+                user,
+                zoraSummary: associatedSummary,
+                clankerTokens: tokens,
+                latestCast,
+                returnAllPages: true,
+              });
+
+              const identifier = `wallet_${query.toLowerCase()}`;
+              const pageLabels = walletResponse.embeds.length > 1
+                ? ["Profile", "Clankers & Zora"]
+                : undefined;
+              await sendPaginatedTelegramMessage(bot, chatId, walletResponse.embeds, identifier, pageLabels);
+              return;
+            }
+          } catch (error) {
+            // Continue to username lookup
+          }
+        }
+
+        // Try as Farcaster username
+        try {
+          const normalizedUsername = query.replace(/^@/, "").toLowerCase();
+          const user = await findUserByUsername(normalizedUsername);
+          
+          if (user) {
+            const [tokens, latestCast, zoraSummary] = await Promise.all([
+              safeFetchTokensByFid(user.fid),
+              safeFetchMostRecentCast(user.fid),
+              findBestZoraSummary(collectZoraIdentifiers(user)),
+            ]);
+            const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
+
+            const result = await buildFarcasterPresentation(user, {
+              tokens,
+              zoraSummary: associatedSummary,
+              latestCast,
+              returnAllPages: true,
+            });
+            const identifier = `farcaster_username_${normalizedUsername}`;
+            const pageLabels = result.embeds.length > 1
+              ? ["Profile", "Clankers & Zora"]
+              : undefined;
+            await sendPaginatedTelegramMessage(bot, chatId, result.embeds, identifier, pageLabels);
+            return;
+          }
+        } catch (error) {
+          // User not found
+        }
+
+        await bot.sendMessage(chatId, `No Farcaster profile found for \`${query}\`.`);
+        return;
+      }
+    }
+
+    const zoraMatch = text.match(/(?:^|\s)zora\s+(.+)/i);
+    if (zoraMatch) {
+      const query = zoraMatch[1].trim();
+      if (query) {
+        // Try as wallet address first
+        if (isEthAddress(query)) {
+          const zoraSummary = await findBestZoraSummary([query.toLowerCase()]);
+          if (zoraSummary) {
+            const associated = isSummaryAssociatedWithAddress(zoraSummary, query)
+              ? zoraSummary
+              : null;
+            
+            const zoraResponse = buildZoraWalletProfileResponse({
+              wallet: query,
+              summary: associated ?? zoraSummary,
+              returnAllPages: true,
+            });
+
+            const identifier = `zora_wallet_${query.toLowerCase()}`;
+            await sendPaginatedTelegramMessage(bot, chatId, zoraResponse.embeds, identifier);
+            return;
+          }
+        }
+
+        // Try as contract address
+        if (isEthAddress(query)) {
+          try {
+            const coin = await fetchZoraCoin(query);
+            if (coin) {
+              const zoraSummary = await findBestZoraSummary([query.toLowerCase()]);
+              const response = await buildZoraCoinResponse(coin, zoraSummary, { returnAllPages: true });
+              const identifier = `zora_coin_${query.toLowerCase()}`;
+              const pageLabels = response.embeds.length > 1
+                ? ["Coin Details", "Creator Coin & Farcaster"]
+                : undefined;
+              await sendPaginatedTelegramMessage(bot, chatId, response.embeds, identifier, pageLabels);
+              return;
+            }
+          } catch (error) {
+            // Continue to profile lookup
+          }
+        }
+
+        // Try as Zora profile
+        const normalizedQuery = query.replace(/^@/, "").toLowerCase();
+        const zoraSummary = await findBestZoraSummary([
+          normalizedQuery,
+          `@${normalizedQuery}`,
+          `${normalizedQuery}.eth`,
+          `${normalizedQuery}.xyz`,
+        ]);
+        
+        if (zoraSummary) {
+          const embed = buildZoraProfileEmbed(zoraSummary);
+          await appendZoraSummaryFields(embed, zoraSummary);
+          const embeds = splitEmbedIntoPages(embed, 15);
+          const identifier = `zora_search_${normalizedQuery}`;
+          await sendPaginatedTelegramMessage(bot, chatId, embeds, identifier);
+          return;
+        }
+
+        await bot.sendMessage(chatId, `No Zora profile or contract found for \`${query}\`.`);
+        return;
+      }
+    }
+
     // Check if it's an X/Twitter account link
     const xLinkRegex = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^\s<>()]+/gi;
     if (xLinkRegex.test(text)) {
