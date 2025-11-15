@@ -333,14 +333,14 @@ function formatFieldValue(value: string): string {
  * Escape markdown but preserve markdown links
  */
 function escapeMarkdownButPreserveLinks(text: string): string {
-  // Extract all markdown links first
+  // Extract all markdown links first, tracking their positions
   const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-  const links: Array<{ full: string; text: string; url: string; placeholder: string }> = [];
+  const links: Array<{ full: string; text: string; url: string; placeholder: string; index: number }> = [];
   let match;
   const originalText = text;
   let linkIndex = 0;
   
-  // Find all links
+  // Find all links with their positions
   while ((match = linkRegex.exec(originalText)) !== null) {
     const placeholder = `__TEMP_LINK_${linkIndex}__`;
     links.push({
@@ -348,6 +348,7 @@ function escapeMarkdownButPreserveLinks(text: string): string {
       text: match[1],
       url: match[2],
       placeholder,
+      index: match.index,
     });
     linkIndex++;
   }
@@ -356,10 +357,11 @@ function escapeMarkdownButPreserveLinks(text: string): string {
   let processed = text;
   for (let i = links.length - 1; i >= 0; i--) {
     const link = links[i];
-    // Replace only the first occurrence of this link (from the end)
-    const lastIndex = processed.lastIndexOf(link.full);
-    if (lastIndex !== -1) {
-      processed = processed.substring(0, lastIndex) + link.placeholder + processed.substring(lastIndex + link.full.length);
+    // Replace at the original position
+    const start = link.index;
+    const end = start + link.full.length;
+    if (processed.substring(start, end) === link.full) {
+      processed = processed.substring(0, start) + link.placeholder + processed.substring(end);
     }
   }
   
