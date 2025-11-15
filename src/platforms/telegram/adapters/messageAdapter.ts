@@ -9,37 +9,95 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
 
   // Title
   if (data.title) {
-    parts.push(`*${data.title}*`);
+    // Escape markdown special characters in title
+    const title = escapeMarkdown(data.title);
+    parts.push(`*${title}*`);
   }
 
   // Description
   if (data.description) {
-    parts.push(data.description);
+    parts.push(escapeMarkdown(data.description));
   }
 
   // Fields
-  if (data.fields) {
+  if (data.fields && data.fields.length > 0) {
     for (const field of data.fields) {
-      if (field.name) {
-        parts.push(`\n*${field.name}*`);
-      }
-      if (field.value) {
-        parts.push(field.value);
+      if (field.name || field.value) {
+        parts.push(""); // Add spacing between fields
+        if (field.name) {
+          const name = escapeMarkdown(field.name);
+          parts.push(`*${name}*`);
+        }
+        if (field.value) {
+          // Field values may contain markdown links, so we preserve them
+          // Only escape if it's not already a markdown link
+          const value = preserveMarkdownLinks(field.value);
+          parts.push(value);
+        }
       }
     }
   }
 
   // Footer
   if (data.footer?.text) {
-    parts.push(`\n_${data.footer.text}_`);
+    parts.push("");
+    parts.push(`_${escapeMarkdown(data.footer.text)}_`);
   }
 
   // URL (if present, add as link)
   if (data.url) {
-    parts.push(`\n[View Details](${data.url})`);
+    parts.push("");
+    parts.push(`[View Details](${data.url})`);
   }
 
-  return parts.join("\n");
+  return parts.join("\n").trim();
+}
+
+/**
+ * Escape markdown special characters for Telegram
+ */
+function escapeMarkdown(text: string): string {
+  // Telegram uses * for bold, _ for italic, ` for code, [](url) for links
+  // We need to escape these if they're not part of a link
+  return text
+    .replace(/\*/g, "\\*")
+    .replace(/_/g, "\\_")
+    .replace(/`/g, "\\`");
+}
+
+/**
+ * Preserve markdown links while escaping other markdown
+ */
+function preserveMarkdownLinks(text: string): string {
+  // Match markdown links: [text](url)
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const links: Array<{ full: string; text: string; url: string }> = [];
+  let match;
+  
+  // Extract all links
+  while ((match = linkRegex.exec(text)) !== null) {
+    links.push({
+      full: match[0],
+      text: match[1],
+      url: match[2],
+    });
+  }
+  
+  // Replace links with placeholders
+  let processed = text;
+  links.forEach((link, index) => {
+    processed = processed.replace(link.full, `__LINK_${index}__`);
+  });
+  
+  // Escape markdown in the rest of the text
+  processed = escapeMarkdown(processed);
+  
+  // Restore links
+  links.forEach((link, index) => {
+    processed = processed.replace(`__LINK_${index}__`, `[${link.text}](${link.url})`);
+  });
+  
+  return processed;
 }
 
 /**

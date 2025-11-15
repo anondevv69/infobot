@@ -1,10 +1,16 @@
 import TelegramBot from "node-telegram-bot-api";
-import { handleSearchCommand } from "../../../commands/search";
-import { handleCastsCommand } from "../../../commands/casts";
-import { handleZoraProfileCommand } from "../../../commands/zora";
-import { handleClankerCommand } from "../../../commands/clanker";
-import { handleHelpCommand } from "../../../commands/help";
-import { convertToTelegramMessage } from "../adapters/messageAdapter";
+import { isEthAddress, isSolAddress } from "../../../utils/address";
+import { findBestZoraSummary } from "../../../services/zora";
+import { fetchTokensByQuery, fetchTokensByAddress } from "../../../services/clanker";
+import { findUserByUsername, findUserByWallet } from "../../../services/neynar";
+import { buildZoraProfileEmbed, appendZoraSummaryFields } from "../../../utils/zoraEmbeds";
+import { buildTokenEmbed } from "../../../utils/clankerEmbeds";
+import { buildFarcasterPresentation } from "../../../utils/farcasterPresentation";
+import { buildWalletProfileResponse } from "../../../utils/walletEmbed";
+import { embedsToTelegram } from "../adapters/telegramAdapter";
+import { extractFirstAddress, extractZoraContractReference } from "../../../utils/address";
+import { buildZoraCoinResponse } from "../../../handlers/zoraAddress";
+import { fetchZoraCoin } from "../../../services/zora";
 
 export async function handleTelegramCommand(
   bot: TelegramBot,
@@ -48,10 +54,7 @@ Built by rayblanco.eth`;
           return;
         }
         
-        // Create a mock interaction-like object for the search command
-        // The search handler will need to be adapted for Telegram
-        const result = await convertSearchResultToTelegram(query);
-        await bot.sendMessage(chatId, result, { parse_mode: "Markdown", disable_web_page_preview: true });
+        await handleSearchQuery(bot, chatId, query);
         break;
       }
 
@@ -61,8 +64,7 @@ Built by rayblanco.eth`;
           return;
         }
         
-        const result = await convertZoraResultToTelegram(query);
-        await bot.sendMessage(chatId, result, { parse_mode: "Markdown", disable_web_page_preview: true });
+        await handleZoraQuery(bot, chatId, query);
         break;
       }
 
@@ -72,8 +74,7 @@ Built by rayblanco.eth`;
           return;
         }
         
-        const result = await convertClankerResultToTelegram(query);
-        await bot.sendMessage(chatId, result, { parse_mode: "Markdown", disable_web_page_preview: true });
+        await handleClankerQuery(bot, chatId, query);
         break;
       }
 
@@ -83,8 +84,7 @@ Built by rayblanco.eth`;
           return;
         }
         
-        const result = await convertCastsResultToTelegram(query);
-        await bot.sendMessage(chatId, result, { parse_mode: "Markdown", disable_web_page_preview: true });
+        await handleCastsQuery(bot, chatId, query);
         break;
       }
 
@@ -92,27 +92,176 @@ Built by rayblanco.eth`;
         await bot.sendMessage(chatId, "Unknown command. Use /help to see available commands.");
     }
   } catch (error) {
-    console.error("Error handling Telegram command:", error);
-    await bot.sendMessage(chatId, "An error occurred while processing your request. Please try again later.");
+    console.error(`Error handling Telegram command ${command}:`, error);
+    await bot.sendMessage(chatId, "An error occurred while processing your command. Please try again later.");
   }
 }
 
-// Helper functions to convert results to Telegram format
-// These will call the existing services and format for Telegram
-async function convertSearchResultToTelegram(query: string): Promise<string> {
-  // This will be implemented to use existing services
-  return `Searching for: ${query}\n\n(Telegram integration in progress)`;
+async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string): Promise<void> {
+  try {
+    // Try address first
+    if (isEthAddress(query) || isSolAddress(query)) {
+      const address = extractFirstAddress(query);
+      if (address) {
+        // Try Clanker
+        const tokens = await fetchTokensByAddress(address);
+        if (tokens && tokens.length > 0) {
+          const embed = await buildTokenEmbed(tokens[0]);
+          const messages = embedsToTelegram([embed]);
+          for (const msg of messages) {
+            await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+          }
+          return;
+        }
+
+        // Try Zora
+        const zoraSummary = await findBestZoraSummary([address.toLowerCase()]);
+        if (zoraSummary) {
+          const embed = buildZoraProfileEmbed(zoraSummary);
+          await appendZoraSummaryFields(embed, zoraSummary);
+          const messages = embedsToTelegram([embed]);
+          for (const msg of messages) {
+            await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+          }
+          return;
+        }
+
+        // Try wallet (need to find user first)
+        try {
+          const user = await findUserByWallet(address);
+          if (user) {
+            const walletResponse = await buildWalletProfileResponse({
+              wallet: address,
+              user,
+            });
+            if (walletResponse && walletResponse.embeds.length > 0) {
+              const messages = embedsToTelegram(walletResponse.embeds);
+              for (const msg of messages) {
+                await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+              }
+              return;
+            }
+          }
+        } catch (error) {
+          // User not found, continue
+        }
+      }
+    }
+
+    // Try Farcaster username
+    const normalizedUsername = query.replace(/^@/, "").toLowerCase();
+    try {
+      const user = await findUserByUsername(normalizedUsername);
+      if (user) {
+        const result = await buildFarcasterPresentation(user);
+        const messages = embedsToTelegram(result.embeds);
+        for (const msg of messages) {
+          await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+        }
+        return;
+      }
+    } catch (error) {
+      // User not found, continue
+    }
+
+    // Try Zora profile
+    const zoraSummary = await findBestZoraSummary([normalizedUsername, `@${normalizedUsername}`, `${normalizedUsername}.eth`]);
+    if (zoraSummary) {
+      const embed = buildZoraProfileEmbed(zoraSummary);
+      await appendZoraSummaryFields(embed, zoraSummary);
+      const messages = embedsToTelegram([embed]);
+      for (const msg of messages) {
+        await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+      }
+      return;
+    }
+
+    await bot.sendMessage(chatId, `No results found for: ${query}`);
+  } catch (error) {
+    console.error("Error in handleSearchQuery:", error);
+    await bot.sendMessage(chatId, "An error occurred while searching. Please try again.");
+  }
 }
 
-async function convertZoraResultToTelegram(query: string): Promise<string> {
-  return `Zora search for: ${query}\n\n(Telegram integration in progress)`;
+async function handleZoraQuery(bot: TelegramBot, chatId: number, query: string): Promise<void> {
+  try {
+    // Try as Zora contract reference first
+    const reference = extractZoraContractReference(query);
+    if (reference) {
+      const coin = await fetchZoraCoin(reference.address, reference.chainId);
+      if (coin) {
+        const summary = await findBestZoraSummary([reference.address.toLowerCase()]);
+        const response = await buildZoraCoinResponse(coin, summary);
+        const messages = embedsToTelegram(response.embeds);
+        for (const msg of messages) {
+          await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+        }
+        return;
+      }
+    }
+
+    // Try as profile lookup
+    const normalizedQuery = query.replace(/^@/, "").toLowerCase();
+    const zoraSummary = await findBestZoraSummary([normalizedQuery, `@${normalizedQuery}`, `${normalizedQuery}.eth`]);
+    if (zoraSummary) {
+      const embed = buildZoraProfileEmbed(zoraSummary);
+      await appendZoraSummaryFields(embed, zoraSummary);
+      const messages = embedsToTelegram([embed]);
+      for (const msg of messages) {
+        await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+      }
+      return;
+    }
+    
+    await bot.sendMessage(chatId, `No Zora results found for: ${query}`);
+  } catch (error) {
+    console.error("Error in handleZoraQuery:", error);
+    await bot.sendMessage(chatId, "An error occurred while searching Zora. Please try again.");
+  }
 }
 
-async function convertClankerResultToTelegram(query: string): Promise<string> {
-  return `Clanker search for: ${query}\n\n(Telegram integration in progress)`;
+async function handleClankerQuery(bot: TelegramBot, chatId: number, query: string): Promise<void> {
+  try {
+    // Try as address first
+    if (isEthAddress(query)) {
+      const address = extractFirstAddress(query);
+      if (address) {
+        const tokens = await fetchTokensByAddress(address);
+        if (tokens && tokens.length > 0) {
+          const embed = await buildTokenEmbed(tokens[0]);
+          const messages = embedsToTelegram([embed]);
+          for (const msg of messages) {
+            await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+          }
+          return;
+        }
+      }
+    }
+
+    // Try as token name/symbol search
+    const tokens = await fetchTokensByQuery(query);
+    if (tokens && tokens.length > 0) {
+      const embed = await buildTokenEmbed(tokens[0]);
+      const messages = embedsToTelegram([embed]);
+      for (const msg of messages) {
+        await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+      }
+      return;
+    }
+
+    await bot.sendMessage(chatId, `No Clanker results found for: ${query}`);
+  } catch (error) {
+    console.error("Error in handleClankerQuery:", error);
+    await bot.sendMessage(chatId, "An error occurred while searching Clanker. Please try again.");
+  }
 }
 
-async function convertCastsResultToTelegram(keyword: string): Promise<string> {
-  return `Casts search for: ${keyword}\n\n(Telegram integration in progress)`;
+async function handleCastsQuery(bot: TelegramBot, chatId: number, keyword: string): Promise<void> {
+  try {
+    // This would need to be implemented - for now just show a message
+    await bot.sendMessage(chatId, `Casts search for "${keyword}" is coming soon!`);
+  } catch (error) {
+    console.error("Error in handleCastsQuery:", error);
+    await bot.sendMessage(chatId, "An error occurred while searching casts. Please try again.");
+  }
 }
-

@@ -15,6 +15,7 @@ export async function startTelegramBot(): Promise<void> {
 
   bot.on("message", async (msg) => {
     // Handle text messages (addresses, usernames, etc.)
+    // Commands are handled by onText handlers below
     if (msg.text && !msg.text.startsWith("/")) {
       await handleTelegramMessage(bot, msg);
     }
@@ -28,6 +29,7 @@ export async function startTelegramBot(): Promise<void> {
     await handleTelegramCommand(bot, msg, "help");
   });
 
+  // Commands with parameters
   bot.onText(/\/search (.+)/, async (msg, match) => {
     const query = match?.[1];
     if (query) {
@@ -54,6 +56,23 @@ export async function startTelegramBot(): Promise<void> {
     if (keyword) {
       await handleTelegramCommand(bot, msg, "casts", keyword);
     }
+  });
+
+  // Commands without parameters (show usage)
+  bot.onText(/\/search$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "search");
+  });
+
+  bot.onText(/\/zora$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "zora");
+  });
+
+  bot.onText(/\/clanker$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "clanker");
+  });
+
+  bot.onText(/\/casts$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "casts");
   });
 
   bot.on("polling_error", (error) => {

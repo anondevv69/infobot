@@ -1,8 +1,14 @@
 import TelegramBot from "node-telegram-bot-api";
-import { handleUsernameMessage as handleDiscordUsername } from "../../../handlers/username";
-import { handleZoraAddressMessage } from "../../../handlers/zoraAddress";
-import { handleClankerAddressMessage } from "../../../handlers/clankerAddress";
-import { isEthAddress, isSolAddress } from "../../../utils/address";
+import { isEthAddress, isSolAddress, extractFirstAddress, extractZoraContractReference } from "../../../utils/address";
+import { fetchTokensByAddress } from "../../../services/clanker";
+import { findBestZoraSummary, fetchZoraCoin } from "../../../services/zora";
+import { findUserByUsername, findUserByWallet } from "../../../services/neynar";
+import { buildTokenEmbed } from "../../../utils/clankerEmbeds";
+import { buildZoraProfileEmbed, appendZoraSummaryFields } from "../../../utils/zoraEmbeds";
+import { buildFarcasterPresentation } from "../../../utils/farcasterPresentation";
+import { buildWalletProfileResponse } from "../../../utils/walletEmbed";
+import { embedsToTelegram } from "../adapters/telegramAdapter";
+import { buildZoraCoinResponse } from "../../../handlers/zoraAddress";
 
 export async function handleTelegramMessage(
   bot: TelegramBot,
@@ -13,72 +19,149 @@ export async function handleTelegramMessage(
   const chatId = msg.chat.id;
   const text = msg.text.trim();
 
+  // In groups, ignore messages that don't mention the bot (unless it's a direct address/username)
+  if (msg.chat.type !== "private") {
+    // Check if message mentions the bot
+    const botUsername = (bot as any).options?.username || process.env.TELEGRAM_BOT_USERNAME;
+    const mentionsBot = botUsername && (
+      text.includes(`@${botUsername}`) ||
+      msg.entities?.some(e => e.type === "mention" && text.substring(e.offset, e.offset + e.length) === `@${botUsername}`)
+    );
+    
+    // Only process if it mentions the bot OR is clearly an address/username
+    if (!mentionsBot && !isEthAddress(text) && !text.startsWith("@") && !text.includes("zora.co")) {
+      return; // Ignore messages in groups that don't mention the bot
+    }
+    
+    // Remove bot mention from text if present
+    const cleanText = botUsername ? text.replace(new RegExp(`@${botUsername}\\s*`, "gi"), "").trim() : text;
+    if (!cleanText) return;
+    
+    // Use clean text for processing
+    return processMessage(bot, chatId, cleanText);
+  }
+
+  // In private chats, process all messages
+  return processMessage(bot, chatId, text);
+}
+
+async function processMessage(bot: TelegramBot, chatId: number, text: string): Promise<void> {
   try {
     // Check if it's an Ethereum address
     if (isEthAddress(text)) {
-      // Try Clanker first, then Zora, then wallet
-      const clankerResult = await tryClankerLookup(text);
-      if (clankerResult) {
-        await bot.sendMessage(chatId, clankerResult, { parse_mode: "Markdown", disable_web_page_preview: true });
-        return;
-      }
+      const address = extractFirstAddress(text);
+      if (address) {
+        // Try Clanker first
+        const tokens = await fetchTokensByAddress(address);
+        if (tokens && tokens.length > 0) {
+          const embed = await buildTokenEmbed(tokens[0]);
+          const messages = embedsToTelegram([embed]);
+          for (const msg of messages) {
+            await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+          }
+          return;
+        }
 
-      const zoraResult = await tryZoraLookup(text);
-      if (zoraResult) {
-        await bot.sendMessage(chatId, zoraResult, { parse_mode: "Markdown", disable_web_page_preview: true });
-        return;
-      }
+        // Try Zora
+        const reference = extractZoraContractReference(text);
+        if (reference) {
+          const coin = await fetchZoraCoin(reference.address, reference.chainId);
+          if (coin) {
+            const zoraSummary = await findBestZoraSummary([address.toLowerCase()]);
+            const response = await buildZoraCoinResponse(coin, zoraSummary);
+            const messages = embedsToTelegram(response.embeds);
+            for (const msg of messages) {
+              await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+            }
+            return;
+          }
+        }
+        
+        // Try Zora profile lookup
+        const zoraSummary = await findBestZoraSummary([address.toLowerCase()]);
+        if (zoraSummary) {
+          const embed = buildZoraProfileEmbed(zoraSummary);
+          await appendZoraSummaryFields(embed, zoraSummary);
+          const messages = embedsToTelegram([embed]);
+          for (const msg of messages) {
+            await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+          }
+          return;
+        }
 
-      // Wallet lookup
-      const walletResult = await tryWalletLookup(text);
-      if (walletResult) {
-        await bot.sendMessage(chatId, walletResult, { parse_mode: "Markdown", disable_web_page_preview: true });
-        return;
+        // Try wallet (need to find user first)
+        try {
+          const user = await findUserByWallet(address);
+          if (user) {
+            const walletResponse = await buildWalletProfileResponse({
+              wallet: address,
+              user,
+            });
+            if (walletResponse && walletResponse.embeds.length > 0) {
+              const messages = embedsToTelegram(walletResponse.embeds);
+              for (const msg of messages) {
+                await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+              }
+              return;
+            }
+          }
+        } catch (error) {
+          // User not found, continue
+        }
       }
     }
 
     // Check if it's a Farcaster username (starts with @)
     if (text.startsWith("@")) {
-      const usernameResult = await tryUsernameLookup(text.replace("@", ""));
-      if (usernameResult) {
-        await bot.sendMessage(chatId, usernameResult, { parse_mode: "Markdown", disable_web_page_preview: true });
-        return;
+      const username = text.replace("@", "").trim();
+      try {
+        const user = await findUserByUsername(username);
+        if (user) {
+          const result = await buildFarcasterPresentation(user);
+          const messages = embedsToTelegram(result.embeds);
+          for (const msg of messages) {
+            await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+          }
+          return;
+        }
+      } catch (error) {
+        // User not found, continue
       }
     }
 
     // Check if it's a Zora profile URL or handle
     if (text.includes("zora.co") || text.startsWith("zora/")) {
-      const zoraResult = await tryZoraLookup(text);
-      if (zoraResult) {
-        await bot.sendMessage(chatId, zoraResult, { parse_mode: "Markdown", disable_web_page_preview: true });
+      const reference = extractZoraContractReference(text);
+      if (reference) {
+        const coin = await fetchZoraCoin(reference.address, reference.chainId);
+        if (coin) {
+          const zoraSummary = await findBestZoraSummary([reference.address.toLowerCase()]);
+          const response = await buildZoraCoinResponse(coin, zoraSummary);
+          const messages = embedsToTelegram(response.embeds);
+          for (const msg of messages) {
+            await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+          }
+          return;
+        }
+      }
+      
+      // Try as profile lookup
+      const zoraSummary = await findBestZoraSummary([text]);
+      if (zoraSummary) {
+        const embed = buildZoraProfileEmbed(zoraSummary);
+        await appendZoraSummaryFields(embed, zoraSummary);
+        const messages = embedsToTelegram([embed]);
+        for (const msg of messages) {
+          await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
+        }
         return;
       }
     }
 
+    // If we get here and it's a private chat, don't send anything (silent failure for auto-detection)
+    // In groups, we already filtered out non-mentions above
   } catch (error) {
     console.error("Error handling Telegram message:", error);
     // Don't send error to user for auto-detection failures
   }
 }
-
-// Helper functions - these will use existing services and convert to Telegram format
-async function tryClankerLookup(address: string): Promise<string | null> {
-  // Use existing Clanker service, convert to Telegram format
-  return null; // Placeholder
-}
-
-async function tryZoraLookup(query: string): Promise<string | null> {
-  // Use existing Zora service, convert to Telegram format
-  return null; // Placeholder
-}
-
-async function tryWalletLookup(address: string): Promise<string | null> {
-  // Use existing wallet service, convert to Telegram format
-  return null; // Placeholder
-}
-
-async function tryUsernameLookup(username: string): Promise<string | null> {
-  // Use existing username service, convert to Telegram format
-  return null; // Placeholder
-}
-
