@@ -181,8 +181,10 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           }
         }
 
-        const farcasterUser = byXHandle ?? byUsername;
-        if (farcasterUser && userHasMatchingXAccount(farcasterUser, handle)) {
+        // If findUserByXHandle returned a user, trust it (the endpoint specifically looks up by X handle)
+        // Otherwise, check if the username lookup found a user with matching X account
+        const farcasterUser = byXHandle ?? (byUsername && userHasMatchingXAccount(byUsername, handle) ? byUsername : null);
+        if (farcasterUser) {
           const [tokens, latestCast, zoraSummary] = await Promise.all([
             safeFetchTokensByFid(farcasterUser.fid),
             safeFetchMostRecentCast(farcasterUser.fid),

@@ -5,17 +5,16 @@ import { fetchTokensByQuery, fetchTokensByAddress } from "../../../services/clan
 import { findUserByUsername, findUserByWallet } from "../../../services/neynar";
 import { buildZoraProfileEmbed, appendZoraSummaryFields } from "../../../utils/zoraEmbeds";
 import { buildZoraWalletProfileResponse } from "../../../utils/walletEmbed";
-import { isSummaryAssociatedWithAddress } from "../../../utils/zoraAssociation";
+import { isSummaryAssociatedWithAddress, isSummaryAssociatedWithUser } from "../../../utils/zoraAssociation";
 import { sendClankerTokenPages } from "./clankerHandler";
 import { buildFarcasterPresentation } from "../../../utils/farcasterPresentation";
 import { buildWalletProfileResponse } from "../../../utils/walletEmbed";
 import { sendPaginatedTelegramMessage } from "../utils/sendPaginated";
 import { extractFirstAddress, extractZoraContractReference } from "../../../utils/address";
+import { collectZoraIdentifiers } from "../../../utils/zoraPresentation";
+import { safeFetchTokensByFid, safeFetchMostRecentCast } from "../../../utils/farcasterHelpers";
 import { buildZoraCoinResponse } from "../../../handlers/zoraAddress";
 import { fetchZoraCoin } from "../../../services/zora";
-import { safeFetchTokensByFid, safeFetchMostRecentCast } from "../../../utils/farcasterHelpers";
-import { collectZoraIdentifiers } from "../../../utils/zoraPresentation";
-import { isSummaryAssociatedWithUser } from "../../../utils/zoraAssociation";
 import { findUserByXHandle } from "../../../services/neynar";
 
 export async function handleTelegramCommand(
@@ -185,8 +184,10 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
           }
         }
 
-        const farcasterUser = byXHandle ?? byUsername;
-        if (farcasterUser && userHasMatchingXAccount(farcasterUser, handle)) {
+        // If findUserByXHandle returned a user, trust it (the endpoint specifically looks up by X handle)
+        // Otherwise, check if the username lookup found a user with matching X account
+        const farcasterUser = byXHandle ?? (byUsername && userHasMatchingXAccount(byUsername, handle) ? byUsername : null);
+        if (farcasterUser) {
           const [tokens, latestCast, zoraSummary] = await Promise.all([
             safeFetchTokensByFid(farcasterUser.fid),
             safeFetchMostRecentCast(farcasterUser.fid),
@@ -243,7 +244,35 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
       // User not found, continue
     }
 
-    // Try Zora profile
+    // Try Farcaster username lookup first
+    try {
+      const user = await findUserByUsername(normalizedUsername);
+      if (user) {
+        const [tokens, latestCast, zoraSummary] = await Promise.all([
+          safeFetchTokensByFid(user.fid),
+          safeFetchMostRecentCast(user.fid),
+          findBestZoraSummary(collectZoraIdentifiers(user)),
+        ]);
+        const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
+
+        const result = await buildFarcasterPresentation(user, {
+          tokens,
+          zoraSummary: associatedSummary,
+          latestCast,
+          returnAllPages: true, // Get all pages for Telegram
+        });
+        const identifier = `farcaster_username_${normalizedUsername}`;
+        const pageLabels = result.embeds.length > 1
+          ? ["Profile", "Clankers & Zora"]
+          : undefined;
+        await sendPaginatedTelegramMessage(bot, chatId, result.embeds, identifier, pageLabels);
+        return;
+      }
+    } catch (error) {
+      // User not found, continue to Zora lookup
+    }
+
+    // Fallback to Zora profile if Farcaster not found
     const zoraSummary = await findBestZoraSummary([normalizedUsername, `@${normalizedUsername}`, `${normalizedUsername}.eth`]);
     if (zoraSummary) {
       const embed = buildZoraProfileEmbed(zoraSummary);

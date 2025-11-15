@@ -53,7 +53,17 @@ export async function handleSearchCommand(
       return;
     }
 
-    // Try Zora account lookup first (handles @username or username)
+    // Try Farcaster username lookup first
+    const normalizedUsername = normalizeUsername(query);
+    const handledUsername = await replyWithUsernameLookup(
+      interaction,
+      normalizedUsername,
+    );
+    if (handledUsername) {
+      return;
+    }
+
+    // Fallback to Zora account lookup if Farcaster not found
     const normalizedQuery = query.replace(/^@/, "").toLowerCase();
     const zoraSummary = await findBestZoraSummary([
       normalizedQuery,
@@ -94,16 +104,8 @@ export async function handleSearchCommand(
       return;
     }
 
-    // Try Farcaster username lookup
-    const normalizedUsername = normalizeUsername(query);
-    const handledUsername = await replyWithUsernameLookup(
-      interaction,
-      normalizedUsername,
-    );
-    if (!handledUsername) {
-      // Fallback to Clanker token lookup
-      await replyWithClankerTokenLookup(interaction, query);
-    }
+    // Final fallback to Clanker token lookup
+    await replyWithClankerTokenLookup(interaction, query);
   } catch (error) {
     const message =
       error instanceof NeynarLookupError

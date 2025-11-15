@@ -28,8 +28,10 @@ export async function handleXAccountMessage(message: Message): Promise<boolean> 
       }
     }
 
-    const farcasterUser = byXHandle ?? byUsername;
-    if (farcasterUser && userHasMatchingXAccount(farcasterUser, handle)) {
+    // If findUserByXHandle returned a user, trust it (the endpoint specifically looks up by X handle)
+    // Otherwise, check if the username lookup found a user with matching X account
+    const farcasterUser = byXHandle ?? (byUsername && userHasMatchingXAccount(byUsername, handle) ? byUsername : null);
+    if (farcasterUser) {
       const [tokens, latestCast] = await Promise.all([
         safeFetchTokensByFid(farcasterUser.fid),
         safeFetchMostRecentCast(farcasterUser.fid),
