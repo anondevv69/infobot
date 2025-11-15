@@ -346,6 +346,129 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       }
     }
 
+    const walletMatch = text.match(/(?:^|\s)wallet\s+(.+)/i);
+    if (walletMatch) {
+      const query = walletMatch[1].trim();
+      if (query) {
+        // Must be a valid wallet address
+        if (!isEthAddress(query) && !isSolAddress(query)) {
+          await bot.sendMessage(chatId, `\`${query}\` is not a valid wallet address. Please provide an Ethereum (0x...) or Solana address.`);
+          return;
+        }
+
+        const address = query;
+
+        // Try Farcaster user by wallet first
+        let user;
+        try {
+          user = await findUserByWallet(address);
+        } catch (error) {
+          // Continue with other lookups
+        }
+
+        // Try Zora summary
+        const zoraSummaryFromAddress = await findBestZoraSummary([address.toLowerCase()]);
+
+        // If we have a Farcaster user, show wallet profile with Farcaster info
+        if (user) {
+          const zoraIdentifiers = collectZoraIdentifiers(user, address);
+          const [tokens, latestCast, zoraSummaryForUser] = await Promise.all([
+            safeFetchTokensByFid(user.fid),
+            safeFetchMostRecentCast(user.fid),
+            findBestZoraSummary(zoraIdentifiers),
+          ]);
+
+          const associatedSummary =
+            zoraSummaryForUser && isSummaryAssociatedWithUser(user, zoraSummaryForUser)
+              ? zoraSummaryForUser
+              : zoraSummaryFromAddress;
+
+          const walletResponse = await buildWalletProfileResponse({
+            wallet: address,
+            user,
+            zoraSummary: associatedSummary,
+            clankerTokens: tokens,
+            latestCast,
+            returnAllPages: true,
+          });
+
+          const identifier = `wallet_${address.toLowerCase()}`;
+          const pageLabels = walletResponse.embeds.length > 1
+            ? ["Profile", "Clankers & Zora"]
+            : undefined;
+          await sendPaginatedTelegramMessage(bot, chatId, walletResponse.embeds, identifier, pageLabels);
+          return;
+        }
+
+        // Try Clanker tokens
+        const { fetchTokensByAddress } = await import("../../../services/clanker");
+        const clankerTokens = await fetchTokensByAddress(address);
+        if (clankerTokens.length > 0) {
+          const { sendClankerTokenPages } = await import("./clankerHandler");
+          const clankerSent = await sendClankerTokenPages(bot, chatId, address);
+          if (clankerSent) {
+            return;
+          }
+        }
+
+        // Try Zora coin
+        if (zoraSummaryFromAddress) {
+          const lowerAddress = address.toLowerCase();
+          let matchedCoin =
+            zoraSummaryFromAddress.latestCoin?.coin.address?.toLowerCase() === lowerAddress
+              ? zoraSummaryFromAddress.latestCoin.coin
+              : null;
+
+          if (
+            !matchedCoin &&
+            zoraSummaryFromAddress.profile.creatorCoinAddress?.toLowerCase() === lowerAddress
+          ) {
+            matchedCoin =
+              zoraSummaryFromAddress.createdCoins?.find(
+                (coin) => coin.address?.toLowerCase() === lowerAddress,
+              ) ?? null;
+          }
+
+          if (!matchedCoin) {
+            try {
+              matchedCoin = await fetchZoraCoin(address);
+            } catch (error) {
+              // Continue to wallet profile
+            }
+          }
+
+          if (matchedCoin) {
+            const response = await buildZoraCoinResponse(matchedCoin, zoraSummaryFromAddress, { returnAllPages: true });
+            const identifier = `zora_coin_${address.toLowerCase()}`;
+            const pageLabels = response.embeds.length > 1
+              ? ["Coin Details", "Creator Coin & Farcaster"]
+              : undefined;
+            await sendPaginatedTelegramMessage(bot, chatId, response.embeds, identifier, pageLabels);
+            return;
+          }
+
+          // Show Zora wallet profile
+          const associated = isSummaryAssociatedWithAddress(zoraSummaryFromAddress, address)
+            ? zoraSummaryFromAddress
+            : null;
+
+          const zoraResponse = buildZoraWalletProfileResponse({
+            wallet: address,
+            summary: associated ?? zoraSummaryFromAddress,
+            returnAllPages: true,
+          });
+
+          const identifier = `zora_wallet_${address.toLowerCase()}`;
+          await sendPaginatedTelegramMessage(bot, chatId, zoraResponse.embeds, identifier);
+          return;
+        }
+
+        // No results
+        await bot.sendMessage(chatId, `No Farcaster profile, Clanker deployments, or Zora profile found for wallet \`${address}\`.`);
+        return;
+      }
+    }
+
     // Check if it's an X/Twitter account link
     const xLinkRegex = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^\s<>()]+/gi;
     if (xLinkRegex.test(text)) {

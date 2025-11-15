@@ -14,6 +14,7 @@ import { handleCastLinkMessage } from "./handlers/castLink";
 import { handleCastKeywordMessage } from "./handlers/castKeyword";
 import { handleFarSearchMessage } from "./handlers/farSearch";
 import { handleZoraSearchMessage } from "./handlers/zoraSearch";
+import { handleWalletSearchMessage } from "./handlers/walletSearch";
 import { handleClankerAddressMessage } from "./handlers/clankerAddress";
 import { handleTokenDetailButton } from "./handlers/tokenDetailButton";
 import { handleZoraAddressMessage } from "./handlers/zoraAddress";
@@ -81,6 +82,9 @@ async function main(): Promise<void> {
       return;
     }
     if (await handleZoraSearchMessage(message)) {
+      return;
+    }
+    if (await handleWalletSearchMessage(message)) {
       return;
     }
     await handleCastLinkMessage(message);
