@@ -270,7 +270,50 @@ function formatCastText(text: string): string {
   if (!clean) {
     return "_No text content in this cast._";
   }
-  return clean.length > 500 ? `${clean.slice(0, 497)}…` : clean;
+  
+  let formatted = clean.length > 500 ? `${clean.slice(0, 497)}…` : clean;
+  
+  // Make @mentions clickable to Farcaster profiles
+  // Match @username patterns (not already in links)
+  const mentionRegex = /@([a-zA-Z0-9_]+)/g;
+  const mentions: Array<{ username: string; match: string; index: number }> = [];
+  let mentionMatch;
+  const originalText = formatted;
+  
+  while ((mentionMatch = mentionRegex.exec(originalText)) !== null) {
+    const before = originalText.substring(0, mentionMatch.index);
+    const after = originalText.substring(mentionMatch.index + mentionMatch[0].length);
+    
+    // Skip if it's already in a markdown link
+    const linkStart = before.lastIndexOf('[');
+    const linkEnd = after.indexOf('](');
+    if (linkStart !== -1 && linkEnd !== -1) {
+      const between = before.substring(linkStart);
+      if (!between.includes(']')) {
+        continue; // Already in a link
+      }
+    }
+    
+    // Skip if it's in a URL
+    if (/https?:\/\/[^\s]*$/.test(before)) {
+      continue;
+    }
+    
+    mentions.push({
+      username: mentionMatch[1],
+      match: mentionMatch[0],
+      index: mentionMatch.index,
+    });
+  }
+  
+  // Replace from end to start to preserve indices
+  for (let i = mentions.length - 1; i >= 0; i--) {
+    const { username, match, index } = mentions[i];
+    const profileUrl = buildFarcasterProfileUrl(username);
+    formatted = formatted.substring(0, index) + `[@${username}](${profileUrl})` + formatted.substring(index + match.length);
+  }
+  
+  return formatted;
 }
 
 function formatAddressList(addresses: string[]): string {

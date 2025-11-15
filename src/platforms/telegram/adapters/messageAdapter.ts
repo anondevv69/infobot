@@ -103,35 +103,34 @@ function formatFieldValue(value: string): string {
   }
   value = tempValue;
 
-  // Handle code blocks (```address```) - convert addresses to clickable links
+  // Handle code blocks (```address```) - convert addresses/contracts to clickable code links
+  // For Telegram: use code formatting with clickable links [code](url)
   value = value.replace(/```([^`]+)```/g, (match, content) => {
     const lines = content.trim().split("\n");
     return lines.map((line: string) => {
       const trimmed = line.trim();
-      // Check if it's an Ethereum address
+      // Check if it's an Ethereum address/contract
       if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
-        // Default to Base chain (8453) for most addresses, but could be Ethereum
-        // We'll use Basescan for Base addresses, Etherscan for others
+        // Make it clickable code: [address](url) - Telegram will show as clickable code
         const basescanUrl = `https://basescan.org/address/${trimmed}`;
-        const etherscanUrl = `https://etherscan.io/address/${trimmed}`;
-        // Use Basescan by default (most addresses are on Base)
-        return `[${trimmed}](${basescanUrl})`;
+        return `[\`${trimmed}\`](${basescanUrl})`;
       }
       // Check if it's a Solana address
       if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(trimmed)) {
         const solscanUrl = `https://solscan.io/account/${trimmed}`;
         return `[${trimmed}](${solscanUrl})`;
       }
-      // Not an address, return as-is
-      return trimmed;
+      // Not an address, keep as code block
+      return `\`${trimmed}\``;
     }).join("\n");
   });
 
-  // Handle inline code (`code`) - convert addresses to clickable links
+  // Handle inline code (`code`) - convert addresses/contracts to clickable code links
   value = value.replace(/`([^`]+)`/g, (match, content) => {
     const trimmed = content.trim();
-    // Check if it's an Ethereum address
+    // Check if it's an Ethereum address/contract
     if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
+      // Make it clickable - Telegram will show as clickable link
       const basescanUrl = `https://basescan.org/address/${trimmed}`;
       return `[${trimmed}](${basescanUrl})`;
     }
@@ -140,8 +139,8 @@ function formatFieldValue(value: string): string {
       const solscanUrl = `https://solscan.io/account/${trimmed}`;
       return `[${trimmed}](${solscanUrl})`;
     }
-    // Not an address, return as plain text (remove backticks)
-    return trimmed;
+    // Not an address, keep as code
+    return `\`${trimmed}\``;
   });
   
   // Convert plain addresses (not in links) to clickable links
@@ -181,6 +180,8 @@ function formatFieldValue(value: string): string {
   for (let i = ethMatches.length - 1; i >= 0; i--) {
     const { address, index } = ethMatches[i];
     const basescanUrl = `https://basescan.org/address/${address}`;
+    // Format as clickable code: [address](url) - Telegram will show as clickable
+    // Note: Can't nest backticks in Telegram links, so just make it a clickable link
     value = value.substring(0, index) + `[${address}](${basescanUrl})` + value.substring(index + address.length);
   }
   
@@ -219,6 +220,7 @@ function formatFieldValue(value: string): string {
   for (let i = solMatches.length - 1; i >= 0; i--) {
     const { address, index } = solMatches[i];
     const solscanUrl = `https://solscan.io/account/${address}`;
+    // Format as clickable link
     value = value.substring(0, index) + `[${address}](${solscanUrl})` + value.substring(index + address.length);
   }
   
