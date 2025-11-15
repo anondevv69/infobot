@@ -86,6 +86,35 @@ function formatFieldValue(value: string): string {
   // Handle inline code (`code`)
   value = value.replace(/`([^`]+)`/g, "`$1`");
 
+  // Remove @ symbols from usernames (Telegram auto-links @ mentions)
+  // Process before link preservation to avoid breaking links
+  // Remove @ from common patterns: "Handle: @username", "Farcaster: @username", "@username"
+  // But preserve @ in URLs (they contain :// or are in markdown links)
+  value = value.replace(/@([a-zA-Z0-9_]+)/g, (match, username, offset, fullString) => {
+    // Check if this @ is part of a URL or markdown link
+    const before = fullString.substring(0, offset);
+    const after = fullString.substring(offset + match.length);
+    
+    // Check if it's in a URL (has http:// or https:// before it)
+    if (/https?:\/\/[^\s]*$/.test(before)) {
+      return match; // Keep @ in URLs
+    }
+    
+    // Check if it's inside a markdown link [text](url)
+    // Look backwards for [ and forwards for ](
+    const linkStart = before.lastIndexOf('[');
+    const linkEnd = after.indexOf('](');
+    if (linkStart !== -1 && linkEnd !== -1 && linkStart < offset) {
+      // Check if there's no ] between linkStart and our position
+      const between = before.substring(linkStart);
+      if (!between.includes(']')) {
+        return match; // Keep @ if it's inside markdown link text
+      }
+    }
+    
+    return username; // Remove @ for standalone usernames
+  });
+
   // Clean up separators and extra formatting
   value = value
     .replace(/^---+\s*$/gm, "") // Remove separator lines
@@ -109,6 +138,28 @@ function cleanMarkdownText(text: string): string {
   
   // Remove code block markers that weren't processed
   text = text.replace(/```/g, "");
+  
+  // Remove @ symbols from usernames (Telegram auto-links @ mentions)
+  // But preserve @ in URLs and markdown links
+  text = text.replace(/@([a-zA-Z0-9_]+)/g, (match, username, offset, fullString) => {
+    // Check if it's in a URL
+    const before = fullString.substring(0, offset);
+    if (/https?:\/\/[^\s]*$/.test(before)) {
+      return match; // Keep @ in URLs
+    }
+    
+    // Check if it's inside a markdown link [text](url)
+    const linkStart = before.lastIndexOf('[');
+    const linkEnd = fullString.substring(offset + match.length).indexOf('](');
+    if (linkStart !== -1 && linkEnd !== -1) {
+      const between = before.substring(linkStart);
+      if (!between.includes(']')) {
+        return match; // Keep @ if it's inside markdown link text
+      }
+    }
+    
+    return username; // Remove @ for standalone usernames
+  });
   
   // Clean up extra whitespace
   text = text.replace(/\n{3,}/g, "\n\n");
