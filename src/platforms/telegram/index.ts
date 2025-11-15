@@ -87,6 +87,28 @@ export async function startTelegramBot(): Promise<void> {
     await handleTelegramCommand(bot, msg, "casts");
   });
 
+  // Handle pagination callbacks
+  bot.on("callback_query", async (callbackQuery) => {
+    const data = callbackQuery.data;
+    if (!data) return;
+
+    // Handle pagination: page_<page>|<identifier>
+    const pageMatch = data.match(/^page_(\d+)\|(.+)$/);
+    if (pageMatch) {
+      const page = parseInt(pageMatch[1], 10);
+      const identifier = pageMatch[2];
+      const { handleTelegramPagination } = await import("./utils/pagination");
+      await handleTelegramPagination(bot, callbackQuery, page, identifier);
+      return;
+    }
+
+    // Handle page info (non-functional button)
+    if (data.startsWith("page_info_")) {
+      await bot.answerCallbackQuery(callbackQuery.id);
+      return;
+    }
+  });
+
   bot.on("polling_error", (error) => {
     console.error("Telegram polling error:", error);
   });

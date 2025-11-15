@@ -6,7 +6,7 @@ import { sendClankerTokenPages } from "./clankerHandler";
 import { buildZoraProfileEmbed, appendZoraSummaryFields } from "../../../utils/zoraEmbeds";
 import { buildFarcasterPresentation } from "../../../utils/farcasterPresentation";
 import { buildWalletProfileResponse } from "../../../utils/walletEmbed";
-import { embedsToTelegram } from "../adapters/telegramAdapter";
+import { sendPaginatedTelegramMessage } from "../utils/sendPaginated";
 import { buildZoraCoinResponse } from "../../../handlers/zoraAddress";
 import { safeFetchTokensByFid, safeFetchMostRecentCast } from "../../../utils/farcasterHelpers";
 import { collectZoraIdentifiers } from "../../../utils/zoraPresentation";
@@ -67,10 +67,11 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           if (coin) {
             const zoraSummary = await findBestZoraSummary([address.toLowerCase()]);
             const response = await buildZoraCoinResponse(coin, zoraSummary, { returnAllPages: true }); // Get all pages for Telegram
-            const messages = embedsToTelegram(response.embeds);
-            for (const msg of messages) {
-              await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
-            }
+            const identifier = `zora_coin_${address.toLowerCase()}`;
+            const pageLabels = response.embeds.length > 1
+              ? ["Coin Details", "Creator Coin & Farcaster"]
+              : undefined;
+            await sendPaginatedTelegramMessage(bot, chatId, response.embeds, identifier, pageLabels);
             return;
           }
         }
@@ -82,10 +83,8 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           await appendZoraSummaryFields(embed, zoraSummary);
           // Split into pages if needed (same as Discord)
           const embeds = splitEmbedIntoPages(embed, 15);
-          const messages = embedsToTelegram(embeds);
-          for (const msg of messages) {
-            await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
-          }
+          const identifier = `zora_profile_${address.toLowerCase()}`;
+          await sendPaginatedTelegramMessage(bot, chatId, embeds, identifier);
           return;
         }
 
@@ -109,10 +108,11 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
               returnAllPages: true, // Get all pages for Telegram
             });
             if (walletResponse && walletResponse.embeds.length > 0) {
-              const messages = embedsToTelegram(walletResponse.embeds);
-              for (const msg of messages) {
-                await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
-              }
+              const identifier = `wallet_${address.toLowerCase()}`;
+              const pageLabels = walletResponse.embeds.length > 1
+                ? ["Profile", "Clankers & Zora"]
+                : undefined;
+              await sendPaginatedTelegramMessage(bot, chatId, walletResponse.embeds, identifier, pageLabels);
               return;
             }
           }
@@ -141,10 +141,11 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             latestCast,
             returnAllPages: true, // Get all pages for Telegram
           });
-          const messages = embedsToTelegram(result.embeds);
-          for (const msg of messages) {
-            await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
-          }
+          const identifier = `farcaster_${user.fid}`;
+          const pageLabels = result.embeds.length > 1
+            ? ["Profile", "Clankers & Zora"]
+            : undefined;
+          await sendPaginatedTelegramMessage(bot, chatId, result.embeds, identifier, pageLabels);
           return;
         }
       } catch (error) {
@@ -160,10 +161,11 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         if (coin) {
           const zoraSummary = await findBestZoraSummary([reference.address.toLowerCase()]);
           const response = await buildZoraCoinResponse(coin, zoraSummary, { returnAllPages: true }); // Get all pages for Telegram
-          const messages = embedsToTelegram(response.embeds);
-          for (const msg of messages) {
-            await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
-          }
+          const identifier = `zora_coin_${reference.address.toLowerCase()}`;
+          const pageLabels = response.embeds.length > 1
+            ? ["Coin Details", "Creator Coin & Farcaster"]
+            : undefined;
+          await sendPaginatedTelegramMessage(bot, chatId, response.embeds, identifier, pageLabels);
           return;
         }
       }
@@ -175,10 +177,8 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         await appendZoraSummaryFields(embed, zoraSummary);
         // Split into pages if needed (same as Discord)
         const embeds = splitEmbedIntoPages(embed, 15);
-        const messages = embedsToTelegram(embeds);
-        for (const msg of messages) {
-          await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
-        }
+        const identifier = `zora_profile_${text}`;
+        await sendPaginatedTelegramMessage(bot, chatId, embeds, identifier);
         return;
       }
     }

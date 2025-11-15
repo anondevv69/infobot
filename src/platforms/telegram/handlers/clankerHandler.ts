@@ -11,7 +11,7 @@ import { collectZoraIdentifiers } from "../../../utils/zoraPresentation";
 import { isSummaryAssociatedWithUser } from "../../../utils/zoraAssociation";
 import { appendZoraSummaryFields } from "../../../utils/zoraEmbeds";
 import { applyBranding } from "../../../utils/branding";
-import { embedsToTelegram } from "../adapters/telegramAdapter";
+import { sendPaginatedTelegramMessage } from "../utils/sendPaginated";
 
 /**
  * Build all Clanker token pages (same structure as Discord)
@@ -149,7 +149,7 @@ export async function buildClankerTokenPages(
 }
 
 /**
- * Send all Clanker token pages to Telegram
+ * Send all Clanker token pages to Telegram with pagination
  */
 export async function sendClankerTokenPages(
   bot: TelegramBot,
@@ -162,14 +162,27 @@ export async function sendClankerTokenPages(
       return false;
     }
 
-    // Convert all embeds to Telegram messages and send them
-    const allMessages = embedsToTelegram(embeds);
-    for (const msg of allMessages) {
-      await bot.sendMessage(chatId, msg, { 
-        parse_mode: "Markdown", 
-        disable_web_page_preview: true 
-      });
+    // Determine page labels based on what's actually in each page
+    const pageLabels: string[] = ["Token & Dev"];
+    if (embeds.length > 1) {
+      pageLabels.push("Other Clankers");
     }
+    if (embeds.length > 2) {
+      // Check if page 3 has wallets and/or Zora
+      const page3Title = embeds[2].data.title || "";
+      if (page3Title.includes("Wallets & Zora")) {
+        pageLabels.push("Wallets & Zora");
+      } else if (page3Title.includes("Wallets")) {
+        pageLabels.push("Wallets");
+      } else if (page3Title.includes("Zora")) {
+        pageLabels.push("Zora");
+      } else {
+        pageLabels.push("Page 3");
+      }
+    }
+
+    const identifier = `clanker_${address.toLowerCase()}`;
+    await sendPaginatedTelegramMessage(bot, chatId, embeds, identifier, pageLabels);
     return true;
   } catch (error) {
     console.error("Error sending Clanker token pages:", error);
