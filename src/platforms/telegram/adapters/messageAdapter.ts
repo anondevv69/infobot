@@ -233,7 +233,8 @@ function formatFieldValue(value: string): string {
   value = value.replace(/\*\*([^*]+)\*\*/g, "*$1*");
   
   // Remove __underline__ (Telegram doesn't support underline)
-  value = value.replace(/__([^_]+)__/g, "$1");
+  // But preserve our link placeholders
+  value = value.replace(/__(?!LINK_PLACEHOLDER_)([^_]+)__/g, "$1");
 
   // Convert usernames to clickable links in Telegram
   // Match patterns like: "Handle: @username", "Farcaster: @username", "Username: @username"
@@ -394,7 +395,8 @@ function cleanMarkdownText(text: string): string {
   text = text.replace(/\*\*([^*]+)\*\*/g, "*$1*");
   
   // Remove __underline__
-  text = text.replace(/__([^_]+)__/g, "$1");
+  // But preserve our link placeholders
+  text = text.replace(/__(?!LINK_PLACEHOLDER_)([^_]+)__/g, "$1");
   
   // Convert usernames to clickable links
   const { buildFarcasterProfileUrl } = require("../../../utils/farcasterLinks");
