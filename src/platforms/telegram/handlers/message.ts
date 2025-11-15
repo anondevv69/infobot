@@ -4,6 +4,8 @@ import { findBestZoraSummary, fetchZoraCoin } from "../../../services/zora";
 import { findUserByUsername, findUserByWallet } from "../../../services/neynar";
 import { sendClankerTokenPages } from "./clankerHandler";
 import { buildZoraProfileEmbed, appendZoraSummaryFields } from "../../../utils/zoraEmbeds";
+import { buildZoraWalletProfileResponse } from "../../../utils/walletEmbed";
+import { isSummaryAssociatedWithAddress } from "../../../utils/zoraAssociation";
 import { buildFarcasterPresentation } from "../../../utils/farcasterPresentation";
 import { buildWalletProfileResponse } from "../../../utils/walletEmbed";
 import { sendPaginatedTelegramMessage } from "../utils/sendPaginated";
@@ -78,15 +80,22 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           }
         }
         
-        // Try Zora profile lookup
+        // Try Zora profile lookup (Zora-only wallet, no Farcaster user)
         const zoraSummary = await findBestZoraSummary([address.toLowerCase()]);
         if (zoraSummary) {
-          const embed = buildZoraProfileEmbed(zoraSummary);
-          await appendZoraSummaryFields(embed, zoraSummary);
-          // Split into pages if needed (same as Discord)
-          const embeds = splitEmbedIntoPages(embed, 15);
-          const identifier = `zora_profile_${address.toLowerCase()}`;
-          await sendPaginatedTelegramMessage(bot, chatId, embeds, identifier);
+          // Use buildZoraWalletProfileResponse for wallet lookups (same as Discord)
+          const associated = isSummaryAssociatedWithAddress(zoraSummary, address)
+            ? zoraSummary
+            : null;
+          
+          const zoraResponse = buildZoraWalletProfileResponse({
+            wallet: address,
+            summary: associated ?? zoraSummary,
+            returnAllPages: true, // Get all pages for Telegram
+          });
+          
+          const identifier = `zora_wallet_${address.toLowerCase()}`;
+          await sendPaginatedTelegramMessage(bot, chatId, zoraResponse.embeds, identifier);
           return;
         }
 

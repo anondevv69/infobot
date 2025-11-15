@@ -22,6 +22,7 @@ interface WalletProfileParams {
 interface ZoraWalletProfileParams {
   wallet: string;
   summary: ZoraLookupResult;
+  returnAllPages?: boolean; // If true, return all embeds instead of just first page
 }
 
 export interface WalletProfileResponse {
@@ -222,7 +223,7 @@ export function buildZoraWalletProfileResponse(
   }
 
   return {
-    embeds: [embeds[0]], // Return first page only
+    embeds: params.returnAllPages ? embeds : [embeds[0]], // Return all pages if requested, otherwise first page only
     components,
   };
 }

@@ -4,6 +4,8 @@ import { findBestZoraSummary } from "../../../services/zora";
 import { fetchTokensByQuery, fetchTokensByAddress } from "../../../services/clanker";
 import { findUserByUsername, findUserByWallet } from "../../../services/neynar";
 import { buildZoraProfileEmbed, appendZoraSummaryFields } from "../../../utils/zoraEmbeds";
+import { buildZoraWalletProfileResponse } from "../../../utils/walletEmbed";
+import { isSummaryAssociatedWithAddress } from "../../../utils/zoraAssociation";
 import { sendClankerTokenPages } from "./clankerHandler";
 import { buildFarcasterPresentation } from "../../../utils/farcasterPresentation";
 import { buildWalletProfileResponse } from "../../../utils/walletEmbed";
@@ -113,16 +115,22 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
           return;
         }
 
-        // Try Zora
+        // Try Zora profile lookup (Zora-only wallet, no Farcaster user)
         const zoraSummary = await findBestZoraSummary([address.toLowerCase()]);
         if (zoraSummary) {
-          const embed = buildZoraProfileEmbed(zoraSummary);
-          await appendZoraSummaryFields(embed, zoraSummary);
-          // Split into pages if needed (same as Discord)
-          const { splitEmbedIntoPages } = await import("../../../utils/pagination");
-          const embeds = splitEmbedIntoPages(embed, 15);
-          const identifier = `zora_profile_${address.toLowerCase()}`;
-          await sendPaginatedTelegramMessage(bot, chatId, embeds, identifier);
+          // Use buildZoraWalletProfileResponse for wallet lookups (same as Discord)
+          const associated = isSummaryAssociatedWithAddress(zoraSummary, address)
+            ? zoraSummary
+            : null;
+          
+          const zoraResponse = buildZoraWalletProfileResponse({
+            wallet: address,
+            summary: associated ?? zoraSummary,
+            returnAllPages: true, // Get all pages for Telegram
+          });
+          
+          const identifier = `zora_wallet_${address.toLowerCase()}`;
+          await sendPaginatedTelegramMessage(bot, chatId, zoraResponse.embeds, identifier);
           return;
         }
 
