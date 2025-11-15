@@ -12,6 +12,7 @@ import { safeFetchTokensByFid, safeFetchMostRecentCast } from "../../../utils/fa
 import { collectZoraIdentifiers } from "../../../utils/zoraPresentation";
 import { isSummaryAssociatedWithUser } from "../../../utils/zoraAssociation";
 import { splitEmbedIntoPages } from "../../../utils/pagination";
+import { findUserByXHandle } from "../../../services/neynar";
 
 export async function handleTelegramMessage(
   bot: TelegramBot,
@@ -31,8 +32,9 @@ export async function handleTelegramMessage(
       msg.entities?.some(e => e.type === "mention" && text.substring(e.offset, e.offset + e.length) === `@${botUsername}`)
     );
     
-    // Only process if it mentions the bot OR is clearly an address/username
-    if (!mentionsBot && !isEthAddress(text) && !text.startsWith("@") && !text.includes("zora.co")) {
+    // Only process if it mentions the bot OR is clearly an address/username/X link
+    const hasXLink = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^\s<>()]+/gi.test(text);
+    if (!mentionsBot && !isEthAddress(text) && !text.startsWith("@") && !text.includes("zora.co") && !hasXLink) {
       return; // Ignore messages in groups that don't mention the bot
     }
     
@@ -153,6 +155,52 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       }
     }
 
+    // Check if it's an X/Twitter account link
+    const xLinkRegex = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^\s<>()]+/gi;
+    if (xLinkRegex.test(text)) {
+      const handles = extractXHandles(text);
+      for (const handle of handles) {
+        if (!handle) continue;
+
+        const byXHandle = await findUserByXHandle(handle);
+        let byUsername = null;
+        if (!byXHandle) {
+          try {
+            byUsername = await findUserByUsername(handle);
+          } catch (error) {
+            // User not found, continue
+          }
+        }
+
+        const farcasterUser = byXHandle ?? byUsername;
+        if (farcasterUser && userHasMatchingXAccount(farcasterUser, handle)) {
+          const [tokens, latestCast, zoraSummary] = await Promise.all([
+            safeFetchTokensByFid(farcasterUser.fid),
+            safeFetchMostRecentCast(farcasterUser.fid),
+            findBestZoraSummary(collectZoraIdentifiers(farcasterUser)),
+          ]);
+          const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(farcasterUser, zoraSummary) ? zoraSummary : null;
+
+          const result = await buildFarcasterPresentation(farcasterUser, {
+            tokens,
+            zoraSummary: associatedSummary,
+            latestCast,
+            returnAllPages: true, // Get all pages for Telegram
+          });
+          const identifier = `farcaster_x_${handle}`;
+          const pageLabels = result.embeds.length > 1
+            ? ["Profile", "Clankers & Zora"]
+            : undefined;
+          await sendPaginatedTelegramMessage(bot, chatId, result.embeds, identifier, pageLabels);
+          return;
+        }
+
+        // If no Farcaster profile found
+        await bot.sendMessage(chatId, `No Farcaster profile linked to X handle @${handle}.`);
+        return;
+      }
+    }
+
     // Check if it's a Zora profile URL or handle
     if (text.includes("zora.co") || text.startsWith("zora/")) {
       const reference = extractZoraContractReference(text);
@@ -189,4 +237,71 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
     console.error("Error handling Telegram message:", error);
     // Don't send error to user for auto-detection failures
   }
+}
+
+/**
+ * Extract X/Twitter handles from text
+ */
+function extractXHandles(content: string): string[] {
+  const handles = new Set<string>();
+  const xLinkRegex = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^\s<>()]+/gi;
+  const matches = content.matchAll(xLinkRegex);
+  for (const match of matches) {
+    const url = match[0];
+    const handle = parseHandleFromUrl(url);
+    if (handle) {
+      handles.add(handle.toLowerCase());
+    }
+  }
+  return Array.from(handles);
+}
+
+/**
+ * Parse handle from X/Twitter URL
+ */
+function parseHandleFromUrl(urlString: string): string | null {
+  try {
+    const url = new URL(urlString);
+    const host = url.hostname.replace(/^www\./, "").toLowerCase();
+    if (host !== "x.com" && host !== "twitter.com") {
+      return null;
+    }
+    const segments = url.pathname.split("/").filter(Boolean);
+    let candidate: string | null = null;
+    if (segments.length > 0 && segments[0].toLowerCase() !== "i") {
+      candidate = segments[0];
+    }
+    if (!candidate) {
+      const screenName = url.searchParams.get("screen_name");
+      if (screenName) {
+        candidate = screenName;
+      }
+    }
+    if (!candidate) {
+      return null;
+    }
+    const normalized = candidate.replace(/^@/, "").trim();
+    if (!normalized || !/^[a-zA-Z0-9_]{1,15}$/.test(normalized)) {
+      return null;
+    }
+    return normalized.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if user has matching X account
+ */
+function userHasMatchingXAccount(user: any, handle: string): boolean {
+  if (!user?.verified_accounts) {
+    return false;
+  }
+  const normalized = handle.toLowerCase();
+  return user.verified_accounts.some((account: any) => {
+    if (account.platform !== "x" || !account.username) {
+      return false;
+    }
+    return account.username.replace(/^@/, "").toLowerCase() === normalized;
+  });
 }

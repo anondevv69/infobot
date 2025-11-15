@@ -14,6 +14,7 @@ import { fetchZoraCoin } from "../../../services/zora";
 import { safeFetchTokensByFid, safeFetchMostRecentCast } from "../../../utils/farcasterHelpers";
 import { collectZoraIdentifiers } from "../../../utils/zoraPresentation";
 import { isSummaryAssociatedWithUser } from "../../../utils/zoraAssociation";
+import { findUserByXHandle } from "../../../services/neynar";
 
 export async function handleTelegramCommand(
   bot: TelegramBot,
@@ -206,6 +207,73 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
     console.error("Error in handleSearchQuery:", error);
     await bot.sendMessage(chatId, "An error occurred while searching. Please try again.");
   }
+}
+
+/**
+ * Extract X/Twitter handles from text
+ */
+function extractXHandles(content: string): string[] {
+  const handles = new Set<string>();
+  const xLinkRegex = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^\s<>()]+/gi;
+  const matches = content.matchAll(xLinkRegex);
+  for (const match of matches) {
+    const url = match[0];
+    const handle = parseHandleFromUrl(url);
+    if (handle) {
+      handles.add(handle.toLowerCase());
+    }
+  }
+  return Array.from(handles);
+}
+
+/**
+ * Parse handle from X/Twitter URL
+ */
+function parseHandleFromUrl(urlString: string): string | null {
+  try {
+    const url = new URL(urlString);
+    const host = url.hostname.replace(/^www\./, "").toLowerCase();
+    if (host !== "x.com" && host !== "twitter.com") {
+      return null;
+    }
+    const segments = url.pathname.split("/").filter(Boolean);
+    let candidate: string | null = null;
+    if (segments.length > 0 && segments[0].toLowerCase() !== "i") {
+      candidate = segments[0];
+    }
+    if (!candidate) {
+      const screenName = url.searchParams.get("screen_name");
+      if (screenName) {
+        candidate = screenName;
+      }
+    }
+    if (!candidate) {
+      return null;
+    }
+    const normalized = candidate.replace(/^@/, "").trim();
+    if (!normalized || !/^[a-zA-Z0-9_]{1,15}$/.test(normalized)) {
+      return null;
+    }
+    return normalized.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if user has matching X account
+ */
+function userHasMatchingXAccount(user: any, handle: string): boolean {
+  if (!user?.verified_accounts) {
+    return false;
+  }
+  const normalized = handle.toLowerCase();
+  return user.verified_accounts.some((account: any) => {
+    if (account.platform !== "x" || !account.username) {
+      return false;
+    }
+    return account.username.replace(/^@/, "").toLowerCase() === normalized;
+  });
 }
 
 async function handleZoraQuery(bot: TelegramBot, chatId: number, query: string): Promise<void> {
