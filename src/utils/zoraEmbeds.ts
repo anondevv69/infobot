@@ -311,10 +311,11 @@ export function buildCreatorField(
 ): { name: string; value: string; inline: boolean } | null {
   const lines: string[] = [];
   const creatorAddress = coin.creatorAddress ?? null;
-  const farcasterHandle = farcasterUser?.username ?? coin.creatorProfile?.handle ?? null;
-
-  if (farcasterHandle) {
-    const normalized = farcasterHandle.replace(/^@/, "");
+  
+  // Only show Farcaster if we have an actual verified Farcaster user object
+  // Don't show just a handle string from coin.creatorProfile?.handle as it may not be verified
+  if (farcasterUser?.username) {
+    const normalized = farcasterUser.username.replace(/^@/, "");
     lines.push(`**Farcaster:** [@${normalized}](${buildFarcasterProfileUrl(normalized)})`);
   }
 
