@@ -30,6 +30,18 @@ import { handleGeneralPagination } from "./handlers/pagination";
 async function main(): Promise<void> {
   validateRequiredEnv();
 
+  // Handle unhandled promise rejections to prevent crashes
+  process.on("unhandledRejection", (error) => {
+    console.error("Unhandled promise rejection:", error);
+    // Log but don't crash - Railway will handle if needed
+  });
+
+  // Handle uncaught exceptions
+  process.on("uncaughtException", (error) => {
+    console.error("Uncaught exception:", error);
+    // Log but allow Railway to restart if needed
+  });
+
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -144,8 +156,20 @@ async function handleButtonInteraction(interaction: ButtonInteraction): Promise<
   }
 }
 
-void main().catch((error) => {
-  console.error("Failed to start Discord bot:", error);
-  process.exitCode = 1;
-});
+// Start both Discord and Telegram bots
+async function startBots(): Promise<void> {
+  try {
+    // Start Discord bot
+    await main();
+    
+    // Start Telegram bot (if token is provided)
+    const { startTelegramBot } = await import("./platforms/telegram");
+    await startTelegramBot();
+  } catch (error) {
+    console.error("Failed to start bots:", error);
+    process.exitCode = 1;
+  }
+}
+
+void startBots();
 

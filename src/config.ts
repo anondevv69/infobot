@@ -19,6 +19,7 @@ export const env = {
   neynarApiKey: process.env.NEYNAR_API_KEY,
   zoraApiKey: process.env.ZORA_API_KEY,
   bitqueryApiKey: process.env.BITQUERY_API_KEY,
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
   brandName: process.env.BRAND_NAME ?? "InfoBot",
   brandIconUrl:
     process.env.BRAND_ICON_URL ??
