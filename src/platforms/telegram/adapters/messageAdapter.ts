@@ -72,19 +72,57 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
  * Format field value for Telegram - handle code blocks, links, etc.
  */
 function formatFieldValue(value: string): string {
-  // Handle code blocks (```address```) - convert to monospace
-  value = value.replace(/```([^`]+)```/g, (match, content) => {
-    // If it's a single address, format it cleanly
-    const trimmed = content.trim();
-    if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed) || /^[1-9A-HJ-NP-Za-km-z]{32,48}$/.test(trimmed)) {
-      return `\`${trimmed}\``;
+  // First, preserve markdown links BEFORE processing other formatting
+  // This ensures links are protected during processing
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const links: Array<{ full: string; text: string; url: string; placeholder: string }> = [];
+  let linkMatch;
+  let linkIndex = 0;
+  const seenLinks = new Map<string, number>();
+  
+  // Extract all links first
+  let tempValue = value;
+  while ((linkMatch = linkRegex.exec(value)) !== null) {
+    const fullMatch = linkMatch[0];
+    const linkText = linkMatch[1];
+    const linkUrl = linkMatch[2];
+    const linkKey = `${linkText}|${linkUrl}`;
+    
+    if (!seenLinks.has(linkKey)) {
+      const placeholder = `__LINK_PLACEHOLDER_${linkIndex}__`;
+      seenLinks.set(linkKey, linkIndex);
+      links.push({
+        full: fullMatch,
+        text: linkText,
+        url: linkUrl,
+        placeholder,
+      });
+      tempValue = tempValue.replace(fullMatch, placeholder);
+      linkIndex++;
     }
-    // Multiple addresses or other code blocks
-    return trimmed.split("\n").map((line: string) => `\`${line.trim()}\``).join("\n");
+  }
+  value = tempValue;
+
+  // Handle code blocks (```address```) - convert to plain text for addresses
+  value = value.replace(/```([^`]+)```/g, (match, content) => {
+    const trimmed = content.trim();
+    // For addresses, just show them plain (Telegram doesn't support code blocks well)
+    if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed) || /^[1-9A-HJ-NP-Za-km-z]{32,48}$/i.test(trimmed)) {
+      return trimmed; // Plain address, no formatting
+    }
+    // Multiple addresses
+    return trimmed.split("\n").map((line: string) => line.trim()).join("\n");
   });
 
-  // Handle inline code (`code`)
-  value = value.replace(/`([^`]+)`/g, "`$1`");
+  // Handle inline code (`code`) - remove backticks, keep text
+  value = value.replace(/`([^`]+)`/g, "$1");
+  
+  // Remove Discord markdown that Telegram doesn't support well
+  // Convert **bold** to *bold* (Telegram uses single asterisk)
+  value = value.replace(/\*\*([^*]+)\*\*/g, "*$1*");
+  
+  // Remove __underline__ (Telegram doesn't support underline)
+  value = value.replace(/__([^_]+)__/g, "$1");
 
   // Convert usernames to clickable links in Telegram
   // Match patterns like: "Handle: @username", "Farcaster: @username", "Username: @username"
@@ -113,12 +151,12 @@ function formatFieldValue(value: string): string {
   // Process from end to start to avoid index issues
   let processedValue = value;
   const usernameRegex = /@([a-zA-Z0-9_]+)/g;
-  const matches: Array<{ match: string; username: string; offset: number }> = [];
-  let match;
+  const usernameMatches2: Array<{ match: string; username: string; offset: number }> = [];
+  let usernameMatch2;
   
-  while ((match = usernameRegex.exec(value)) !== null) {
-    const before = value.substring(0, match.index);
-    const after = value.substring(match.index + match[0].length);
+  while ((usernameMatch2 = usernameRegex.exec(value)) !== null) {
+    const before = value.substring(0, usernameMatch2.index);
+    const after = value.substring(usernameMatch2.index + usernameMatch2[0].length);
     
     // Skip if it's in a URL
     if (/https?:\/\/[^\s]*$/.test(before)) {
@@ -140,16 +178,16 @@ function formatFieldValue(value: string): string {
       continue;
     }
     
-    matches.push({
-      match: match[0],
-      username: match[1],
-      offset: match.index,
+    usernameMatches2.push({
+      match: usernameMatch2[0],
+      username: usernameMatch2[1],
+      offset: usernameMatch2.index,
     });
   }
   
   // Replace from end to start to preserve offsets
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const { match: matchStr, username, offset } = matches[i];
+  for (let i = usernameMatches2.length - 1; i >= 0; i--) {
+    const { match: matchStr, username, offset } = usernameMatches2[i];
     const url = buildFarcasterProfileUrl(username);
     processedValue = processedValue.substring(0, offset) + `[${username}](${url})` + processedValue.substring(offset + matchStr.length);
   }
@@ -163,10 +201,12 @@ function formatFieldValue(value: string): string {
     .replace(/\n{3,}/g, "\n\n") // Max 2 newlines
     .replace(/^\s+|\s+$/gm, "") // Trim lines
     .replace(/^None$/gm, "") // Remove standalone "None" values
-    .replace(/\*\*None\*\*/g, ""); // Remove bold "None"
+    .replace(/\*None\*/g, ""); // Remove bold "None"
 
-  // Preserve markdown links
-  value = preserveMarkdownLinks(value);
+  // Restore markdown links (replace placeholders back to actual links)
+  links.forEach((link) => {
+    value = value.replace(link.placeholder, `[${link.text}](${link.url})`);
+  });
 
   return value.trim();
 }
@@ -177,10 +217,48 @@ function formatFieldValue(value: string): string {
 function cleanMarkdownText(text: string): string {
   if (!text) return "";
   
-  // Remove code block markers that weren't processed
+  // Preserve links first
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const links: Array<{ full: string; text: string; url: string; placeholder: string }> = [];
+  let linkMatch2;
+  let linkIndex = 0;
+  const seenLinks = new Map<string, number>();
+  
+  let tempText = text;
+  while ((linkMatch2 = linkRegex.exec(text)) !== null) {
+    const fullMatch = linkMatch2[0];
+    const linkText = linkMatch2[1];
+    const linkUrl = linkMatch2[2];
+    const linkKey = `${linkText}|${linkUrl}`;
+    
+    if (!seenLinks.has(linkKey)) {
+      const placeholder = `__LINK_PLACEHOLDER_${linkIndex}__`;
+      seenLinks.set(linkKey, linkIndex);
+      links.push({
+        full: fullMatch,
+        text: linkText,
+        url: linkUrl,
+        placeholder,
+      });
+      tempText = tempText.replace(fullMatch, placeholder);
+      linkIndex++;
+    }
+  }
+  text = tempText;
+  
+  // Remove code block markers
   text = text.replace(/```/g, "");
   
-  // Convert usernames to clickable links (same logic as formatFieldValue)
+  // Remove backticks
+  text = text.replace(/`/g, "");
+  
+  // Convert **bold** to *bold* (Telegram uses single asterisk)
+  text = text.replace(/\*\*([^*]+)\*\*/g, "*$1*");
+  
+  // Remove __underline__
+  text = text.replace(/__([^_]+)__/g, "$1");
+  
+  // Convert usernames to clickable links
   const { buildFarcasterProfileUrl } = require("../../../utils/farcasterLinks");
   
   // Convert labeled usernames
@@ -192,12 +270,11 @@ function cleanMarkdownText(text: string): string {
   // Convert standalone @username patterns
   let processedText = text;
   const usernameRegex = /@([a-zA-Z0-9_]+)/g;
-  const matches: Array<{ match: string; username: string; offset: number }> = [];
-  let match;
+  const usernameMatches: Array<{ match: string; username: string; offset: number }> = [];
   
-  while ((match = usernameRegex.exec(text)) !== null) {
-    const before = text.substring(0, match.index);
-    const after = text.substring(match.index + match[0].length);
+  while ((linkMatch2 = usernameRegex.exec(text)) !== null) {
+    const before = text.substring(0, linkMatch2.index);
+    const after = text.substring(linkMatch2.index + linkMatch2[0].length);
     
     // Skip if it's in a URL
     if (/https?:\/\/[^\s]*$/.test(before)) {
@@ -219,16 +296,16 @@ function cleanMarkdownText(text: string): string {
       continue;
     }
     
-    matches.push({
-      match: match[0],
-      username: match[1],
-      offset: match.index,
+    usernameMatches.push({
+      match: linkMatch2[0],
+      username: linkMatch2[1],
+      offset: linkMatch2.index,
     });
   }
   
   // Replace from end to start
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const { match: matchStr, username, offset } = matches[i];
+  for (let i = usernameMatches.length - 1; i >= 0; i--) {
+    const { match: matchStr, username, offset } = usernameMatches[i];
     const url = buildFarcasterProfileUrl(username);
     processedText = processedText.substring(0, offset) + `[${username}](${url})` + processedText.substring(offset + matchStr.length);
   }
@@ -239,7 +316,14 @@ function cleanMarkdownText(text: string): string {
   text = text.replace(/\n{3,}/g, "\n\n");
   
   // Escape markdown but preserve links
-  return preserveMarkdownLinks(text);
+  text = escapeMarkdown(text);
+  
+  // Restore links
+  links.forEach((link) => {
+    text = text.replace(link.placeholder, `[${link.text}](${link.url})`);
+  });
+  
+  return text;
 }
 
 /**

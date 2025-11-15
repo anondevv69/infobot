@@ -55,9 +55,12 @@ Built by rayblanco.eth`;
 
       case "search": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a search query. Usage: /search <query>");
+          await bot.sendMessage(chatId, "Please provide a search query.\n\nUsage: `/search <query>`\nExample: `/search 0x1234...` or `/search @username`", { parse_mode: "Markdown" });
           return;
         }
+        
+        // Send typing indicator
+        await bot.sendChatAction(chatId, "typing");
         
         await handleSearchQuery(bot, chatId, query);
         break;
@@ -65,9 +68,12 @@ Built by rayblanco.eth`;
 
       case "zora": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a Zora query. Usage: /zora <query>");
+          await bot.sendMessage(chatId, "Please provide a Zora query.\n\nUsage: `/zora <query>`\nExample: `/zora @username` or `/zora 0x1234...`", { parse_mode: "Markdown" });
           return;
         }
+        
+        // Send typing indicator
+        await bot.sendChatAction(chatId, "typing");
         
         await handleZoraQuery(bot, chatId, query);
         break;
@@ -75,9 +81,12 @@ Built by rayblanco.eth`;
 
       case "clanker": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a Clanker query. Usage: /clanker <query>");
+          await bot.sendMessage(chatId, "Please provide a Clanker query.\n\nUsage: `/clanker <query>`\nExample: `/clanker tokenname` or `/clanker 0x1234...`", { parse_mode: "Markdown" });
           return;
         }
+        
+        // Send typing indicator
+        await bot.sendChatAction(chatId, "typing");
         
         await handleClankerQuery(bot, chatId, query);
         break;
@@ -85,9 +94,12 @@ Built by rayblanco.eth`;
 
       case "casts": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a keyword. Usage: /casts <keyword>");
+          await bot.sendMessage(chatId, "Please provide a keyword to search for casts.\n\nUsage: `/casts <keyword>`\nExample: `/casts base`", { parse_mode: "Markdown" });
           return;
         }
+        
+        // Send typing indicator
+        await bot.sendChatAction(chatId, "typing");
         
         await handleCastsQuery(bot, chatId, query);
         break;
@@ -432,8 +444,37 @@ async function handleClankerQuery(bot: TelegramBot, chatId: number, query: strin
 
 async function handleCastsQuery(bot: TelegramBot, chatId: number, keyword: string): Promise<void> {
   try {
-    // This would need to be implemented - for now just show a message
-    await bot.sendMessage(chatId, `Casts search for "${keyword}" is coming soon!`);
+    const { searchCastsByKeyword } = await import("../../../services/neynar");
+    const { firstMatch, recent } = await searchCastsByKeyword(keyword, 2);
+    
+    const castsToShow = [];
+    if (firstMatch) castsToShow.push(firstMatch);
+    castsToShow.push(...recent.slice(0, 2));
+    
+    if (castsToShow.length > 0) {
+      const { buildCastEmbed } = await import("../../../handlers/castLink");
+      const { buildCastUrl } = await import("../../../utils/farcasterLinks");
+      const embeds = castsToShow.map((cast: any, index: number) => {
+        if (index === 0 && firstMatch && cast.hash === firstMatch.hash) {
+          return buildCastEmbed(cast, buildCastUrl(cast.author.username, cast.hash), {
+            title: `🔹 Earliest cast mentioning "${keyword}"`,
+            color: 0xfbbf24,
+            variant: "full",
+          });
+        }
+        const recentIndex = index - (firstMatch ? 1 : 0);
+        return buildCastEmbed(cast, buildCastUrl(cast.author.username, cast.hash), {
+          title: `Recent cast #${recentIndex + 1} mentioning "${keyword}"`,
+          color: 0x4338ca,
+          footer: `Matched keyword: ${keyword}`,
+          variant: "compact",
+        });
+      });
+      const identifier = `cast_search_${keyword}`;
+      await sendPaginatedTelegramMessage(bot, chatId, embeds, identifier);
+    } else {
+      await bot.sendMessage(chatId, `No casts found matching \`${keyword}\`.`);
+    }
   } catch (error) {
     console.error("Error in handleCastsQuery:", error);
     await bot.sendMessage(chatId, "An error occurred while searching casts. Please try again.");

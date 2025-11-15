@@ -54,6 +54,9 @@ export async function handleTelegramMessage(
 
 async function processMessage(bot: TelegramBot, chatId: number, text: string): Promise<void> {
   try {
+    // Send typing indicator for any search operation
+    await bot.sendChatAction(chatId, "typing");
+    
     // Check if it's an Ethereum address
     if (isEthAddress(text)) {
       const address = extractFirstAddress(text);
