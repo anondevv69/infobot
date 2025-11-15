@@ -8,9 +8,13 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
   const data = embed.data;
   const parts: string[] = [];
 
-  // Title
+  // Title - make it clickable if there's a URL
   if (data.title) {
-    const title = cleanMarkdownText(data.title);
+    let title = cleanMarkdownText(data.title);
+    // If embed has a URL, make the title clickable
+    if (data.url) {
+      title = `[${title}](${data.url})`;
+    }
     parts.push(`*${title}*`);
   }
 
@@ -318,6 +322,27 @@ function formatFieldValue(value: string): string {
     value = value.replace(placeholderRegex, `[${link.text}](${link.url})`);
   });
 
+  // Also check for any remaining LINKPLACEHOLDER patterns (case-insensitive)
+  // This handles cases where placeholders weren't properly restored
+  // Check both __LINK_PLACEHOLDER_X__ and LINKPLACEHOLDERX formats
+  value = value.replace(/__LINK_PLACEHOLDER_(\d+)__/gi, (match, index) => {
+    const linkIndex = parseInt(index, 10);
+    const link = links[linkIndex];
+    if (link) {
+      return `[${link.text}](${link.url})`;
+    }
+    return match; // Return original if link not found
+  });
+  
+  value = value.replace(/LINKPLACEHOLDER(\d+)/gi, (match, index) => {
+    const linkIndex = parseInt(index, 10);
+    const link = links[linkIndex];
+    if (link) {
+      return `[${link.text}](${link.url})`;
+    }
+    return match; // Return original if link not found
+  });
+
   // Don't escape markdown here - links are already in correct format
   // Telegram will handle the markdown links correctly
 
@@ -432,6 +457,27 @@ function cleanMarkdownText(text: string): string {
   links.forEach((link) => {
     const placeholderRegex = new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
     text = text.replace(placeholderRegex, `[${link.text}](${link.url})`);
+  });
+  
+  // Also check for any remaining LINKPLACEHOLDER patterns (case-insensitive)
+  // This handles cases where placeholders weren't properly restored
+  // Check both __LINK_PLACEHOLDER_X__ and LINKPLACEHOLDERX formats
+  text = text.replace(/__LINK_PLACEHOLDER_(\d+)__/gi, (match, index) => {
+    const linkIndex = parseInt(index, 10);
+    const link = links[linkIndex];
+    if (link) {
+      return `[${link.text}](${link.url})`;
+    }
+    return match; // Return original if link not found
+  });
+  
+  text = text.replace(/LINKPLACEHOLDER(\d+)/gi, (match, index) => {
+    const linkIndex = parseInt(index, 10);
+    const link = links[linkIndex];
+    if (link) {
+      return `[${link.text}](${link.url})`;
+    }
+    return match; // Return original if link not found
   });
   
   // Don't escape markdown - links are already in correct format for Telegram
