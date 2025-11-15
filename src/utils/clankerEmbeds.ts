@@ -11,6 +11,7 @@ import { findUserByUsername, findUserByWallet } from "../services/neynar";
 import { formatAddressLink } from "./addressLinks";
 import { appendZoraSummaryFields } from "./zoraEmbeds";
 import { applyBranding } from "./branding";
+import { buildFarcasterProfileUrl, buildCastUrl } from "./farcasterLinks";
 
 const BASE_CHAIN_ID = 8453;
 
@@ -138,7 +139,7 @@ export async function buildUserClankerEmbed(
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle("Farcaster Profile")
-    .setURL(`https://warpcast.com/${user.username}`)
+    .setURL(buildFarcasterProfileUrl(user.username))
     .setTimestamp(new Date());
 
   if (user.profile?.bio?.text) {
@@ -158,7 +159,7 @@ export async function buildUserClankerEmbed(
 }
 
 export function addProfileSection(embed: EmbedBuilder, user: User, label = "Profile"): void {
-  const profileUrl = `https://warpcast.com/${user.username}`;
+  const profileUrl = buildFarcasterProfileUrl(user.username);
   const lines = [`**Username:** [@${user.username}](${profileUrl})`];
   const socials = formatUserSocials(user);
   if (socials) {
@@ -662,7 +663,7 @@ export function formatRecentCastSummary(cast: Cast): string {
       : text.length > 180
       ? `${text.slice(0, 177)}…`
       : text;
-  const url = `https://warpcast.com/${cast.author.username}/${cast.hash}`;
+  const url = buildCastUrl(cast.author.username, cast.hash);
   const timestamp = new Date(cast.timestamp).toLocaleString();
   const likes = cast.reactions?.likes_count ?? 0;
   const recasts = cast.reactions?.recasts_count ?? 0;

@@ -1,4 +1,5 @@
 import { env } from "../config";
+import { buildFarcasterProfileUrl } from "../utils/farcasterLinks";
 
 const ZORA_API_BASE_URL = "https://api-sdk.zora.engineering";
 const DEFAULT_CHAIN_ID = 8453;
@@ -352,7 +353,7 @@ function buildSocialUrl(platform: string, handle: string): string | null {
   const normalized = handle.replace(/^@/, "");
   switch (platform) {
     case "Farcaster":
-      return `https://warpcast.com/${normalized}`;
+      return buildFarcasterProfileUrl(normalized);
     case "X":
       return `https://x.com/${normalized}`;
     case "TikTok":

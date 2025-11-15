@@ -15,6 +15,7 @@ import {
 } from "../services/neynar";
 import { buildPaginationButtons } from "../utils/pagination";
 import { storeEmbedForPagination } from "../handlers/pagination";
+import { buildCastUrl } from "../utils/farcasterLinks";
 
 const MAX_RECENT_RESULTS = 5;
 
@@ -133,7 +134,7 @@ export async function handleCastsCommand(
 function canonicalCastUrl(cast: Cast): string {
   const username = cast.author.username;
   const hash = cast.hash;
-  return `https://warpcast.com/${username}/${hash}`;
+  return buildCastUrl(username, hash);
 }
 
 function highlightOptions(title: string): CastEmbedOptions {

@@ -10,6 +10,7 @@ import {
   fetchEmbeddedUrlMetadata,
   NeynarLookupError,
 } from "../services/neynar";
+import { buildFarcasterProfileUrl, buildCastUrl } from "../utils/farcasterLinks";
 
 const CAST_URL_REGEX =
   /(https?:\/\/(?:www\.)?(?:warpcast\.com|fcast\.me|farcaster\.xyz)\/[^\s]+)/i;
@@ -174,7 +175,7 @@ export function buildCastEmbed(
     .setColor(options?.color ?? (variant === "full" ? 0x6f4aff : 0x4f46e5))
     .setAuthor({
       name: `${author.display_name ?? author.username} (@${author.username})`,
-      url: `https://warpcast.com/${author.username}`,
+      url: buildFarcasterProfileUrl(author.username),
       iconURL: author.pfp_url ?? undefined,
     })
     .setDescription(formatCastText(cast.text))

@@ -4,6 +4,7 @@ import { searchCastsByKeyword, NeynarLookupError } from "../services/neynar";
 import { buildCastEmbed } from "./castLink";
 import { buildPaginationButtons } from "../utils/pagination";
 import { storeEmbedForPagination } from "./pagination";
+import { buildCastUrl } from "../utils/farcasterLinks";
 
 const CAST_KEYWORD_REGEX = /(?:^|\s)(?:cast|search|find)\s+([^\s]+)/i;
 
@@ -55,7 +56,7 @@ export async function handleCastKeywordMessage(message: Message): Promise<boolea
         // Page 1: Earliest cast (highlighted)
         return buildCastEmbed(
           cast,
-          `https://warpcast.com/${cast.author.username}/${cast.hash}`,
+          buildCastUrl(cast.author.username, cast.hash),
           {
             title: `🔹 Earliest cast mentioning "${keyword}"`,
             color: 0xfbbf24,
@@ -65,7 +66,7 @@ export async function handleCastKeywordMessage(message: Message): Promise<boolea
       }
       // Pages 2-3: Recent casts
       const recentIndex = index - (firstMatch ? 1 : 0);
-      return buildCastEmbed(cast, `https://warpcast.com/${cast.author.username}/${cast.hash}`, {
+      return buildCastEmbed(cast, buildCastUrl(cast.author.username, cast.hash), {
         title: `Recent cast #${recentIndex + 1} mentioning "${keyword}"`,
         color: 0x4338ca,
         footer: `Matched keyword: ${keyword}`,

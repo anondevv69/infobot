@@ -6,6 +6,7 @@ import type {
   ZoraLookupResult,
 } from "../services/zora";
 import { applyBranding } from "./branding";
+import { buildFarcasterProfileUrl, buildCastUrl } from "./farcasterLinks";
 import type { Cast, User } from "@neynar/nodejs-sdk/build/api";
 import type { ClankerDisplayEntry } from "./clankerEmbeds";
 import { formatClankerTokenDetails } from "./clankerEmbeds";
@@ -233,7 +234,7 @@ export function buildZoraProfileEmbed(summary: ZoraLookupResult): EmbedBuilder {
       ? {
           platform: "Farcaster",
           label: `fc/${summary.profile.farcasterHandle.replace(/^@/, "")}`,
-          url: `https://warpcast.com/${summary.profile.farcasterHandle.replace(/^@/, "")}`,
+          url: buildFarcasterProfileUrl(summary.profile.farcasterHandle),
         }
       : null);
   if (farcasterLink) {
@@ -314,7 +315,7 @@ export function buildCreatorField(
 
   if (farcasterHandle) {
     const normalized = farcasterHandle.replace(/^@/, "");
-    lines.push(`**Farcaster:** [@${normalized}](https://warpcast.com/${normalized})`);
+    lines.push(`**Farcaster:** [@${normalized}](${buildFarcasterProfileUrl(normalized)})`);
   }
 
   if (creatorAddress) {
@@ -436,7 +437,7 @@ function collectSocialEntries(
   if (socialAccounts?.farcaster?.username) {
     const handle = socialAccounts.farcaster.username.replace(/^@/, "");
     const followerCount = socialAccounts.farcaster.followerCount ?? farcasterUser?.follower_count;
-    addEntry(`fc/${handle}`, `https://warpcast.com/${handle}`, followerCount);
+    addEntry(`fc/${handle}`, buildFarcasterProfileUrl(handle), followerCount);
   }
   if (socialAccounts?.twitter?.username) {
     const handle = socialAccounts.twitter.username.replace(/^@/, "");
@@ -534,7 +535,7 @@ function formatUsd(value?: string | null): string | null {
 
 function buildFarcasterLink(handle: string): string {
   const normalized = handle.replace(/^@/, "");
-  const url = `https://warpcast.com/${normalized}`;
+  const url = buildFarcasterProfileUrl(normalized);
   return `[fc/${normalized}](${url})`;
 }
 
@@ -715,7 +716,7 @@ export function formatSocialRow(profile: ZoraLookupResult["profile"]): string | 
 
   if (profile.farcasterHandle) {
     const handle = profile.farcasterHandle.replace(/^@/, "");
-    parts.push(`[F](https://warpcast.com/${handle})`);
+    parts.push(`[F](${buildFarcasterProfileUrl(handle)})`);
   }
 
   const xLink = socials.find((link) => link.platform === "X" || link.platform === "Twitter");
@@ -748,7 +749,7 @@ function formatCastSummary(cast: Cast): string {
       : text.length > 180
       ? `${text.slice(0, 177)}…`
       : text;
-  const url = `https://warpcast.com/${cast.author.username}/${cast.hash}`;
+  const url = buildCastUrl(cast.author.username, cast.hash);
   const timestamp = new Date(cast.timestamp).toLocaleString();
   const likes = cast.reactions?.likes_count ?? 0;
   const recasts = cast.reactions?.recasts_count ?? 0;

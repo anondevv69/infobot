@@ -17,6 +17,7 @@ import { safeFetchTokensByFid } from "../utils/farcasterHelpers";
 import { splitClankerTokens } from "../utils/clankerAssociation";
 import { sortClankerTokens, formatClankerTokenDetails } from "../utils/clankerEmbeds";
 import { isEthAddress, isSolAddress } from "../utils/address";
+import { buildFarcasterProfileUrl } from "../utils/farcasterLinks";
 
 const WALLET_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 const TOKENS_PER_PAGE = 8; // Reduced to prevent field value length issues
@@ -231,7 +232,7 @@ function buildClankerPage(
     embed.setThumbnail(user.pfp_url ?? null);
     embed.addFields({
       name: "Farcaster Profile",
-      value: `[@${user.username}](https://warpcast.com/${user.username}) • FID ${user.fid}\nFollowers: ${user.follower_count.toLocaleString()}`,
+      value: `[@${user.username}](${buildFarcasterProfileUrl(user.username)}) • FID ${user.fid}\nFollowers: ${user.follower_count.toLocaleString()}`,
       inline: false,
     });
   }
