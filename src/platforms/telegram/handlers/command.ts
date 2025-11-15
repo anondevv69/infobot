@@ -160,6 +160,52 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
       }
     }
 
+    // Try X/Twitter account link
+    const xLinkRegex = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^\s<>()]+/gi;
+    if (xLinkRegex.test(query)) {
+      const handles = extractXHandles(query);
+      for (const handle of handles) {
+        if (!handle) continue;
+
+        const byXHandle = await findUserByXHandle(handle);
+        let byUsername = null;
+        if (!byXHandle) {
+          try {
+            byUsername = await findUserByUsername(handle);
+          } catch (error) {
+            // User not found, continue
+          }
+        }
+
+        const farcasterUser = byXHandle ?? byUsername;
+        if (farcasterUser && userHasMatchingXAccount(farcasterUser, handle)) {
+          const [tokens, latestCast, zoraSummary] = await Promise.all([
+            safeFetchTokensByFid(farcasterUser.fid),
+            safeFetchMostRecentCast(farcasterUser.fid),
+            findBestZoraSummary(collectZoraIdentifiers(farcasterUser)),
+          ]);
+          const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(farcasterUser, zoraSummary) ? zoraSummary : null;
+
+          const result = await buildFarcasterPresentation(farcasterUser, {
+            tokens,
+            zoraSummary: associatedSummary,
+            latestCast,
+            returnAllPages: true, // Get all pages for Telegram
+          });
+          const identifier = `farcaster_x_${handle}`;
+          const pageLabels = result.embeds.length > 1
+            ? ["Profile", "Clankers & Zora"]
+            : undefined;
+          await sendPaginatedTelegramMessage(bot, chatId, result.embeds, identifier, pageLabels);
+          return;
+        }
+
+        // If no Farcaster profile found
+        await bot.sendMessage(chatId, `No Farcaster profile linked to X handle @${handle}.`);
+        return;
+      }
+    }
+
     // Try Farcaster username
     const normalizedUsername = query.replace(/^@/, "").toLowerCase();
     try {
