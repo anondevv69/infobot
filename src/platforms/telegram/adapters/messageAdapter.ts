@@ -204,9 +204,15 @@ function formatFieldValue(value: string): string {
     .replace(/\*None\*/g, ""); // Remove bold "None"
 
   // Restore markdown links (replace placeholders back to actual links)
+  // Links are already in markdown format, so they'll work in Telegram
   links.forEach((link) => {
-    value = value.replace(link.placeholder, `[${link.text}](${link.url})`);
+    // Use a more specific replacement to avoid conflicts
+    const placeholderRegex = new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    value = value.replace(placeholderRegex, `[${link.text}](${link.url})`);
   });
+
+  // Don't escape markdown here - links are already in correct format
+  // Telegram will handle the markdown links correctly
 
   return value.trim();
 }
@@ -315,13 +321,17 @@ function cleanMarkdownText(text: string): string {
   // Clean up extra whitespace
   text = text.replace(/\n{3,}/g, "\n\n");
   
-  // Escape markdown but preserve links
-  text = escapeMarkdown(text);
-  
-  // Restore links
+  // Restore links first (they're already in markdown format)
   links.forEach((link) => {
-    text = text.replace(link.placeholder, `[${link.text}](${link.url})`);
+    const placeholderRegex = new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    text = text.replace(placeholderRegex, `[${link.text}](${link.url})`);
   });
+  
+  // Don't escape markdown - links are already in correct format for Telegram
+  // Only escape if there are no links (to avoid breaking link syntax)
+  if (links.length === 0) {
+    text = escapeMarkdown(text);
+  }
   
   return text;
 }
