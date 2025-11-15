@@ -49,6 +49,7 @@ export async function handleUsernameMessage(message: Message): Promise<void> {
 
   const usernames = extractCandidateUsernames(message.content);
   for (const username of usernames) {
+    // Always try Farcaster first
     let user;
     try {
       user = await findUserByUsername(username);
@@ -57,51 +58,54 @@ export async function handleUsernameMessage(message: Message): Promise<void> {
         console.warn(
           `Neynar lookup failed for username @${username}: ${error.message}`,
         );
-        if (await replyWithZoraSummary(message, username)) {
-          return;
-        }
+        // Only fall back to Zora if Farcaster lookup explicitly fails
+        // Don't fall back on errors - let it continue to next username
         continue;
       }
       throw error;
     }
 
-    if (!user) {
-      if (await replyWithZoraSummary(message, username)) {
-        return;
-      }
-      continue;
+    // If Farcaster user found, show Farcaster profile
+    if (user) {
+      const [tokens, latestCast, zoraSummaryForUser] = await Promise.all([
+        safeFetchTokensByFid(user.fid),
+        safeFetchMostRecentCast(user.fid),
+        findBestZoraSummary(collectZoraIdentifiers(user)),
+      ]);
+
+      const associatedZoraSummary =
+        zoraSummaryForUser && isSummaryAssociatedWithUser(user, zoraSummaryForUser)
+          ? zoraSummaryForUser
+          : null;
+
+      const paginationIdentifier = `farcaster_username_${username}`;
+
+      // Use buildFarcasterPresentation for proper pagination
+      const presentation = await buildFarcasterPresentation(user, {
+        tokens,
+        zoraSummary: associatedZoraSummary,
+        latestCast,
+        titleSuffix: "Farcaster Profile",
+        includeButtons: false,
+        paginationIdentifier, // Use custom identifier
+      });
+
+      await message.reply({
+        embeds: presentation.embeds,
+        components: presentation.components,
+      });
+      return;
     }
-
-    const [tokens, latestCast, zoraSummaryForUser] = await Promise.all([
-      safeFetchTokensByFid(user.fid),
-      safeFetchMostRecentCast(user.fid),
-      findBestZoraSummary(collectZoraIdentifiers(user)),
-    ]);
-
-    const associatedZoraSummary =
-      zoraSummaryForUser && isSummaryAssociatedWithUser(user, zoraSummaryForUser)
-        ? zoraSummaryForUser
-        : null;
-
-    const paginationIdentifier = `farcaster_username_${username}`;
-
-    // Use buildFarcasterPresentation for proper pagination
-    const presentation = await buildFarcasterPresentation(user, {
-      tokens,
-      zoraSummary: associatedZoraSummary,
-      latestCast,
-      titleSuffix: "Farcaster Profile",
-      includeButtons: false,
-      paginationIdentifier, // Use custom identifier
-    });
-
-    await message.reply({
-      embeds: presentation.embeds,
-      components: presentation.components,
-    });
-    return;
   }
 
+  // If no Farcaster user found for any username, try Zora as fallback
+  for (const username of usernames) {
+    if (await replyWithZoraSummary(message, username)) {
+      return;
+    }
+  }
+
+  // Also check for wallet addresses in usernames
   for (const username of usernames) {
     if (!username.startsWith("0x")) {
       continue;
