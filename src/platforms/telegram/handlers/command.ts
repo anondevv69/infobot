@@ -11,6 +11,9 @@ import { embedsToTelegram } from "../adapters/telegramAdapter";
 import { extractFirstAddress, extractZoraContractReference } from "../../../utils/address";
 import { buildZoraCoinResponse } from "../../../handlers/zoraAddress";
 import { fetchZoraCoin } from "../../../services/zora";
+import { safeFetchTokensByFid, safeFetchMostRecentCast } from "../../../utils/farcasterHelpers";
+import { collectZoraIdentifiers } from "../../../utils/zoraPresentation";
+import { isSummaryAssociatedWithUser } from "../../../utils/zoraAssociation";
 
 export async function handleTelegramCommand(
   bot: TelegramBot,
@@ -125,9 +128,20 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
         try {
           const user = await findUserByWallet(address);
           if (user) {
+            const [tokens, latestCast, zoraSummary] = await Promise.all([
+              safeFetchTokensByFid(user.fid),
+              safeFetchMostRecentCast(user.fid),
+              findBestZoraSummary(collectZoraIdentifiers(user)),
+            ]);
+            const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
+            
             const walletResponse = await buildWalletProfileResponse({
               wallet: address,
               user,
+              zoraSummary: associatedSummary,
+              clankerTokens: tokens,
+              latestCast,
+              returnAllPages: true, // Get all pages for Telegram
             });
             if (walletResponse && walletResponse.embeds.length > 0) {
               const messages = embedsToTelegram(walletResponse.embeds);
@@ -148,7 +162,19 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
     try {
       const user = await findUserByUsername(normalizedUsername);
       if (user) {
-        const result = await buildFarcasterPresentation(user);
+        const [tokens, latestCast, zoraSummary] = await Promise.all([
+          safeFetchTokensByFid(user.fid),
+          safeFetchMostRecentCast(user.fid),
+          findBestZoraSummary(collectZoraIdentifiers(user)),
+        ]);
+        const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
+        
+        const result = await buildFarcasterPresentation(user, {
+          tokens,
+          zoraSummary: associatedSummary,
+          latestCast,
+          returnAllPages: true, // Get all pages for Telegram
+        });
         const messages = embedsToTelegram(result.embeds);
         for (const msg of messages) {
           await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
@@ -186,7 +212,7 @@ async function handleZoraQuery(bot: TelegramBot, chatId: number, query: string):
       const coin = await fetchZoraCoin(reference.address, reference.chainId);
       if (coin) {
         const summary = await findBestZoraSummary([reference.address.toLowerCase()]);
-        const response = await buildZoraCoinResponse(coin, summary);
+        const response = await buildZoraCoinResponse(coin, summary, { returnAllPages: true }); // Get all pages for Telegram
         const messages = embedsToTelegram(response.embeds);
         for (const msg of messages) {
           await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
@@ -201,7 +227,10 @@ async function handleZoraQuery(bot: TelegramBot, chatId: number, query: string):
     if (zoraSummary) {
       const embed = buildZoraProfileEmbed(zoraSummary);
       await appendZoraSummaryFields(embed, zoraSummary);
-      const messages = embedsToTelegram([embed]);
+      // Split into pages if needed (same as Discord)
+      const { splitEmbedIntoPages } = await import("../../../utils/pagination");
+      const embeds = splitEmbedIntoPages(embed, 15);
+      const messages = embedsToTelegram(embeds);
       for (const msg of messages) {
         await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
       }

@@ -24,6 +24,7 @@ export interface BuildFarcasterPresentationOptions {
   titleSuffix?: string;
   includeButtons?: boolean;
   paginationIdentifier?: string; // Optional custom identifier for pagination
+  returnAllPages?: boolean; // If true, return all embeds instead of just first page
 }
 
 export interface FarcasterPresentationResult {
@@ -175,7 +176,7 @@ export async function buildFarcasterPresentation(
   }
 
   return {
-    embeds: [embeds[0]], // Return first page only
+    embeds: options?.returnAllPages ? embeds : [embeds[0]], // Return all pages if requested, otherwise first page only
     components,
     tokens: deployed,
     clankerEntries,

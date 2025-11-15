@@ -8,14 +8,14 @@ import { env } from "../config";
 export function buildFarcasterProfileUrl(username: string): string {
   const normalized = username.replace(/^@/, "");
   const baseUrl = `https://warpcast.com/${normalized}`;
-  
+
   // Add referral code as query parameter
   // This allows tracking when users sign up through your bot's links
   const referralCode = env.farcasterReferralCode;
   if (referralCode) {
     return `${baseUrl}?ref=${referralCode}`;
   }
-  
+
   return baseUrl;
 }
 

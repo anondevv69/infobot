@@ -91,6 +91,7 @@ export async function handleZoraAddressMessage(message: Message): Promise<boolea
 export async function buildZoraCoinResponse(
   coin: ZoraCoin,
   summary: ZoraLookupResult | null,
+  options?: { returnAllPages?: boolean }, // If true, return all embeds instead of just first page
 ): Promise<{ content: string; embeds: EmbedBuilder[]; components?: ActionRowBuilder<ButtonBuilder>[] }> {
   const profile = summary?.profile ?? null;
   const normalizedCoinAddress = coin.address?.toLowerCase();
@@ -366,7 +367,7 @@ export async function buildZoraCoinResponse(
 
   return {
     content: `Zora coin detected for \`${coin.address}\`.`,
-    embeds: [embeds[0]], // Return first page only
+    embeds: options?.returnAllPages ? embeds : [embeds[0]], // Return all pages if requested, otherwise first page only
     components,
   };
 }

@@ -8,6 +8,10 @@ import { buildFarcasterPresentation } from "../../../utils/farcasterPresentation
 import { buildWalletProfileResponse } from "../../../utils/walletEmbed";
 import { embedsToTelegram } from "../adapters/telegramAdapter";
 import { buildZoraCoinResponse } from "../../../handlers/zoraAddress";
+import { safeFetchTokensByFid, safeFetchMostRecentCast } from "../../../utils/farcasterHelpers";
+import { collectZoraIdentifiers } from "../../../utils/zoraPresentation";
+import { isSummaryAssociatedWithUser } from "../../../utils/zoraAssociation";
+import { splitEmbedIntoPages } from "../../../utils/pagination";
 
 export async function handleTelegramMessage(
   bot: TelegramBot,
@@ -62,7 +66,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           const coin = await fetchZoraCoin(reference.address, reference.chainId);
           if (coin) {
             const zoraSummary = await findBestZoraSummary([address.toLowerCase()]);
-            const response = await buildZoraCoinResponse(coin, zoraSummary);
+            const response = await buildZoraCoinResponse(coin, zoraSummary, { returnAllPages: true }); // Get all pages for Telegram
             const messages = embedsToTelegram(response.embeds);
             for (const msg of messages) {
               await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
@@ -76,7 +80,9 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         if (zoraSummary) {
           const embed = buildZoraProfileEmbed(zoraSummary);
           await appendZoraSummaryFields(embed, zoraSummary);
-          const messages = embedsToTelegram([embed]);
+          // Split into pages if needed (same as Discord)
+          const embeds = splitEmbedIntoPages(embed, 15);
+          const messages = embedsToTelegram(embeds);
           for (const msg of messages) {
             await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
           }
@@ -87,9 +93,20 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         try {
           const user = await findUserByWallet(address);
           if (user) {
+            const [tokens, latestCast, zoraSummary] = await Promise.all([
+              safeFetchTokensByFid(user.fid),
+              safeFetchMostRecentCast(user.fid),
+              findBestZoraSummary(collectZoraIdentifiers(user)),
+            ]);
+            const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
+            
             const walletResponse = await buildWalletProfileResponse({
               wallet: address,
               user,
+              zoraSummary: associatedSummary,
+              clankerTokens: tokens,
+              latestCast,
+              returnAllPages: true, // Get all pages for Telegram
             });
             if (walletResponse && walletResponse.embeds.length > 0) {
               const messages = embedsToTelegram(walletResponse.embeds);
@@ -111,7 +128,19 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       try {
         const user = await findUserByUsername(username);
         if (user) {
-          const result = await buildFarcasterPresentation(user);
+          const [tokens, latestCast, zoraSummary] = await Promise.all([
+            safeFetchTokensByFid(user.fid),
+            safeFetchMostRecentCast(user.fid),
+            findBestZoraSummary(collectZoraIdentifiers(user)),
+          ]);
+          const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
+          
+          const result = await buildFarcasterPresentation(user, {
+            tokens,
+            zoraSummary: associatedSummary,
+            latestCast,
+            returnAllPages: true, // Get all pages for Telegram
+          });
           const messages = embedsToTelegram(result.embeds);
           for (const msg of messages) {
             await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
@@ -130,7 +159,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         const coin = await fetchZoraCoin(reference.address, reference.chainId);
         if (coin) {
           const zoraSummary = await findBestZoraSummary([reference.address.toLowerCase()]);
-          const response = await buildZoraCoinResponse(coin, zoraSummary);
+          const response = await buildZoraCoinResponse(coin, zoraSummary, { returnAllPages: true }); // Get all pages for Telegram
           const messages = embedsToTelegram(response.embeds);
           for (const msg of messages) {
             await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
@@ -144,7 +173,9 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       if (zoraSummary) {
         const embed = buildZoraProfileEmbed(zoraSummary);
         await appendZoraSummaryFields(embed, zoraSummary);
-        const messages = embedsToTelegram([embed]);
+        // Split into pages if needed (same as Discord)
+        const embeds = splitEmbedIntoPages(embed, 15);
+        const messages = embedsToTelegram(embeds);
         for (const msg of messages) {
           await bot.sendMessage(chatId, msg, { parse_mode: "Markdown", disable_web_page_preview: true });
         }

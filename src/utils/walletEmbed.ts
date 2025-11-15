@@ -16,6 +16,7 @@ interface WalletProfileParams {
   zoraSummary?: ZoraLookupResult | null;
   clankerTokens?: ClankerToken[];
   latestCast?: Cast | null;
+  returnAllPages?: boolean; // If true, return all embeds instead of just first page
 }
 
 interface ZoraWalletProfileParams {
@@ -143,7 +144,7 @@ export async function buildWalletProfileResponse(
   }
 
   return {
-    embeds: [embeds[0]], // Return first page only
+    embeds: params.returnAllPages ? embeds : [embeds[0]], // Return all pages if requested, otherwise first page only
     components,
   };
 }
