@@ -495,10 +495,30 @@ function cleanMarkdownText(text: string): string {
 function escapeMarkdown(text: string): string {
   // Telegram uses * for bold, _ for italic, ` for code, [](url) for links
   // We need to escape these if they're not part of a link
-  return text
+  // But preserve our temporary link placeholders
+  // First, temporarily replace placeholders
+  const placeholderRegex = /__TEMP_LINK_\d+__/g;
+  const placeholders: string[] = [];
+  let placeholderIndex = 0;
+  let processed = text.replace(placeholderRegex, (match) => {
+    const tempPlaceholder = `__PLACEHOLDER_${placeholderIndex}__`;
+    placeholders.push(match);
+    placeholderIndex++;
+    return tempPlaceholder;
+  });
+  
+  // Escape markdown
+  processed = processed
     .replace(/\*/g, "\\*")
     .replace(/_/g, "\\_")
     .replace(/`/g, "\\`");
+  
+  // Restore placeholders (they don't need escaping)
+  placeholders.forEach((placeholder, index) => {
+    processed = processed.replace(`__PLACEHOLDER_${index}__`, placeholder);
+  });
+  
+  return processed;
 }
 
 /**
