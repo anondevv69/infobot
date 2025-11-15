@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, MessageFlags } from "discord.js";
+import { ChatInputCommandInteraction } from "discord.js";
 
 const HELP_MESSAGE = [
   "**Slash Commands**",
@@ -32,7 +32,6 @@ export async function handleHelpCommand(
 ): Promise<void> {
   await interaction.reply({
     content: HELP_MESSAGE,
-    flags: MessageFlags.Ephemeral,
   });
 }
 

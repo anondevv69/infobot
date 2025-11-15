@@ -1,9 +1,65 @@
-import { ButtonInteraction, MessageFlags } from "discord.js";
-import { splitEmbedIntoPages, buildPaginationButtons } from "../utils/pagination";
+import { ButtonInteraction } from "discord.js";
+import { splitEmbedIntoPages, buildPaginationButtons, type PageInfo } from "../utils/pagination";
 import { EmbedBuilder } from "discord.js";
 
 // Store for pagination data - maps identifier to embed fields
-const paginationStore = new Map<string, EmbedBuilder>();
+export const paginationStore = new Map<string, EmbedBuilder>();
+
+// Helper to extract search query from identifier for friendly error messages
+function extractSearchQuery(identifier: string): string | null {
+  if (identifier.startsWith("cast_search_")) {
+    return identifier.replace("cast_search_", "");
+  }
+  if (identifier.startsWith("farcaster_username_")) {
+    return `@${identifier.replace("farcaster_username_", "")}`;
+  }
+  if (identifier.startsWith("farcaster_wallet_")) {
+    return identifier.replace("farcaster_wallet_", "");
+  }
+  if (identifier.startsWith("farcaster_")) {
+    // FID-based identifier, can't extract username easily
+    return null;
+  }
+  if (identifier.startsWith("zora_coin_")) {
+    return identifier.replace("zora_coin_", "");
+  }
+  if (identifier.startsWith("clanker_token_")) {
+    return identifier.replace("clanker_token_", "");
+  }
+  if (identifier.startsWith("wallet_profile_")) {
+    return identifier.replace("wallet_profile_", "");
+  }
+  if (identifier.startsWith("zora_wallet_")) {
+    return identifier.replace("zora_wallet_", "");
+  }
+  if (identifier.startsWith("zora_profile_")) {
+    return identifier.replace("zora_profile_", "");
+  }
+  return null;
+}
+
+// Helper to format friendly expiration message
+function formatExpirationMessage(identifier: string): string {
+  const query = extractSearchQuery(identifier);
+  
+  if (query) {
+    if (identifier.startsWith("cast_search_")) {
+      return `⏰ This search expired after a few minutes. Run \`/casts ${query}\` to search again!`;
+    }
+    if (identifier.startsWith("farcaster_username_")) {
+      return `⏰ This search expired after a few minutes. Search for \`${query}\` again to see the results!`;
+    }
+    if (identifier.startsWith("zora_coin_") || identifier.startsWith("clanker_token_")) {
+      return `⏰ This search expired after a few minutes. Paste \`${query}\` again to see the results!`;
+    }
+    if (identifier.startsWith("wallet_profile_") || identifier.startsWith("zora_wallet_") || identifier.startsWith("farcaster_wallet_")) {
+      return `⏰ This search expired after a few minutes. Search for \`${query}\` again to see the results!`;
+    }
+    return `⏰ This search expired after a few minutes. Search for \`${query}\` again to see the results!`;
+  }
+  
+  return "⏰ This search expired after a few minutes. Run your search again to see the results!";
+}
 
 export async function handleGeneralPagination(
   interaction: ButtonInteraction,
@@ -12,12 +68,12 @@ export async function handleGeneralPagination(
 ): Promise<void> {
   await interaction.deferUpdate();
 
-  // Handle multi-page structures (Zora coin, Farcaster, Clanker token, Cast search)
-  if (identifier.startsWith("zora_coin_") || identifier.startsWith("farcaster_") || identifier.startsWith("clanker_token_") || identifier.startsWith("cast_search_")) {
+  // Handle multi-page structures (Zora coin, Farcaster, Clanker token, Cast search, Wallet profile)
+  if (identifier.startsWith("zora_coin_") || identifier.startsWith("farcaster_") || identifier.startsWith("clanker_token_") || identifier.startsWith("cast_search_") || identifier.startsWith("wallet_profile_") || identifier.startsWith("zora_wallet_")) {
     const page1Embed = paginationStore.get(identifier);
     if (!page1Embed) {
       await interaction.editReply({
-        content: "Pagination data expired. Please run the command again.",
+        content: formatExpirationMessage(identifier),
         embeds: [],
         components: [],
       });
@@ -63,9 +119,12 @@ export async function handleGeneralPagination(
       return;
     }
 
+    // Reconstruct page labels based on identifier pattern
+    const pageLabels = getPageLabelsForIdentifier(identifier, totalPages, page2Embed, page3Embed);
+    
     const components: typeof buildPaginationButtons extends (...args: any[]) => infer R ? R : never = [];
     if (totalPages > 1) {
-      components.push(...buildPaginationButtons(page, totalPages, identifier));
+      components.push(...buildPaginationButtons(page, totalPages, identifier, pageLabels));
     }
 
     await interaction.editReply({
@@ -80,7 +139,7 @@ export async function handleGeneralPagination(
   
   if (!storedEmbed) {
     await interaction.editReply({
-      content: "Pagination data expired. Please run the command again.",
+      content: formatExpirationMessage(identifier),
       embeds: [],
       components: [],
     });
@@ -117,5 +176,87 @@ export function storeEmbedForPagination(identifier: string, embed: EmbedBuilder)
   setTimeout(() => {
     paginationStore.delete(identifier);
   }, 5 * 60 * 1000);
+}
+
+// Reconstruct page labels based on identifier and embed titles
+function getPageLabelsForIdentifier(
+  identifier: string,
+  totalPages: number,
+  page2Embed?: EmbedBuilder | null,
+  page3Embed?: EmbedBuilder | null,
+): PageInfo[] {
+  const labels: PageInfo[] = [];
+  
+  if (identifier.startsWith("farcaster_")) {
+    labels.push({ label: "Profile" });
+    if (totalPages > 1) {
+      const page2Title = page2Embed?.data.title ?? "";
+      if (page2Title.includes("Clankers & Zora")) {
+        labels.push({ label: "Clankers & Zora" });
+      } else if (page2Title.includes("Clankers")) {
+        labels.push({ label: "Clankers" });
+      } else if (page2Title.includes("Zora")) {
+        labels.push({ label: "Zora" });
+      } else {
+        labels.push({ label: "More Info" });
+      }
+    }
+  } else if (identifier.startsWith("zora_coin_")) {
+    labels.push({ label: "Coin Details" });
+    if (totalPages > 1) {
+      const page2Title = page2Embed?.data.title ?? "";
+      if (page2Title.includes("Creator Coin & Farcaster")) {
+        labels.push({ label: "Creator Coin & Farcaster" });
+      } else if (page2Title.includes("Creator Coin")) {
+        labels.push({ label: "Creator Coin" });
+      } else if (page2Title.includes("Farcaster")) {
+        labels.push({ label: "Farcaster Profile" });
+      } else {
+        labels.push({ label: "More Info" });
+      }
+    }
+  } else if (identifier.startsWith("clanker_token_")) {
+    labels.push({ label: "Token Details" });
+    if (totalPages > 1) {
+      labels.push({ label: "Dev Profile" });
+    }
+    if (totalPages > 2) {
+      labels.push({ label: "Zora" });
+    }
+  } else if (identifier.startsWith("cast_search_")) {
+    labels.push({ label: "Earliest Cast" });
+    if (totalPages > 1) {
+      labels.push({ label: "Recent Cast #1" });
+    }
+    if (totalPages > 2) {
+      labels.push({ label: "Recent Cast #2" });
+    }
+  } else if (identifier.startsWith("wallet_profile_")) {
+    labels.push({ label: "Profile" });
+    if (totalPages > 1) {
+      const page2Title = page2Embed?.data.title ?? "";
+      if (page2Title.includes("Clankers & Zora")) {
+        labels.push({ label: "Clankers & Zora" });
+      } else if (page2Title.includes("Clankers")) {
+        labels.push({ label: "Clankers" });
+      } else if (page2Title.includes("Zora")) {
+        labels.push({ label: "Zora" });
+      } else {
+        labels.push({ label: "More Info" });
+      }
+    }
+  } else if (identifier.startsWith("zora_wallet_") || identifier.startsWith("zora_profile_")) {
+    labels.push({ label: "Profile" });
+    for (let i = 1; i < totalPages; i++) {
+      labels.push({ label: `Page ${i + 1}` });
+    }
+  } else {
+    // Generic fallback
+    for (let i = 0; i < totalPages; i++) {
+      labels.push({ label: `Page ${i + 1}` });
+    }
+  }
+  
+  return labels;
 }
 

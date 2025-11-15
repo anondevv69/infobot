@@ -12,10 +12,15 @@ export interface PaginatedEmbedOptions {
   identifier: string;
 }
 
+export interface PageInfo {
+  label: string; // e.g., "Clankers & Zora", "Dev Profile", "Zora Creator"
+}
+
 export function buildPaginationButtons(
   page: number,
   totalPages: number,
   identifier: string,
+  pageLabels?: PageInfo[], // Optional labels for each page
 ): ActionRowBuilder<ButtonBuilder>[] {
   if (totalPages <= 1) {
     return [];
@@ -24,15 +29,28 @@ export function buildPaginationButtons(
   const row = new ActionRowBuilder<ButtonBuilder>();
   const encodedId = Buffer.from(identifier).toString("base64url");
 
+  // Determine button labels based on page content
+  let prevLabel = "◀ Previous";
+  let nextLabel = "Next ▶";
+
+  if (pageLabels && pageLabels.length > 0) {
+    if (page > 0 && pageLabels[page - 1]) {
+      prevLabel = `◀ ${pageLabels[page - 1].label}`;
+    }
+    if (page < totalPages - 1 && pageLabels[page + 1]) {
+      nextLabel = `${pageLabels[page + 1].label} ▶`;
+    }
+  }
+
   row.addComponents(
     new ButtonBuilder()
       .setCustomId(`page_${page - 1}|${encodedId}`)
-      .setLabel("◀ Previous")
+      .setLabel(prevLabel)
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(page === 0),
     new ButtonBuilder()
       .setCustomId(`page_${page + 1}|${encodedId}`)
-      .setLabel("Next ▶")
+      .setLabel(nextLabel)
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(page >= totalPages - 1),
   );

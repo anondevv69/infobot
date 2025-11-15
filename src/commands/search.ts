@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, MessageFlags } from "discord.js";
+import { ChatInputCommandInteraction, ActionRowBuilder, ButtonBuilder } from "discord.js";
 import type { User } from "@neynar/nodejs-sdk/build/api";
 import {
   findUserByUsername,
@@ -41,12 +41,11 @@ export async function handleSearchCommand(
   if (!query) {
     await interaction.reply({
       content: "Please provide a wallet address, username, or token to search.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply();
 
   try {
     if (isEthAddress(query) || isSolAddress(query)) {
@@ -65,12 +64,32 @@ export async function handleSearchCommand(
     
     if (zoraSummary) {
       const profileEmbed = buildZoraProfileEmbed(zoraSummary);
-      const coinEmbeds = await buildZoraPresentation(zoraSummary, {
-        includeLatest: true,
-        includeCreatorCoin: true,
-      });
+      await appendZoraSummaryFields(profileEmbed, zoraSummary);
+      
+      // Split into pages if needed
+      const embeds = splitEmbedIntoPages(profileEmbed, 15);
+      const totalPages = embeds.length;
+      const identifier = `zora_profile_${normalizedQuery}`;
+
+      // Store for pagination
+      if (totalPages > 1) {
+        embeds.forEach((embed, index) => {
+          if (index === 0) {
+            storeEmbedForPagination(identifier, embed);
+          } else {
+            storeEmbedForPagination(`${identifier}_page${index + 1}`, embed);
+          }
+        });
+      }
+
+      const components: ActionRowBuilder<ButtonBuilder>[] = [];
+      if (totalPages > 1) {
+        components.push(...buildPaginationButtons(0, totalPages, identifier));
+      }
+
       await interaction.editReply({
-        embeds: [profileEmbed, ...coinEmbeds],
+        embeds: [embeds[0]],
+        components,
       });
       return;
     }
@@ -132,7 +151,7 @@ async function handleWalletSearch(
         ? zoraSummaryForUser
         : zoraSummaryFromAddress;
 
-    const walletResponse = buildWalletProfileResponse({
+    const walletResponse = await buildWalletProfileResponse({
       wallet: address,
       user,
       zoraSummary: associatedSummary,
@@ -164,7 +183,7 @@ async function handleWalletSearch(
           ? zoraSummaryForCreator
           : zoraSummaryFromAddress;
 
-      const walletResponse = buildWalletProfileResponse({
+      const walletResponse = await buildWalletProfileResponse({
         wallet: address,
         user: associatedUser,
         zoraSummary: associatedSummary,
@@ -183,7 +202,8 @@ async function handleWalletSearch(
     const earliestCast = firstToken.contract_address
       ? await safeFetchEarliestCastByQuery(firstToken.contract_address)
       : null;
-    const tokenEmbed = buildTokenEmbed(firstToken, {
+    
+    const tokenEmbed = await buildTokenEmbed(firstToken, {
       farcasterUser: associatedUser ?? undefined,
       zoraSummary: zoraSummaryFromAddress ?? undefined,
       earliestCast,
@@ -295,7 +315,7 @@ async function replyWithUsernameLookup(
     safeFetchMostRecentCast(user.fid),
     findBestZoraSummary(identifiers),
   ]);
-  const { embed, clankerEntries } = buildUserClankerEmbed(
+  const { embed, clankerEntries } = await buildUserClankerEmbed(
     user,
     "Username Lookup",
     tokens,
@@ -304,13 +324,36 @@ async function replyWithUsernameLookup(
     clankerEntries.map((entry) => entry.token),
     { includeButtons: false },
   );
-  const zoraEmbeds = await buildZoraPresentation(zoraSummary);
+  await appendZoraSummaryFields(embed, zoraSummary, { latestCast });
 
-  appendZoraSummaryFields(embed, zoraSummary, { latestCast });
+  // Split into pages if needed
+  const embeds = splitEmbedIntoPages(embed, 15);
+  const totalPages = embeds.length;
+  const identifier = `farcaster_username_${username}`;
+
+  // Store for pagination
+  if (totalPages > 1) {
+    embeds.forEach((embed, index) => {
+      if (index === 0) {
+        storeEmbedForPagination(identifier, embed);
+      } else {
+        storeEmbedForPagination(`${identifier}_page${index + 1}`, embed);
+      }
+    });
+  }
+
+  const components: ActionRowBuilder<ButtonBuilder>[] = [];
+  if (totalPages > 1) {
+    components.push(...buildPaginationButtons(0, totalPages, identifier));
+  }
+  // Add detail rows if any
+  if (detailRows.length > 0) {
+    components.push(...detailRows);
+  }
 
   await interaction.editReply({
-    embeds: [embed, ...zoraEmbeds],
-    components: detailRows,
+    embeds: [embeds[0]],
+    components,
   });
 
   return true;
@@ -345,7 +388,7 @@ async function replyWithClankerTokenLookup(
       safeFetchTokensByFid(associatedUser.fid),
       safeFetchMostRecentCast(associatedUser.fid),
     ]);
-    const { embed: userEmbed, clankerEntries } = buildUserClankerEmbed(
+    const { embed: userEmbed, clankerEntries } = await buildUserClankerEmbed(
       associatedUser,
       "Clanker Creator",
       creatorTokens,
@@ -356,7 +399,7 @@ async function replyWithClankerTokenLookup(
     );
     const zoraSummary = await findBestZoraSummary(collectZoraIdentifiers(associatedUser));
 
-    appendZoraSummaryFields(userEmbed, zoraSummary, { latestCast });
+    await appendZoraSummaryFields(userEmbed, zoraSummary, { latestCast });
 
     await interaction.editReply({
       content: `No Farcaster profile found for \`${query}\`, but the keyword matches this Clanker creator:`,
@@ -370,7 +413,9 @@ async function replyWithClankerTokenLookup(
     ? await safeFetchEarliestCastByQuery(primaryToken.contract_address)
     : null;
 
-  const tokenEmbed = buildTokenEmbed(primaryToken, { earliestCast });
+  const tokenEmbed = await buildTokenEmbed(primaryToken, { 
+    earliestCast,
+  });
   const embeds = splitEmbedIntoPages(tokenEmbed, 15);
   const totalPages = embeds.length;
   const identifier = `clanker_token_${primaryToken.contract_address ?? query}`;

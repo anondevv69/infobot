@@ -1,0 +1,37 @@
+import express from "express";
+import cors from "cors";
+import { env } from "./config";
+import { ensureSchema } from "./db";
+import { logger } from "./utils/logger";
+import { subscriptionRouter } from "./routes/subscriptions";
+import { webhookRouter } from "./routes/webhooks";
+
+async function bootstrap(): Promise<void> {
+  await ensureSchema();
+
+  const app = express();
+  app.use(cors());
+  app.use(express.json({ limit: "1mb" }));
+
+  app.get("/healthz", (_req, res) => {
+    res.json({ status: "ok", uptime: process.uptime() });
+  });
+
+  app.use("/api/subscriptions", subscriptionRouter);
+  app.use("/webhooks", webhookRouter);
+
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    logger.error("Unhandled error", err);
+    res.status(500).json({ error: "Internal server error" });
+  });
+
+  app.listen(env.PORT, () => {
+    logger.info(`Backend listening on port ${env.PORT}`);
+  });
+}
+
+bootstrap().catch((error) => {
+  logger.error("Failed to start backend", error);
+  process.exit(1);
+});
+

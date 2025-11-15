@@ -27,6 +27,9 @@ export const env = {
     process.env.APP_VERSION ??
     process.env.npm_package_version ??
     "dev",
+  autoDeleteDelay: process.env.AUTO_DELETE_DELAY
+    ? parseInt(process.env.AUTO_DELETE_DELAY, 10)
+    : undefined, // Delay in seconds, undefined = disabled
 } as const;
 
 export function requireEnv(value: string | undefined, key: RequiredEnvKey): string {

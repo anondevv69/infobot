@@ -5,7 +5,6 @@ import {
   Events,
   GatewayIntentBits,
   Interaction,
-  MessageFlags,
 } from "discord.js";
 import { env, requireEnv, validateRequiredEnv } from "./config";
 import { handleHelpCommand } from "./commands/help";
@@ -103,7 +102,6 @@ async function handleChatCommand(
     default:
       await interaction.reply({
         content: "Command not recognized. Use `/help` for the list of available commands.",
-        flags: MessageFlags.Ephemeral,
       });
   }
 }

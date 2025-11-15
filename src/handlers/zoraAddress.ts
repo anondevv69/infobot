@@ -1,4 +1,4 @@
-import { EmbedBuilder, Message, ActionRowBuilder, ButtonBuilder } from "discord.js";
+import { EmbedBuilder, Message, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import type { User } from "@neynar/nodejs-sdk/build/api";
 import {
   fetchZoraCoin,
@@ -17,7 +17,10 @@ import { splitEmbedIntoPages, buildPaginationButtons } from "../utils/pagination
 import { storeEmbedForPagination } from "./pagination";
 import { safeFetchMostRecentCast } from "../utils/farcasterHelpers";
 import { applyBranding } from "../utils/branding";
-import { buildCreatorCoinField, getZoraCoinUrl, formatAddress } from "../utils/zoraEmbeds";
+import { buildCreatorCoinField, getZoraCoinUrl, formatAddress, formatCompactNumber } from "../utils/zoraEmbeds";
+import { fetchBaseTokenData } from "../services/dexscreener";
+
+const BASE_CHAIN_ID = 8453;
 
 export async function handleZoraAddressMessage(message: Message): Promise<boolean> {
   if (message.author.bot || !message.content) {
@@ -90,33 +93,45 @@ export async function buildZoraCoinResponse(
   summary: ZoraLookupResult | null,
 ): Promise<{ content: string; embeds: EmbedBuilder[]; components?: ActionRowBuilder<ButtonBuilder>[] }> {
   const profile = summary?.profile ?? null;
-
-  let farcasterUser: User | null = null;
-  const farcasterHandle = profile?.farcasterHandle;
-  if (farcasterHandle) {
-    try {
-      farcasterUser = await findUserByUsername(farcasterHandle.replace(/^@/, ""));
-    } catch (error) {
-      console.warn("Failed to fetch Farcaster profile for Zora coin:", error);
-    }
-  }
-
-  let creatorCoinData: ZoraCoin | null = null;
-  const creatorAddress = profile?.creatorCoinAddress;
   const normalizedCoinAddress = coin.address?.toLowerCase();
   const isCreatorCoin = profile?.creatorCoinAddress?.toLowerCase() === normalizedCoinAddress;
+  const creatorAddress = profile?.creatorCoinAddress;
 
-  if (creatorAddress) {
-    const normalizedCreator = creatorAddress.toLowerCase();
-    creatorCoinData =
-      summary?.createdCoins?.find(
-        (created) => created.address?.toLowerCase() === normalizedCreator,
-      ) ?? (await fetchZoraCoin(creatorAddress));
-  }
+  // Parallelize API calls for better performance
+  const [dexScreenerMetrics, farcasterUser, creatorCoinData] = await Promise.all([
+    // Fetch market cap from DexScreener for Base tokens if Zora doesn't have it
+    (coin.chainId === 8453 || coin.chainId === BASE_CHAIN_ID) && (!coin.marketCap || parseFloat(coin.marketCap || "0") === 0)
+      ? fetchBaseTokenData(coin.address).catch(() => null)
+      : Promise.resolve(null),
+    
+    // Fetch Farcaster user - check profile first (for creator coins), then coin creator
+    (async () => {
+      // For creator coins, prioritize the profile's Farcaster handle
+      const farcasterHandle = profile?.farcasterHandle ?? coin.creatorProfile?.socialAccounts?.farcaster?.username;
+      if (farcasterHandle) {
+        try {
+          return await findUserByUsername(farcasterHandle.replace(/^@/, ""));
+        } catch (error) {
+          console.warn("Failed to fetch Farcaster profile for Zora coin:", error);
+          return null;
+        }
+      }
+      return null;
+    })(),
+    
+    // Fetch creator coin data if available
+    (async () => {
+      if (creatorAddress) {
+        const normalizedCreator = creatorAddress.toLowerCase();
+        return summary?.createdCoins?.find(
+          (created) => created.address?.toLowerCase() === normalizedCreator,
+        ) ?? (await fetchZoraCoin(creatorAddress).catch(() => null));
+      }
+      return null;
+    })(),
+  ]);
 
-  if (!creatorCoinData && isCreatorCoin) {
-    creatorCoinData = coin;
-  }
+  const finalCreatorCoinData = (!creatorCoinData && isCreatorCoin) ? coin : creatorCoinData;
 
   let latestCoin: ZoraCoin | null = null;
   if (isCreatorCoin && summary?.latestCoin?.coin) {
@@ -126,6 +141,7 @@ export async function buildZoraCoinResponse(
     }
   }
 
+  // Fetch clanker entries in parallel with other operations
   let clankerEntries: ClankerDisplayEntry[] = [];
   if (farcasterUser) {
     try {
@@ -172,7 +188,7 @@ export async function buildZoraCoinResponse(
     }
   }
 
-  // Build coin embed (Page 1) - Coin details + Creator info
+  // Build coin embed (Page 1) - Coin details + Basic creator info (deploy address only)
   const coinEmbed = buildZoraCoinEmbed(
     {
       coin,
@@ -186,22 +202,51 @@ export async function buildZoraCoinResponse(
       latestCoin: undefined, // Don't show latest coin on page 1
       farcasterUser: farcasterUser ?? undefined, // Include creator info
       clankerEntries: [], // Don't include Clankers on coin page
-      excludeCreatorField: false, // Show creator field on page 1
+      excludeCreatorField: false, // Show creator field on page 1 (but without wallets)
+      includeCreatorWallets: false, // Don't include wallets on page 1
     },
   );
 
   const embeds: EmbedBuilder[] = [coinEmbed];
   let totalPages = 1;
 
-  // Build Page 2: Creator coin + Farcaster info (if available)
-  if (creatorCoinData || farcasterUser) {
+    // Build Page 2: Creator coin + Farcaster info (if available)
+  // Always show Farcaster page if creator has Farcaster, even for creator coins
+  if (finalCreatorCoinData || farcasterUser) {
+    // Determine page 2 title based on content
+    let page2Title = `${finalIsCreatorCoin ? "Creator Coin" : "Zora Coin"}`;
+    if (finalCreatorCoinData && farcasterUser) {
+      page2Title += " • Creator Coin & Farcaster";
+    } else if (finalCreatorCoinData) {
+      page2Title += " • Creator Coin";
+    } else if (farcasterUser) {
+      page2Title += " • Farcaster Profile";
+    }
+    
     const page2Embed = new EmbedBuilder()
       .setColor(finalIsCreatorCoin ? 0x1d4ed8 : 0x2563eb)
-      .setTitle(`${finalIsCreatorCoin ? "Creator Coin" : "Zora Coin"} • Page 2`);
+      .setTitle(page2Title);
 
-    // Add creator coin if available
-    if (creatorCoinData && creatorCoinData.address !== coin.address) {
-      const creatorCoinField = buildCreatorCoinField(profile, true, creatorCoinData);
+    // Add creator coin if available (only if it's different from the main coin)
+    if (finalCreatorCoinData && finalCreatorCoinData.address !== coin.address) {
+      // Fetch market cap for creator coin
+      let creatorCoinMarketCap: number | null = null;
+      if (finalCreatorCoinData.marketCap) {
+        const parsed = parseFloat(finalCreatorCoinData.marketCap);
+        if (!isNaN(parsed) && parsed > 0) {
+          creatorCoinMarketCap = parsed;
+        }
+      }
+      // Fallback to DexScreener for Base chain
+      if (!creatorCoinMarketCap && finalCreatorCoinData.address && (finalCreatorCoinData.chainId === 8453 || finalCreatorCoinData.chainId === BASE_CHAIN_ID)) {
+        try {
+          const metrics = await fetchBaseTokenData(finalCreatorCoinData.address);
+          creatorCoinMarketCap = metrics?.marketCap ?? null;
+        } catch (error) {
+          // Silently fail
+        }
+      }
+      const creatorCoinField = buildCreatorCoinField(profile, true, finalCreatorCoinData, creatorCoinMarketCap);
       if (creatorCoinField) {
         page2Embed.addFields(creatorCoinField);
       }
@@ -209,14 +254,39 @@ export async function buildZoraCoinResponse(
 
     // Add latest coin if available
     if (latestCoin) {
+      // Fetch market cap for latest coin
+      let latestCoinMarketCap: number | null = null;
+      if (latestCoin.marketCap) {
+        const parsed = parseFloat(latestCoin.marketCap);
+        if (!isNaN(parsed) && parsed > 0) {
+          latestCoinMarketCap = parsed;
+        }
+      }
+      // Fallback to DexScreener for Base chain
+      if (!latestCoinMarketCap && latestCoin.address && (latestCoin.chainId === 8453 || latestCoin.chainId === BASE_CHAIN_ID)) {
+        try {
+          const metrics = await fetchBaseTokenData(latestCoin.address);
+          latestCoinMarketCap = metrics?.marketCap ?? null;
+        } catch (error) {
+          // Silently fail
+        }
+      }
+      
       const coinUrl = getZoraCoinUrl(latestCoin);
       const label = latestCoin.name ?? latestCoin.symbol ?? latestCoin.address;
       const truncatedLabel = label.length > 50 ? `${label.slice(0, 47)}...` : label;
       const value = coinUrl
         ? `[${truncatedLabel}](${coinUrl})\n${formatAddress(latestCoin.address, latestCoin.chainId)}`
         : `${truncatedLabel}\n${formatAddress(latestCoin.address, latestCoin.chainId)}`;
+      
+      let title = "Latest Zora Coin";
+      if (latestCoinMarketCap != null && latestCoinMarketCap > 0) {
+        const formattedMC = formatCompactNumber(latestCoinMarketCap);
+        title = `Latest Zora Coin • MC: ${formattedMC}`;
+      }
+      
       page2Embed.addFields({
-        name: "Latest Zora Coin",
+        name: title,
         value,
         inline: false,
       });
@@ -224,7 +294,15 @@ export async function buildZoraCoinResponse(
 
     // Add Farcaster profile if available
     if (farcasterUser) {
-      const { embed: farcasterEmbed } = buildUserClankerEmbed(
+      // Add creator field with full wallet details for page 2
+      const { buildCreatorField } = await import("../utils/zoraEmbeds");
+      const creatorFieldWithWallets = buildCreatorField(coin, farcasterUser, true);
+      if (creatorFieldWithWallets) {
+        page2Embed.addFields(creatorFieldWithWallets);
+      }
+
+      // Add Farcaster profile details
+      const { embed: farcasterEmbed } = await buildUserClankerEmbed(
         farcasterUser,
         "Farcaster Profile",
         clankerEntries.length > 0 ? clankerEntries.map(e => e.token) : undefined,
@@ -240,9 +318,12 @@ export async function buildZoraCoinResponse(
         });
       }
 
-      // Copy all fields from farcaster embed to page 2
+      // Copy all fields from farcaster embed to page 2 (excluding duplicate creator info)
       farcasterEmbed.data.fields?.forEach(field => {
-        page2Embed.addFields(field);
+        // Skip fields that are already in the creator field
+        if (!field.name.includes("Profile") && !field.name.includes("Deployer")) {
+          page2Embed.addFields(field);
+        }
       });
 
       applyBranding(page2Embed, "zora coin", finalIsCreatorCoin ? "creator coin" : null);
@@ -256,9 +337,15 @@ export async function buildZoraCoinResponse(
 
   const identifier = `zora_coin_${coin.address}`;
 
+  // Pagination buttons
   const components: ActionRowBuilder<ButtonBuilder>[] = [];
   if (totalPages > 1) {
-    components.push(...buildPaginationButtons(0, totalPages, identifier));
+    // Create page labels for descriptive buttons
+    const pageLabels = [
+      { label: "Coin Details" }, // Page 1
+      { label: finalCreatorCoinData && farcasterUser ? "Creator Coin & Farcaster" : finalCreatorCoinData ? "Creator Coin" : "Farcaster Profile" }, // Page 2
+    ];
+    components.push(...buildPaginationButtons(0, totalPages, identifier, pageLabels));
   }
 
   // Store both embeds for pagination

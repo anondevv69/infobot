@@ -1,7 +1,8 @@
-import { Message } from "discord.js";
+import { Message, ActionRowBuilder, ButtonBuilder } from "discord.js";
 import { findBestZoraSummary } from "../services/zora";
-import { buildZoraProfileEmbed } from "../utils/zoraEmbeds";
-import { buildZoraPresentation } from "../utils/zoraPresentation";
+import { buildZoraProfileEmbed, appendZoraSummaryFields } from "../utils/zoraEmbeds";
+import { splitEmbedIntoPages, buildPaginationButtons } from "../utils/pagination";
+import { storeEmbedForPagination } from "./pagination";
 
 const ZORA_PROFILE_REGEX = /https:\/\/zora\.co\/@([a-z0-9_.-]+)/gi;
 
@@ -29,13 +30,33 @@ export async function handleZoraProfileMessage(message: Message): Promise<boolea
     }
 
     const profileEmbed = buildZoraProfileEmbed(summary);
-    const coinEmbeds = await buildZoraPresentation(summary, {
-      includeLatest: true,
-      includeCreatorCoin: true,
-    });
+    // Append Zora summary fields (creator coin, latest coin) directly to profile embed
+    await appendZoraSummaryFields(profileEmbed, summary);
+
+    // Split into pages if needed
+    const embeds = splitEmbedIntoPages(profileEmbed, 15);
+    const totalPages = embeds.length;
+    const identifier = `zora_profile_${username}`;
+
+    // Store for pagination
+    if (totalPages > 1) {
+      embeds.forEach((embed, index) => {
+        if (index === 0) {
+          storeEmbedForPagination(identifier, embed);
+        } else {
+          storeEmbedForPagination(`${identifier}_page${index + 1}`, embed);
+        }
+      });
+    }
+
+    const components: ActionRowBuilder<ButtonBuilder>[] = [];
+    if (totalPages > 1) {
+      components.push(...buildPaginationButtons(0, totalPages, identifier));
+    }
 
     await message.reply({
-      embeds: [profileEmbed, ...coinEmbeds],
+      embeds: [embeds[0]],
+      components,
     });
     return true;
   }

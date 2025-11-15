@@ -59,7 +59,6 @@ export async function handleCastKeywordMessage(message: Message): Promise<boolea
           {
             title: `🔹 Earliest cast mentioning "${keyword}"`,
             color: 0xfbbf24,
-            footer: "Earliest match returned by Neynar search",
             variant: "full",
           },
         );
@@ -85,7 +84,13 @@ export async function handleCastKeywordMessage(message: Message): Promise<boolea
 
     const components: ActionRowBuilder<ButtonBuilder>[] = [];
     if (totalPages > 1) {
-      components.push(...buildPaginationButtons(0, totalPages, identifier));
+      // Create page labels for descriptive buttons
+      const pageLabels = [
+        { label: "Earliest Cast" }, // Page 1
+        { label: "Recent Cast #1" }, // Page 2
+        { label: "Recent Cast #2" }, // Page 3
+      ].slice(0, totalPages);
+      components.push(...buildPaginationButtons(0, totalPages, identifier, pageLabels));
     }
 
     await message.reply({

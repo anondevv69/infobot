@@ -30,6 +30,12 @@ export interface ClankerToken {
       displayName?: string;
       avatarUrl?: string;
     };
+    market?: {
+      marketCap?: number | null;
+      priceChange?: number | null;
+      volume?: number | null;
+      price?: number | null;
+    };
   };
 }
 
@@ -66,6 +72,7 @@ export async function fetchTokensByFid(fid: number): Promise<ClankerToken[]> {
   url.searchParams.set("fids", fid.toString());
   url.searchParams.set("limit", "20");
   url.searchParams.set("includeUser", "true");
+  url.searchParams.set("includeMarket", "true");
   return executeClankerRequest(url);
 }
 
@@ -74,6 +81,7 @@ export async function fetchTokensByQuery(query: string): Promise<ClankerToken[]>
   url.searchParams.set("q", query);
   url.searchParams.set("limit", "10");
   url.searchParams.set("includeUser", "true");
+  url.searchParams.set("includeMarket", "true");
   return executeClankerRequest(url);
 }
 
@@ -84,6 +92,7 @@ export async function fetchTokensByAddress(
   queryUrl.searchParams.set("q", address);
   queryUrl.searchParams.set("limit", "10");
   queryUrl.searchParams.set("includeUser", "true");
+  queryUrl.searchParams.set("includeMarket", "true");
   const byQuery = await executeClankerRequest(queryUrl);
   if (byQuery.length > 0) {
     return byQuery;
@@ -93,6 +102,7 @@ export async function fetchTokensByAddress(
   pairUrl.searchParams.set("pairAddress", address);
   pairUrl.searchParams.set("limit", "10");
   pairUrl.searchParams.set("includeUser", "true");
+  pairUrl.searchParams.set("includeMarket", "true");
   return executeClankerRequest(pairUrl);
 }
 
@@ -100,4 +110,3 @@ export interface ClankerTokenSummary {
   token: ClankerToken;
   farcasterUser?: User;
 }
-

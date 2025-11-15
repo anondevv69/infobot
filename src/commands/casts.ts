@@ -1,7 +1,6 @@
 import {
   ChatInputCommandInteraction,
   EmbedBuilder,
-  MessageFlags,
   ActionRowBuilder,
   ButtonBuilder,
 } from "discord.js";
@@ -29,7 +28,6 @@ export async function handleCastsCommand(
   if (!keyword) {
     await interaction.reply({
       content: "Please provide a keyword to search for.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -39,7 +37,7 @@ export async function handleCastsCommand(
     Math.min(recentCount, MAX_RECENT_RESULTS),
   );
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply();
 
   try {
     const { firstMatch, recent } = await searchCastsByKeyword(
@@ -108,7 +106,13 @@ export async function handleCastsCommand(
 
     const components: ActionRowBuilder<ButtonBuilder>[] = [];
     if (totalPages > 1) {
-      components.push(...buildPaginationButtons(0, totalPages, identifier));
+      // Create page labels for descriptive buttons
+      const pageLabels = [
+        { label: "Earliest Cast" }, // Page 1
+        { label: "Recent Cast #1" }, // Page 2
+        { label: "Recent Cast #2" }, // Page 3
+      ].slice(0, totalPages);
+      components.push(...buildPaginationButtons(0, totalPages, identifier, pageLabels));
     }
 
     await interaction.editReply({ 
@@ -136,7 +140,6 @@ function highlightOptions(title: string): CastEmbedOptions {
   return {
     title: `🔹 ${title}`,
     color: 0xfbbf24,
-    footer: "Earliest match returned by Neynar search",
     variant: "full",
   };
 }

@@ -18,6 +18,7 @@ export function applyBranding(
   const name = env.brandName ?? "WarpBot";
   const version = env.appVersion ?? "dev";
   parts.push(`${name} v${version}`);
+  parts.push("built by rayblanco.eth");
   parts.push(context);
   if (badge) {
     parts.push(badge);

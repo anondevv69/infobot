@@ -1,3 +1,19 @@
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+} from "discord.js";
+import type { Cast, User } from "@neynar/nodejs-sdk/build/api";
+import type { ClankerToken } from "../services/clanker";
+import type { ZoraLookupResult } from "../services/zora";
+import { findUserByUsername, findUserByWallet } from "../services/neynar";
+import { formatAddressLink } from "./addressLinks";
+import { appendZoraSummaryFields } from "./zoraEmbeds";
+import { applyBranding } from "./branding";
+
+const BASE_CHAIN_ID = 8453;
+
 function buildDeployerField(
   user: User | null | undefined,
   fallbackAddresses: string[],
@@ -72,20 +88,6 @@ export function getClankerDisplayEntries(
 
   return entries;
 }
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  EmbedBuilder,
-} from "discord.js";
-import { splitEmbedIntoPages, buildPaginationButtons } from "./pagination";
-import type { Cast, User } from "@neynar/nodejs-sdk/build/api";
-import type { ClankerToken } from "../services/clanker";
-import type { ZoraLookupResult } from "../services/zora";
-import { findUserByUsername, findUserByWallet } from "../services/neynar";
-import { formatAddressLink } from "./addressLinks";
-import { appendZoraSummaryFields } from "./zoraEmbeds";
-import { applyBranding } from "./branding";
 
 type EmbedField = { name: string; value: string; inline: boolean };
 
@@ -128,11 +130,11 @@ export interface UserClankerEmbedResult {
   clankerEntries: ClankerDisplayEntry[];
 }
 
-export function buildUserClankerEmbed(
+export async function buildUserClankerEmbed(
   user: User,
   titleSuffix: string,
   tokens?: ClankerToken[],
-): UserClankerEmbedResult {
+): Promise<UserClankerEmbedResult> {
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle("Farcaster Profile")
@@ -237,18 +239,20 @@ export interface BuildTokenEmbedOptions {
   latestCast?: Cast | null;
   earliestCast?: Cast | null;
   zoraSummary?: ZoraLookupResult | null;
+  includeWallets?: boolean;
 }
 
-export function buildTokenEmbed(
+export async function buildTokenEmbed(
   token: ClankerToken,
   options?: BuildTokenEmbedOptions,
-): EmbedBuilder {
+): Promise<EmbedBuilder> {
   const {
     farcasterUser = null,
     clankerTokens = [],
     latestCast = null,
     earliestCast = null,
     zoraSummary = null,
+    includeWallets = true,
   } = options ?? {};
 
   const description =
@@ -298,9 +302,25 @@ export function buildTokenEmbed(
     token.social_context?.interface ?? token.metadata?.interface ?? null;
   const platformName =
     token.social_context?.platform ?? token.metadata?.platform ?? null;
+  
+  // Fetch market cap for the primary token
+  let marketCap: number | null = token.related?.market?.marketCap ?? null;
+  
+  // Fallback to DexScreener for Base chain tokens if Clanker API doesn't provide it
+  if (!marketCap && token.contract_address && (token.chain_id === 8453 || token.chain_id === BASE_CHAIN_ID)) {
+    try {
+      const { fetchBaseTokenData } = await import("../services/dexscreener");
+      const metrics = await fetchBaseTokenData(token.contract_address);
+      marketCap = metrics?.marketCap ?? null;
+    } catch (error) {
+      // Silently fail
+    }
+  }
+  
   const tokenLines = [
     token.symbol ? `Symbol: ${token.symbol}` : null,
     `Chain: ${formatChainName(token.chain_id)}`,
+    marketCap != null && marketCap > 0 ? `MC: ${formatCompactNumber(marketCap)}` : null,
     interfaceName ? `Interface: ${interfaceName}` : null,
     platformName ? `Platform: ${platformName}` : null,
   ].filter(Boolean);
@@ -338,7 +358,10 @@ export function buildTokenEmbed(
 
   if (farcasterUser) {
     addProfileSection(embed, farcasterUser, "Dev Profile");
-    appendWalletFields(embed, farcasterUser);
+    // Only include wallet fields if includeWallets is true
+    if (includeWallets) {
+      appendWalletFields(embed, farcasterUser);
+    }
   }
 
   if (clankerTokens.length > 0) {
@@ -362,7 +385,7 @@ export function buildTokenEmbed(
   }
 
   if (zoraSummary) {
-    appendZoraSummaryFields(embed, zoraSummary, { latestCast: null });
+    await appendZoraSummaryFields(embed, zoraSummary, { latestCast: null });
   }
 
   if (latestCast) {
@@ -429,9 +452,23 @@ export function formatClankerTokenDetails(token: ClankerToken): string {
     ? formatCodeBlock([token.contract_address])
     : "Unknown contract";
 
-  const title = url ? `[${baseLabel}](${url})` : baseLabel;
+  let title = url ? `[${baseLabel}](${url})` : baseLabel;
+  
+  // Add market cap if available
+  const marketCap = token.related?.market?.marketCap;
+  if (marketCap != null && marketCap > 0) {
+    const formattedMC = formatCompactNumber(marketCap);
+    title = `${title} • MC: ${formattedMC}`;
+  }
 
-  return `${title} ${contractBlock}`;
+  return `${title}\n${contractBlock}`;
+}
+
+function formatCompactNumber(value: number): string {
+  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(2)}B`;
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(2)}K`;
+  return `$${value.toFixed(2)}`;
 }
 
 function formatUserSocials(user: User): string | null {
@@ -737,4 +774,3 @@ function formatClankerFieldLabel(label: string, token: ClankerToken, totalCount:
       return `${label}${countSuffix} - ${timestamp}`;
   }
 }
-

@@ -19,7 +19,6 @@ import {
 } from "../utils/address";
 import { findUserByWallet, findUserByUsername } from "../services/neynar";
 import { findBestZoraSummary, fetchZoraCoin, fetchZoraSummary } from "../services/zora";
-import { fetchPumpFunToken } from "../services/pumpfun";
 import { collectZoraIdentifiers } from "../utils/zoraPresentation";
 import { buildWalletProfileResponse, buildZoraWalletProfileResponse } from "../utils/walletEmbed";
 import { buildFarcasterPresentation } from "../utils/farcasterPresentation";
@@ -28,11 +27,13 @@ import {
   isSummaryAssociatedWithUser,
 } from "../utils/zoraAssociation";
 import { splitClankerTokens } from "../utils/clankerAssociation";
-import { buildPumpFunEmbed } from "../utils/pumpFunEmbeds";
 import { buildZoraCoinResponse } from "../handlers/zoraAddress";
+import { detectTokenFactory } from "../services/baseFactories";
+import { buildBaseTokenEmbed } from "../utils/baseTokenEmbeds";
+import { fetchBaseTokenData } from "../services/dexscreener";
 import { splitEmbedIntoPages, buildPaginationButtons } from "../utils/pagination";
 import { storeEmbedForPagination } from "../handlers/pagination";
-import { addProfileSection, appendWalletFields, formatRecentCastSummary } from "../utils/clankerEmbeds";
+import { addProfileSection, appendWalletFields, formatRecentCastSummary, getClankerDisplayEntries, formatClankerTokenDetails } from "../utils/clankerEmbeds";
 import { appendZoraSummaryFields } from "../utils/zoraEmbeds";
 import { applyBranding } from "../utils/branding";
 
@@ -149,51 +150,95 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
       ? await safeFetchEarliestCastByQuery(primaryToken.contract_address)
       : null;
 
-    // Build paginated structure: Page 1 = Coin/Deployer, Page 2 = Farcaster, Page 3 = Zora
+    // Build paginated structure: Page 1 = Token + Dev info, Page 2 = Other Clankers, Page 3 = Wallets + Zora
     const embeds: EmbedBuilder[] = [];
     
-    // Page 1: Coin info + Deployer info (without Farcaster and Zora)
-    const page1Embed = buildTokenEmbed(primaryToken, {
-      farcasterUser: undefined, // Don't include Farcaster on page 1
-      clankerTokens: deployedTokens,
-      latestCast: null,
+    // Page 1: Token info + Dev info (who deployed it, but no wallets)
+    const page1Embed = await buildTokenEmbed(primaryToken, {
+      farcasterUser: associatedUser ?? undefined, // Include dev info on page 1
+      clankerTokens: [], // Don't include other clankers on page 1
+      latestCast: latestCast ?? null,
       earliestCast,
       zoraSummary: undefined, // Don't include Zora on page 1
+      includeWallets: false, // Don't include wallets on page 1
     });
     embeds.push(page1Embed);
     
     let totalPages = 1;
     const identifier = `clanker_token_${primaryToken.contract_address ?? address}`;
 
-    // Page 2: Farcaster info (if available)
-    if (associatedUser) {
-      const page2Embed = new EmbedBuilder()
-        .setColor(0x4338ca)
-        .setTitle(`Clanker • ${primaryToken.name ?? primaryToken.symbol ?? "Token"} • Page 2`);
-      
-      addProfileSection(page2Embed, associatedUser, "Dev Profile");
-      appendWalletFields(page2Embed, associatedUser);
-      
-      if (latestCast) {
-        page2Embed.addFields({
-          name: "Latest Dev Cast",
-          value: formatRecentCastSummary(latestCast),
-          inline: false,
+    // Page 2: Other Clankers (if available)
+    if (deployedTokens.length > 0) {
+      const clankerEntries = getClankerDisplayEntries(deployedTokens);
+      const currentAddress = primaryToken.contract_address?.toLowerCase();
+      const filteredEntries = clankerEntries.filter((entry) => {
+        const entryAddress = entry.token.contract_address?.toLowerCase();
+        // Exclude the current token from "First Clanker" or "Most Recent Clanker"
+        return !(entryAddress && entryAddress === currentAddress);
+      });
+
+      if (filteredEntries.length > 0) {
+        const page2Embed = new EmbedBuilder()
+          .setColor(0x4338ca)
+          .setTitle(`Clanker • ${primaryToken.name ?? primaryToken.symbol ?? "Token"} • Other Clankers`);
+        
+        filteredEntries.forEach(({ label, token: entryToken }) => {
+          page2Embed.addFields({
+            name: label,
+            value: formatClankerTokenDetails(entryToken),
+            inline: false,
+          });
         });
+        
+        applyBranding(page2Embed, "clanker");
+        embeds.push(page2Embed);
+        totalPages = 2;
       }
-      
-      applyBranding(page2Embed, "clanker");
-      embeds.push(page2Embed);
-      totalPages = 2;
     }
 
-    // Page 3: Zora info (if available)
-    if (filteredSummary) {
+    // Page 3: Wallets + Zora info (if available)
+    // Check if we have wallet data to display
+    const hasWallets = associatedUser && (
+      associatedUser.custody_address ||
+      (associatedUser.verified_addresses?.eth_addresses?.length ?? 0) > 0 ||
+      (associatedUser.verified_addresses?.sol_addresses?.length ?? 0) > 0
+    );
+    const hasZora = filteredSummary !== null && filteredSummary !== undefined;
+    const hasPage3 = hasWallets || hasZora;
+
+    if (hasPage3) {
       const page3Embed = new EmbedBuilder()
-        .setColor(0x4338ca)
-        .setTitle(`Clanker • ${primaryToken.name ?? primaryToken.symbol ?? "Token"} • Page 3`);
+        .setColor(0x4338ca);
       
-      appendZoraSummaryFields(page3Embed, filteredSummary, { latestCast: null });
+      // Add wallet fields first to determine what we actually have
+      let actuallyHasWallets = false;
+      if (associatedUser) {
+        const hasWalletData = associatedUser.custody_address ||
+          (associatedUser.verified_addresses?.eth_addresses?.length ?? 0) > 0 ||
+          (associatedUser.verified_addresses?.sol_addresses?.length ?? 0) > 0;
+        
+        if (hasWalletData) {
+          appendWalletFields(page3Embed, associatedUser);
+          actuallyHasWallets = true;
+        }
+      }
+
+      // Add Zora info if available
+      if (hasZora && filteredSummary) {
+        await appendZoraSummaryFields(page3Embed, filteredSummary, { latestCast: null });
+      }
+
+      // Build title to clearly indicate what's actually on this page
+      let page3Title = `Clanker • ${primaryToken.name ?? primaryToken.symbol ?? "Token"}`;
+      if (actuallyHasWallets && hasZora) {
+        page3Title += " • Wallets & Zora";
+      } else if (actuallyHasWallets) {
+        page3Title += " • Wallets";
+      } else if (hasZora) {
+        page3Title += " • Zora";
+      }
+      page3Embed.setTitle(page3Title);
+      
       applyBranding(page3Embed, "clanker");
       embeds.push(page3Embed);
       totalPages = 3;
@@ -212,7 +257,15 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
 
     const components: ActionRowBuilder<ButtonBuilder>[] = [];
     if (totalPages > 1) {
-      components.push(...buildPaginationButtons(0, totalPages, identifier));
+      // Create page labels for descriptive buttons
+      const pageLabels = [
+        { label: "Token & Dev" }, // Page 1
+        { label: totalPages > 2 ? "Other Clankers" : "Other Clankers" }, // Page 2
+      ];
+      if (hasPage3) {
+        pageLabels.push({ label: hasWallets && hasZora ? "Wallets & Zora" : hasWallets ? "Wallets" : "Zora" }); // Page 3
+      }
+      components.push(...buildPaginationButtons(0, totalPages, identifier, pageLabels));
     }
 
     await message.reply({
@@ -224,14 +277,27 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
   }
 
   if (directClankerMatches.length === 0) {
-    const pumpIdentifier = extractPumpFunIdentifier(message.content, address);
-    if (pumpIdentifier) {
-      const pumpToken = await fetchPumpFunToken(pumpIdentifier);
-      if (pumpToken) {
-        const pumpEmbed = buildPumpFunEmbed(pumpToken);
+    // Check for Base network tokens (Rainbow, ApeStore, Fey, etc.)
+    if (isEthAddress(address)) {
+      const [baseTokenData, factory] = await Promise.all([
+        fetchBaseTokenData(address),
+        detectTokenFactory(address),
+      ]);
+
+      if (baseTokenData) {
+        const { embed, components } = buildBaseTokenEmbed(
+          address,
+          null, // Token name - could be fetched from ERC20 contract
+          null, // Token symbol - could be fetched from ERC20 contract
+          baseTokenData,
+          factory,
+        );
+
+        const factoryName = factory ? ` (${factory.name})` : "";
         await message.reply({
-          content: `Pump.fun coin detected for \`${pumpIdentifier}\`.`,
-          embeds: [pumpEmbed],
+          content: `Base token detected${factoryName} for \`${address}\`.`,
+          embeds: [embed],
+          components,
         });
         return true;
       }
@@ -249,7 +315,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
     const associatedSummary =
       zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
 
-    const walletResponse = buildWalletProfileResponse({
+    const walletResponse = await buildWalletProfileResponse({
       wallet: address,
       user,
       zoraSummary: associatedSummary,
@@ -320,22 +386,3 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
 
   return false;
 }
-
-function extractPumpFunIdentifier(content: string, detectedAddress: string | null): string | null {
-  const linkMatch = content.match(/pump\.fun\/coin\/([A-Za-z0-9]+)/i);
-  if (linkMatch?.[1]) {
-    return linkMatch[1];
-  }
-
-  const pumpMatch = content.match(/[1-9A-HJ-NP-Za-km-z]{32,60}pump/);
-  if (pumpMatch?.[0]) {
-    return pumpMatch[0];
-  }
-
-  if (detectedAddress?.toLowerCase().endsWith("pump")) {
-    return detectedAddress;
-  }
-
-  return null;
-}
-

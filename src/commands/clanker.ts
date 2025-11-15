@@ -5,7 +5,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  MessageFlags,
 } from "discord.js";
 import type { User } from "@neynar/nodejs-sdk/build/api";
 import {
@@ -30,12 +29,11 @@ export async function handleClankerCommand(
   if (!query) {
     await interaction.reply({
       content: "Please provide a keyword, token symbol, contract address, Farcaster username, or wallet address to search.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply();
 
   // Check if it's a Farcaster username or wallet address
   const normalizedQuery = query.replace(/^@/, "").toLowerCase();

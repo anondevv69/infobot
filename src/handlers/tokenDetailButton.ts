@@ -24,14 +24,13 @@ export async function handleTokenDetailButton(
   if (tokens.length === 0) {
     await interaction.reply({
       content: `No token details found for \`${contract}\`.`,
-      ephemeral: true,
     });
     return;
   }
 
   const token = tokens[0];
   const user = await resolveUserFromToken(token);
-  const tokenEmbed = buildTokenEmbed(
+  const tokenEmbed = await buildTokenEmbed(
     token,
     user ? { farcasterUser: user } : undefined,
   );

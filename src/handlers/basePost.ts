@@ -85,15 +85,43 @@ export async function handleBasePostMessage(message: Message): Promise<boolean> 
       profile: summary?.profile ?? null,
     },
   );
-  const extraEmbeds = await buildZoraPresentation(summary, {
-    includeLatest: false,
-    includeCreatorCoin: true,
-    excludeAddresses: [coin.address],
-  });
+  // Merge creator coin into embed if available
+  if (summary?.profile?.creatorCoinAddress && summary.profile.creatorCoinAddress.toLowerCase() !== coin.address.toLowerCase()) {
+    const { buildCreatorCoinField } = await import("../utils/zoraEmbeds");
+    const creatorCoinField = buildCreatorCoinField(summary.profile, false, null);
+    if (creatorCoinField) {
+      embed.addFields(creatorCoinField);
+    }
+  }
+
+  // Split into pages if needed
+  const { splitEmbedIntoPages, buildPaginationButtons } = await import("../utils/pagination");
+  const { storeEmbedForPagination } = await import("./pagination");
+  const embeds = splitEmbedIntoPages(embed, 15);
+  const totalPages = embeds.length;
+  const identifier = `base_post_${contractAddress}`;
+
+  // Store for pagination
+  if (totalPages > 1) {
+    embeds.forEach((embed, index) => {
+      if (index === 0) {
+        storeEmbedForPagination(identifier, embed);
+      } else {
+        storeEmbedForPagination(`${identifier}_page${index + 1}`, embed);
+      }
+    });
+  }
+
+  const { ActionRowBuilder, ButtonBuilder } = await import("discord.js");
+  const components: typeof buildPaginationButtons extends (...args: any[]) => infer R ? R : never = [];
+  if (totalPages > 1) {
+    components.push(...buildPaginationButtons(0, totalPages, identifier));
+  }
 
   await message.reply({
     content: `Base post detected. Token extracted from ${postUrl}.`,
-    embeds: [embed, ...extraEmbeds],
+    embeds: [embeds[0]],
+    components,
   });
 
   return true;

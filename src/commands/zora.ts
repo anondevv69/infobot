@@ -1,8 +1,9 @@
-import { ChatInputCommandInteraction, MessageFlags } from "discord.js";
+import { ChatInputCommandInteraction, ActionRowBuilder, ButtonBuilder } from "discord.js";
 import { findBestZoraSummary, fetchZoraCoin } from "../services/zora";
-import { buildZoraProfileEmbed, buildZoraCoinEmbed } from "../utils/zoraEmbeds";
-import { buildZoraPresentation } from "../utils/zoraPresentation";
+import { buildZoraProfileEmbed, buildZoraCoinEmbed, appendZoraSummaryFields, buildCreatorCoinField } from "../utils/zoraEmbeds";
 import { isEthAddress } from "../utils/address";
+import { splitEmbedIntoPages, buildPaginationButtons } from "../utils/pagination";
+import { storeEmbedForPagination } from "../handlers/pagination";
 
 const BASE_CHAIN_ID = 8453;
 
@@ -13,12 +14,11 @@ export async function handleZoraProfileCommand(
   if (!rawQuery) {
     await interaction.reply({
       content: "Please provide a contract address or Zora handle.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply();
 
   // Check if it's a contract address (Zora coin or creator coin)
   if (isEthAddress(rawQuery)) {
@@ -64,15 +64,34 @@ export async function handleZoraProfileCommand(
     }
   }
 
-  // Show profile with coins
+  // Show profile with coins - merge into single embed with pagination
   const profileEmbed = buildZoraProfileEmbed(summary);
-  const coinEmbeds = await buildZoraPresentation(summary, {
-    includeLatest: true,
-    includeCreatorCoin: true,
-  });
+  await appendZoraSummaryFields(profileEmbed, summary);
+
+  // Split into pages if needed
+  const embeds = splitEmbedIntoPages(profileEmbed, 15);
+  const totalPages = embeds.length;
+  const identifier = `zora_profile_${normalized}`;
+
+  // Store for pagination
+  if (totalPages > 1) {
+    embeds.forEach((embed, index) => {
+      if (index === 0) {
+        storeEmbedForPagination(identifier, embed);
+      } else {
+        storeEmbedForPagination(`${identifier}_page${index + 1}`, embed);
+      }
+    });
+  }
+
+  const components: ActionRowBuilder<ButtonBuilder>[] = [];
+  if (totalPages > 1) {
+    components.push(...buildPaginationButtons(0, totalPages, identifier));
+  }
 
   await interaction.editReply({
-    embeds: [profileEmbed, ...coinEmbeds],
+    embeds: [embeds[0]],
+    components,
   });
 }
 
@@ -106,13 +125,37 @@ async function replyWithCoin(
     },
   );
 
-  const extraEmbeds = await buildZoraPresentation(summary, {
-    includeLatest: false,
-    includeCreatorCoin: true,
-    excludeAddresses: [coin.address],
-  });
+  // Merge creator coin into the coin embed if available
+  if (summary?.profile?.creatorCoinAddress && summary.profile.creatorCoinAddress.toLowerCase() !== coin.address.toLowerCase()) {
+    const creatorCoinField = buildCreatorCoinField(summary.profile, false, null);
+    if (creatorCoinField) {
+      coinEmbed.addFields(creatorCoinField);
+    }
+  }
+
+  // Split into pages if needed
+  const embeds = splitEmbedIntoPages(coinEmbed, 15);
+  const totalPages = embeds.length;
+  const identifier = `zora_coin_${address}`;
+
+  // Store for pagination
+  if (totalPages > 1) {
+    embeds.forEach((embed, index) => {
+      if (index === 0) {
+        storeEmbedForPagination(identifier, embed);
+      } else {
+        storeEmbedForPagination(`${identifier}_page${index + 1}`, embed);
+      }
+    });
+  }
+
+  const components: ActionRowBuilder<ButtonBuilder>[] = [];
+  if (totalPages > 1) {
+    components.push(...buildPaginationButtons(0, totalPages, identifier));
+  }
 
   await interaction.editReply({
-    embeds: [coinEmbed, ...extraEmbeds],
+    embeds: [embeds[0]],
+    components,
   });
 }

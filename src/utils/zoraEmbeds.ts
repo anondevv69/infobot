@@ -22,6 +22,8 @@ export function getZoraCoinUrl(coin: ZoraCoin): string | null {
   return `https://zora.co/coin/${slug}:${coin.address}`;
 }
 
+import type { TokenMetrics } from "../services/dexscreener";
+
 interface BuildEmbedOptions {
   title?: string;
   profile?: ZoraProfileSummary | null;
@@ -30,6 +32,8 @@ interface BuildEmbedOptions {
   farcasterUser?: User | null;
   clankerEntries?: ClankerDisplayEntry[] | null;
   excludeCreatorField?: boolean;
+  includeCreatorWallets?: boolean;
+  dexScreenerMetrics?: TokenMetrics | null;
 }
 
 export function buildZoraCoinEmbed(
@@ -70,6 +74,23 @@ export function buildZoraCoinEmbed(
     `**Name:** ${coin.name ?? "Unknown"}`,
   ];
 
+  // Add market cap if available (from Zora API or DexScreener fallback)
+  let marketCapValue: number | null = null;
+  if (coin.marketCap) {
+    const parsed = parseFloat(coin.marketCap);
+    if (!isNaN(parsed) && parsed > 0) {
+      marketCapValue = parsed;
+    }
+  }
+  // Fallback to DexScreener if Zora doesn't have market cap
+  if (!marketCapValue && options?.dexScreenerMetrics?.marketCap) {
+    marketCapValue = options.dexScreenerMetrics.marketCap;
+  }
+  if (marketCapValue) {
+    const formattedMC = formatCompactNumber(marketCapValue);
+    detailsLines.push(`**Market Cap:** ${formattedMC}`);
+  }
+
   const fields: Array<{ name: string; value: string; inline?: boolean }> = [
     {
       name: "Token Details",
@@ -83,10 +104,24 @@ export function buildZoraCoinEmbed(
     },
   ];
 
+  // Get market cap for creator coin
+  let creatorCoinMarketCap: number | null = null;
+  if (creatorCoin?.marketCap) {
+    const parsed = parseFloat(creatorCoin.marketCap);
+    if (!isNaN(parsed) && parsed > 0) {
+      creatorCoinMarketCap = parsed;
+    }
+  }
+  // Fallback to DexScreener if available
+  if (!creatorCoinMarketCap && options?.dexScreenerMetrics?.marketCap && creatorCoin?.address) {
+    creatorCoinMarketCap = options.dexScreenerMetrics.marketCap;
+  }
+  
   const creatorCoinField = buildCreatorCoinField(
     profile,
     summary.isCreatorCoin,
     creatorCoin,
+    creatorCoinMarketCap,
   );
   if (creatorCoinField) {
     fields.push(creatorCoinField);
@@ -117,7 +152,7 @@ export function buildZoraCoinEmbed(
 
   // Only add creator field if not excluded (for pagination)
   if (!options?.excludeCreatorField) {
-    const creatorField = buildCreatorField(coin, farcasterUser);
+    const creatorField = buildCreatorField(coin, farcasterUser, options?.includeCreatorWallets ?? false);
     if (creatorField) {
       fields.push(creatorField);
     }
@@ -268,9 +303,10 @@ function getLatestCreatedCoin(summary: ZoraLookupResult): ZoraCoin | null {
   })[0];
 }
 
-function buildCreatorField(
+export function buildCreatorField(
   coin: ZoraCoin,
   farcasterUser?: User | null,
+  includeWallets = false,
 ): { name: string; value: string; inline: boolean } | null {
   const lines: string[] = [];
   const creatorAddress = coin.creatorAddress ?? null;
@@ -285,7 +321,8 @@ function buildCreatorField(
     lines.push(`**Deploy Address:**\n${formatAddress(creatorAddress, coin.chainId)}`);
   }
 
-  if (farcasterUser) {
+  // Only include wallet details if includeWallets is true (for page 2)
+  if (farcasterUser && includeWallets) {
     lines.push(`**FID:** ${farcasterUser.fid}`);
     lines.push(
       `**Followers / Following:** ${farcasterUser.follower_count.toLocaleString()} / ${farcasterUser.following_count.toLocaleString()}`,
@@ -339,6 +376,7 @@ export function buildCreatorCoinField(
   profile: ZoraProfileSummary | null,
   isCreatorCoin: boolean,
   creatorCoin?: ZoraCoin | null,
+  marketCap?: number | null,
 ): { name: string; value: string; inline: boolean } | null {
   if (isCreatorCoin) {
     return null;
@@ -351,9 +389,14 @@ export function buildCreatorCoinField(
       inline: false,
     };
   }
-  const formatted = formatCoinReference(creatorCoin ?? null, creatorCoinAddress);
+  const formatted = formatCoinReference(creatorCoin ?? null, creatorCoinAddress, marketCap);
+  let title = "Creator Coin";
+  if (marketCap != null && marketCap > 0) {
+    const formattedMC = formatCompactNumber(marketCap);
+    title = `Creator Coin • MC: ${formattedMC}`;
+  }
   return {
-    name: "Creator Coin",
+    name: title,
     value: formatted,
     inline: false,
   };
@@ -414,6 +457,7 @@ function collectSocialEntries(
 function formatCoinReference(
   coin: ZoraCoin | null,
   fallbackAddress: string,
+  marketCap?: number | null,
 ): string {
   const label =
     coin?.name ?? coin?.symbol ?? shortenAddress(fallbackAddress) ?? fallbackAddress;
@@ -437,6 +481,13 @@ function formatAddressList(addresses: string[]): string {
     return "None";
   }
   return ["```", ...addresses, "```"].join("\n");
+}
+
+export function formatCompactNumber(value: number): string {
+  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(2)}B`;
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(2)}K`;
+  return `$${value.toFixed(2)}`;
 }
 
 function shortenAddress(address?: string | null): string {
@@ -525,11 +576,11 @@ function formatContractBlock(address?: string | null, fallback = "Unknown"): str
   return ["```", address, "```"].join("\n");
 }
 
-export function appendZoraSummaryFields(
+export async function appendZoraSummaryFields(
   embed: EmbedBuilder,
   summary: ZoraLookupResult | null | undefined,
-  options?: { inline?: boolean; latestCast?: Cast | null },
-): void {
+  options?: { inline?: boolean; latestCast?: Cast | null; skipSocials?: boolean },
+): Promise<void> {
   const profile = summary?.profile;
   const latestCast = options?.latestCast ?? null;
 
@@ -540,11 +591,57 @@ export function appendZoraSummaryFields(
   const zoraLines: string[] = [];
 
   if (profile?.creatorCoinAddress) {
-    zoraLines.push(`**Creator Coin:**\n${formatContractBlock(profile.creatorCoinAddress)}`);
+    // Fetch market cap for creator coin
+    let creatorCoinMarketCap: number | null = null;
+    const creatorCoin = summary?.createdCoins?.find(
+      (c) => c.address?.toLowerCase() === profile.creatorCoinAddress?.toLowerCase()
+    );
+    if (creatorCoin?.marketCap) {
+      const parsed = parseFloat(creatorCoin.marketCap);
+      if (!isNaN(parsed) && parsed > 0) {
+        creatorCoinMarketCap = parsed;
+      }
+    }
+    // Fallback to DexScreener for Base chain
+    if (!creatorCoinMarketCap && profile.creatorCoinAddress && (creatorCoin?.chainId === 8453 || creatorCoin?.chainId === BASE_CHAIN_ID || !creatorCoin)) {
+      try {
+        const { fetchBaseTokenData } = await import("../services/dexscreener");
+        const metrics = await fetchBaseTokenData(profile.creatorCoinAddress);
+        creatorCoinMarketCap = metrics?.marketCap ?? null;
+      } catch (error) {
+        // Silently fail
+      }
+    }
+    
+    let creatorCoinTitle = "Creator Coin";
+    if (creatorCoinMarketCap != null && creatorCoinMarketCap > 0) {
+      const formattedMC = formatCompactNumber(creatorCoinMarketCap);
+      creatorCoinTitle = `Creator Coin • MC: ${formattedMC}`;
+    }
+    zoraLines.push(`**${creatorCoinTitle}:**\n${formatContractBlock(profile.creatorCoinAddress)}`);
   }
 
   if (summary?.latestCoin?.coin) {
-    const coinField = buildLatestCoinLine(summary.latestCoin.coin);
+    // Fetch market cap for latest coin
+    let latestCoinMarketCap: number | null = null;
+    const latestCoin = summary.latestCoin.coin;
+    if (latestCoin.marketCap) {
+      const parsed = parseFloat(latestCoin.marketCap);
+      if (!isNaN(parsed) && parsed > 0) {
+        latestCoinMarketCap = parsed;
+      }
+    }
+    // Fallback to DexScreener for Base chain
+    if (!latestCoinMarketCap && latestCoin.address && (latestCoin.chainId === 8453 || latestCoin.chainId === BASE_CHAIN_ID)) {
+      try {
+        const { fetchBaseTokenData } = await import("../services/dexscreener");
+        const metrics = await fetchBaseTokenData(latestCoin.address);
+        latestCoinMarketCap = metrics?.marketCap ?? null;
+      } catch (error) {
+        // Silently fail
+      }
+    }
+    const coinField = buildLatestCoinLine(latestCoin, latestCoinMarketCap);
     zoraLines.push(coinField);
   }
 
@@ -596,8 +693,10 @@ export function appendZoraSummaryFields(
     }
   }
 
+  // Don't add socials here if they're already on page 1 (for paginated embeds)
+  // The caller should handle adding socials to page 1
   const socialValue = profile ? formatSocialRow(profile) : null;
-  if (socialValue && !mergedZoraSocial) {
+  if (socialValue && !mergedZoraSocial && !options?.skipSocials) {
     embed.addFields({
       name: "Socials",
       value: socialValue,
@@ -606,7 +705,7 @@ export function appendZoraSummaryFields(
   }
 }
 
-function formatSocialRow(profile: ZoraLookupResult["profile"]): string | null {
+export function formatSocialRow(profile: ZoraLookupResult["profile"]): string | null {
   if (!profile) {
     return null;
   }
@@ -656,12 +755,17 @@ function formatCastSummary(cast: Cast): string {
   return `${truncated}\n[Open Cast](${url}) • ${timestamp}\n👍 ${likes.toLocaleString()} • 🔁 ${recasts.toLocaleString()}`;
 }
 
-function buildLatestCoinLine(coin: ZoraCoin): string {
+function buildLatestCoinLine(coin: ZoraCoin, marketCap?: number | null): string {
   const rawLabel = coin.name ?? coin.symbol ?? coin.address ?? "Coin";
   const truncatedLabel = truncateLabel(rawLabel, 36);
   const url = getZoraCoinUrl(coin);
   const clickableLabel = url ? `[${truncatedLabel}](${url})` : truncatedLabel;
-  return `**Latest Zora Coin:** ${clickableLabel}\n${formatContractBlock(coin.address)}`;
+  let title = "Latest Zora Coin";
+  if (marketCap != null && marketCap > 0) {
+    const formattedMC = formatCompactNumber(marketCap);
+    title = `Latest Zora Coin • MC: ${formattedMC}`;
+  }
+  return `**${title}:** ${clickableLabel}\n${formatContractBlock(coin.address)}`;
 }
 
 function truncateLabel(value: string, maxLength: number): string {
