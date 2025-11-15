@@ -76,36 +76,9 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
  * Format field value for Telegram - handle code blocks, links, etc.
  */
 function formatFieldValue(value: string): string {
-  // First, preserve markdown links BEFORE processing other formatting
-  // This ensures links are protected during processing
-  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-  const links: Array<{ full: string; text: string; url: string; placeholder: string }> = [];
-  let linkMatch;
-  let linkIndex = 0;
-  const seenLinks = new Map<string, number>();
-  
-  // Extract all links first
-  let tempValue = value;
-  while ((linkMatch = linkRegex.exec(value)) !== null) {
-    const fullMatch = linkMatch[0];
-    const linkText = linkMatch[1];
-    const linkUrl = linkMatch[2];
-    const linkKey = `${linkText}|${linkUrl}`;
-    
-    if (!seenLinks.has(linkKey)) {
-      const placeholder = `__LINK_PLACEHOLDER_${linkIndex}__`;
-      seenLinks.set(linkKey, linkIndex);
-      links.push({
-        full: fullMatch,
-        text: linkText,
-        url: linkUrl,
-        placeholder,
-      });
-      tempValue = tempValue.replace(fullMatch, placeholder);
-      linkIndex++;
-    }
-  }
-  value = tempValue;
+  // Don't use placeholders - Telegram handles markdown links fine
+  // Just process the value directly, preserving existing links
+  // We'll escape markdown but keep links intact
 
   // Handle code blocks (```address```) - convert addresses/contracts to clickable code links
   // For Telegram: use code formatting with clickable links [code](url)
@@ -315,39 +288,54 @@ function formatFieldValue(value: string): string {
     .replace(/^None$/gm, "") // Remove standalone "None" values
     .replace(/\*None\*/g, ""); // Remove bold "None"
 
-  // Restore markdown links (replace placeholders back to actual links)
-  // Links are already in markdown format, so they'll work in Telegram
-  links.forEach((link) => {
-    // Use a more specific replacement to avoid conflicts
-    const placeholderRegex = new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-    value = value.replace(placeholderRegex, `[${link.text}](${link.url})`);
-  });
-
-  // Also check for any remaining LINKPLACEHOLDER patterns (case-insensitive)
-  // This handles cases where placeholders weren't properly restored
-  // Check both __LINK_PLACEHOLDER_X__ and LINKPLACEHOLDERX formats
-  value = value.replace(/__LINK_PLACEHOLDER_(\d+)__/gi, (match, index) => {
-    const linkIndex = parseInt(index, 10);
-    const link = links[linkIndex];
-    if (link) {
-      return `[${link.text}](${link.url})`;
-    }
-    return match; // Return original if link not found
-  });
-  
-  value = value.replace(/LINKPLACEHOLDER(\d+)/gi, (match, index) => {
-    const linkIndex = parseInt(index, 10);
-    const link = links[linkIndex];
-    if (link) {
-      return `[${link.text}](${link.url})`;
-    }
-    return match; // Return original if link not found
-  });
-
-  // Don't escape markdown here - links are already in correct format
-  // Telegram will handle the markdown links correctly
+  // Preserve existing markdown links by escaping everything except links
+  // Use a simple approach: escape markdown but preserve [text](url) patterns
+  value = escapeMarkdownButPreserveLinks(value);
 
   return value.trim();
+}
+
+/**
+ * Escape markdown but preserve markdown links
+ */
+function escapeMarkdownButPreserveLinks(text: string): string {
+  // Extract all markdown links first
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const links: Array<{ full: string; text: string; url: string; placeholder: string }> = [];
+  let match;
+  const originalText = text;
+  let linkIndex = 0;
+  
+  // Find all links
+  while ((match = linkRegex.exec(originalText)) !== null) {
+    const placeholder = `__TEMP_LINK_${linkIndex}__`;
+    links.push({
+      full: match[0],
+      text: match[1],
+      url: match[2],
+      placeholder,
+    });
+    linkIndex++;
+  }
+  
+  // Replace links with temporary placeholders
+  let processed = text;
+  links.forEach((link) => {
+    // Use replace with a function to replace only the first occurrence
+    processed = processed.replace(link.full, link.placeholder);
+  });
+  
+  // Escape markdown in the rest
+  processed = escapeMarkdown(processed);
+  
+  // Restore links (in reverse order to preserve indices)
+  for (let i = links.length - 1; i >= 0; i--) {
+    const link = links[i];
+    const placeholderRegex = new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    processed = processed.replace(placeholderRegex, `[${link.text}](${link.url})`);
+  }
+  
+  return processed;
 }
 
 /**
@@ -455,38 +443,8 @@ function cleanMarkdownText(text: string): string {
   // Clean up extra whitespace
   text = text.replace(/\n{3,}/g, "\n\n");
   
-  // Restore links first (they're already in markdown format)
-  links.forEach((link) => {
-    const placeholderRegex = new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-    text = text.replace(placeholderRegex, `[${link.text}](${link.url})`);
-  });
-  
-  // Also check for any remaining LINKPLACEHOLDER patterns (case-insensitive)
-  // This handles cases where placeholders weren't properly restored
-  // Check both __LINK_PLACEHOLDER_X__ and LINKPLACEHOLDERX formats
-  text = text.replace(/__LINK_PLACEHOLDER_(\d+)__/gi, (match, index) => {
-    const linkIndex = parseInt(index, 10);
-    const link = links[linkIndex];
-    if (link) {
-      return `[${link.text}](${link.url})`;
-    }
-    return match; // Return original if link not found
-  });
-  
-  text = text.replace(/LINKPLACEHOLDER(\d+)/gi, (match, index) => {
-    const linkIndex = parseInt(index, 10);
-    const link = links[linkIndex];
-    if (link) {
-      return `[${link.text}](${link.url})`;
-    }
-    return match; // Return original if link not found
-  });
-  
-  // Don't escape markdown - links are already in correct format for Telegram
-  // Only escape if there are no links (to avoid breaking link syntax)
-  if (links.length === 0) {
-    text = escapeMarkdown(text);
-  }
+  // Preserve existing markdown links
+  text = escapeMarkdownButPreserveLinks(text);
   
   return text;
 }
