@@ -234,7 +234,7 @@ function formatFieldValue(value: string): string {
   
   // Remove __underline__ (Telegram doesn't support underline)
   // But preserve our temporary link placeholders
-  value = value.replace(/__(?!TEMP_LINK_|LINK_PLACEHOLDER_|EXISTING_LINK_)([^_]+)__/g, "$1");
+  value = value.replace(/__(?!TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_)([^_]+)__/g, "$1");
 
   // Convert usernames to clickable links in Telegram
   // Match patterns like: "Handle: @username", "Farcaster: @username", "Username: @username"
@@ -424,7 +424,7 @@ function cleanMarkdownText(text: string): string {
   
   // Remove __underline__
   // But preserve our temporary link placeholders
-  text = text.replace(/__(?!TEMP_LINK_|LINK_PLACEHOLDER_)([^_]+)__/g, "$1");
+  text = text.replace(/__(?!TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_)([^_]+)__/g, "$1");
   
   // Convert usernames to clickable links
   const { buildFarcasterProfileUrl } = require("../../../utils/farcasterLinks");
@@ -496,16 +496,31 @@ function escapeMarkdown(text: string): string {
   // Telegram uses * for bold, _ for italic, ` for code, [](url) for links
   // We need to escape these if they're not part of a link
   // But preserve our temporary link placeholders
-  // First, temporarily replace placeholders
+  // First, temporarily replace placeholders with a unique marker that won't be escaped
   const placeholderRegex = /__TEMP_LINK_\d+__/g;
-  const placeholders: string[] = [];
+  const placeholders: Array<{ original: string; temp: string }> = [];
   let placeholderIndex = 0;
-  let processed = text.replace(placeholderRegex, (match) => {
-    const tempPlaceholder = `__PLACEHOLDER_${placeholderIndex}__`;
-    placeholders.push(match);
+  
+  // Find all placeholders and replace them (from end to start to preserve indices)
+  let processed = text;
+  const tempPlaceholderRegex = /__TEMP_LINK_(\d+)__/g;
+  const matches: Array<{ original: string; temp: string; index: number }> = [];
+  
+  // Find all matches first
+  let match;
+  while ((match = tempPlaceholderRegex.exec(text)) !== null) {
+    const original = match[0];
+    const tempPlaceholder = `__TEMP_PLACEHOLDER_${placeholderIndex}__`;
+    matches.push({ original, temp: tempPlaceholder, index: match.index });
+    placeholders.push({ original, temp: tempPlaceholder });
     placeholderIndex++;
-    return tempPlaceholder;
-  });
+  }
+  
+  // Replace from end to start
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const { original, temp, index } = matches[i];
+    processed = processed.substring(0, index) + temp + processed.substring(index + original.length);
+  }
   
   // Escape markdown
   processed = processed
@@ -514,9 +529,12 @@ function escapeMarkdown(text: string): string {
     .replace(/`/g, "\\`");
   
   // Restore placeholders (they don't need escaping)
-  placeholders.forEach((placeholder, index) => {
-    processed = processed.replace(`__PLACEHOLDER_${index}__`, placeholder);
-  });
+  // Restore in reverse order to preserve indices
+  for (let i = placeholders.length - 1; i >= 0; i--) {
+    const { original, temp } = placeholders[i];
+    const tempRegex = new RegExp(temp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    processed = processed.replace(tempRegex, original);
+  }
   
   return processed;
 }
