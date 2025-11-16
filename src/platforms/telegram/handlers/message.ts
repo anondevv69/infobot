@@ -403,6 +403,45 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           return;
         }
 
+        // Check for Base network tokens FIRST (like Discord does)
+        if (isEthAddress(address)) {
+          const { fetchBaseTokenData } = await import("../../../services/dexscreener");
+          const { detectTokenFactory } = await import("../../../services/baseFactories");
+          const { buildBaseTokenEmbed } = await import("../../../utils/baseTokenEmbeds");
+          const { embedsToTelegram } = await import("../adapters/telegramAdapter");
+          
+          const { getContractCreation } = await import("../../../services/basescan");
+          
+          const [baseTokenData, factory, contractCreation] = await Promise.all([
+            fetchBaseTokenData(address),
+            detectTokenFactory(address),
+            getContractCreation(address).catch(() => null),
+          ]);
+
+          if (baseTokenData) {
+            const { embed } = await buildBaseTokenEmbed(
+              address,
+              null, // Token name
+              null, // Token symbol
+              baseTokenData,
+              factory,
+              contractCreation?.contractCreator ?? null,
+            );
+
+            const factoryName = factory ? ` (${factory.name})` : "";
+            const messages = embedsToTelegram([embed]);
+            await bot.sendMessage(chatId, `Base token detected${factoryName} for <code>${address}</code>.`, {
+              parse_mode: "HTML",
+              disable_web_page_preview: true,
+            });
+            await bot.sendMessage(chatId, messages[0], {
+              parse_mode: "HTML",
+              disable_web_page_preview: true,
+            });
+            return;
+          }
+        }
+
         // Try Clanker tokens
         const { fetchTokensByAddress } = await import("../../../services/clanker");
         const clankerTokens = await fetchTokensByAddress(address);

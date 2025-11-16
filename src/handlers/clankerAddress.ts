@@ -31,6 +31,7 @@ import { buildZoraCoinResponse } from "../handlers/zoraAddress";
 import { detectTokenFactory } from "../services/baseFactories";
 import { buildBaseTokenEmbed } from "../utils/baseTokenEmbeds";
 import { fetchBaseTokenData } from "../services/dexscreener";
+import { getContractCreation } from "../services/basescan";
 import { splitEmbedIntoPages, buildPaginationButtons } from "../utils/pagination";
 import { storeEmbedForPagination } from "../handlers/pagination";
 import { addProfileSection, appendWalletFields, formatRecentCastSummary, getClankerDisplayEntries, formatClankerTokenDetails } from "../utils/clankerEmbeds";
@@ -279,18 +280,20 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
   if (directClankerMatches.length === 0) {
     // Check for Base network tokens (Rainbow, ApeStore, Fey, etc.)
     if (isEthAddress(address)) {
-      const [baseTokenData, factory] = await Promise.all([
+      const [baseTokenData, factory, contractCreation] = await Promise.all([
         fetchBaseTokenData(address),
         detectTokenFactory(address),
+        getContractCreation(address).catch(() => null),
       ]);
 
       if (baseTokenData) {
-        const { embed, components } = buildBaseTokenEmbed(
+        const { embed, components } = await buildBaseTokenEmbed(
           address,
           null, // Token name - could be fetched from ERC20 contract
           null, // Token symbol - could be fetched from ERC20 contract
           baseTokenData,
           factory,
+          contractCreation?.contractCreator ?? null,
         );
 
         const factoryName = factory ? ` (${factory.name})` : "";

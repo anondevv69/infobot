@@ -7,6 +7,7 @@ import {
 import { TokenMetrics } from "../services/dexscreener";
 import { BaseFactory } from "../services/baseFactories";
 import { applyBranding } from "./branding";
+import { getContractCreation } from "../services/basescan";
 
 function formatCurrency(value?: number | null): string {
   if (value == null) return "N/A";
@@ -22,16 +23,17 @@ function formatPercentage(value?: number | null): string {
   return `${sign}${value.toFixed(2)}%`;
 }
 
-export function buildBaseTokenEmbed(
+export async function buildBaseTokenEmbed(
   contractAddress: string,
   tokenName?: string | null,
   tokenSymbol?: string | null,
   metrics?: TokenMetrics | null,
   factory?: BaseFactory | null,
-): {
+  creatorAddress?: string | null,
+): Promise<{
   embed: EmbedBuilder;
   components: ActionRowBuilder<ButtonBuilder>[];
-} {
+}> {
   const title = tokenSymbol && tokenName
     ? `${tokenSymbol} • ${tokenName}`
     : tokenName ?? tokenSymbol ?? "Base Token";
@@ -99,6 +101,15 @@ export function buildBaseTokenEmbed(
     embed.addFields({
       name: "Factory",
       value: `🏭 ${factory.name}`,
+      inline: false,
+    });
+  }
+
+  // Creator Address (if available)
+  if (creatorAddress) {
+    embed.addFields({
+      name: "Creator",
+      value: `\`\`\`\n${creatorAddress}\n\`\`\``,
       inline: false,
     });
   }
