@@ -65,9 +65,15 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         // Only use Basescan API for Base tokens that are NOT Zora/Clanker
         
         // Try Clanker first (build all pages)
-        const clankerSent = await sendClankerTokenPages(bot, chatId, address);
-        if (clankerSent) {
-          return;
+        // IMPORTANT: Clanker tokens are also Base tokens, so we must check Clanker BEFORE Base tokens
+        try {
+          const clankerSent = await sendClankerTokenPages(bot, chatId, address);
+          if (clankerSent) {
+            return; // Found Clanker token, don't check Base tokens
+          }
+        } catch (error) {
+          console.error("Error checking Clanker tokens:", error);
+          // Continue to other checks if Clanker check fails
         }
 
         // Try Zora
