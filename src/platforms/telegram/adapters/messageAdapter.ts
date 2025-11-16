@@ -85,25 +85,21 @@ function finalCleanup(text: string): string {
   if (!text) return "";
   
   // Remove any leftover placeholders (they should have been restored by now)
-  text = text.replace(/__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_)\d+__/gi, "");
+  // Check for all possible placeholder formats
+  text = text.replace(/__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_|TELEGRAM_LINK_)\d+__/gi, "");
+  
+  // Also check for placeholders without underscores (just in case)
+  text = text.replace(/(?:TEMP_LINK|TEMP_PLACEHOLDER|LINK_PLACEHOLDER|EXISTING_LINK|PLACEHOLDER|TELEGRAM_LINK)\d+/gi, "");
   
   // Remove triple or more asterisks (*** or more)
   text = text.replace(/\*{3,}/g, "");
   
-  // Remove any standalone backticks that aren't part of code blocks
-  // Remove single backticks (not part of `` pairs)
-  // We'll preserve backticks that are in pairs (``code``)
-  // Simple approach: remove single backticks, but keep double backticks
-  // First, temporarily mark double backticks
-  text = text.replace(/``/g, "__DOUBLE_BACKTICK__");
-  // Remove all single backticks
+  // Remove any leftover backticks (we've already converted addresses to links)
+  // Remove all backticks - Telegram doesn't need them since addresses are now links
   text = text.replace(/`/g, "");
-  // Restore double backticks (but we don't want them either, so just leave them removed)
-  text = text.replace(/__DOUBLE_BACKTICK__/g, "");
   
-  // Remove any escaped markdown that shouldn't be escaped (like \* \_ \`)
-  // But keep them if they're actually needed for Telegram
-  // Actually, we should keep escaped markdown as-is since Telegram needs it
+  // Remove any escaped backticks that are now unnecessary
+  text = text.replace(/\\`/g, "");
   
   // Remove any double spaces
   text = text.replace(/  +/g, " ");
@@ -113,6 +109,9 @@ function finalCleanup(text: string): string {
   
   // Clean up multiple newlines (max 2)
   text = text.replace(/\n{3,}/g, "\n\n");
+  
+  // Remove any lines that only contain placeholders or artifacts
+  text = text.replace(/^.*__(?:TEMP_|PLACEHOLDER_|LINK_).*$/gm, "");
   
   return text.trim();
 }
