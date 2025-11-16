@@ -29,33 +29,33 @@ export async function handleTelegramCommand(
     switch (command) {
       case "start":
       case "help": {
-        const helpText = `*InfoBot Commands*
+        const helpText = `<b>InfoBot Commands</b>
 
-*Search Commands:*
-/search <query> - Search wallets, contracts, Farcaster profiles, or Zora accounts
-/zora <query> - Search Zora accounts, contracts, or creator coins
-/clanker <query> - Search Clanker deployments
-/casts <keyword> - Search Farcaster casts by keyword
+<b>Search Commands:</b>
+<code>/search &lt;query&gt;</code> - Search wallets, contracts, Farcaster profiles, or Zora accounts
+<code>/zora &lt;query&gt;</code> - Search Zora accounts, contracts, or creator coins
+<code>/clanker &lt;query&gt;</code> - Search Clanker deployments
+<code>/casts &lt;keyword&gt;</code> - Search Farcaster casts by keyword
 
-*Auto-Detection:*
+<b>Auto-Detection:</b>
 Just send:
 • Ethereum address (0x...) - Auto-detects Clanker, Zora, or wallet
 • Farcaster username (@username) - Looks up profile
 • Zora URL - Looks up Zora profile/coin
 
-*Examples:*
-/search 0x1234...
-/zora @username
-/clanker tokenname
+<b>Examples:</b>
+<code>/search 0x1234...</code>
+<code>/zora @username</code>
+<code>/clanker tokenname</code>
 
-Built by rayblanco.eth`;
-        await bot.sendMessage(chatId, helpText, { parse_mode: "Markdown" });
+<i>Built by rayblanco.eth</i>`;
+        await bot.sendMessage(chatId, helpText, { parse_mode: "HTML" });
         break;
       }
 
       case "search": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a search query.\n\nUsage: `/search <query>`\nExample: `/search 0x1234...` or `/search @username`", { parse_mode: "Markdown" });
+          await bot.sendMessage(chatId, "Please provide a search query.\n\nUsage: <code>/search &lt;query&gt;</code>\nExample: <code>/search 0x1234...</code> or <code>/search @username</code>", { parse_mode: "HTML" });
           return;
         }
         
@@ -68,7 +68,7 @@ Built by rayblanco.eth`;
 
       case "zora": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a Zora query.\n\nUsage: `/zora <query>`\nExample: `/zora @username` or `/zora 0x1234...`", { parse_mode: "Markdown" });
+          await bot.sendMessage(chatId, "Please provide a Zora query.\n\nUsage: <code>/zora &lt;query&gt;</code>\nExample: <code>/zora @username</code> or <code>/zora 0x1234...</code>", { parse_mode: "HTML" });
           return;
         }
         
@@ -81,7 +81,7 @@ Built by rayblanco.eth`;
 
       case "clanker": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a Clanker query.\n\nUsage: `/clanker <query>`\nExample: `/clanker tokenname` or `/clanker 0x1234...`", { parse_mode: "Markdown" });
+          await bot.sendMessage(chatId, "Please provide a Clanker query.\n\nUsage: <code>/clanker &lt;query&gt;</code>\nExample: <code>/clanker tokenname</code> or <code>/clanker 0x1234...</code>", { parse_mode: "HTML" });
           return;
         }
         
@@ -94,7 +94,7 @@ Built by rayblanco.eth`;
 
       case "casts": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a keyword to search for casts.\n\nUsage: `/casts <keyword>`\nExample: `/casts base`", { parse_mode: "Markdown" });
+          await bot.sendMessage(chatId, "Please provide a keyword to search for casts.\n\nUsage: <code>/casts &lt;keyword&gt;</code>\nExample: <code>/casts base</code>", { parse_mode: "HTML" });
           return;
         }
         

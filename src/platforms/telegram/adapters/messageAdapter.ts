@@ -48,44 +48,54 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
 
   // Description (if present)
   if (data.description) {
-    const desc = cleanMarkdownText(data.description);
-    if (desc.trim()) {
-      // Convert markdown links to HTML first
-      let htmlDesc = markdownLinkToHtml(desc);
-      
-      // Escape text parts but preserve HTML tags
-      // Split by HTML tags, escape text, keep HTML
-      const htmlTagRegex = /<[^>]+>/g;
-      const descParts: Array<{ type: 'text' | 'html'; content: string }> = [];
-      let lastIndex = 0;
-      let match;
-      
-      while ((match = htmlTagRegex.exec(htmlDesc)) !== null) {
-        // Add text before tag
-        if (match.index > lastIndex) {
-          const textPart = htmlDesc.substring(lastIndex, match.index);
-          if (textPart) {
-            descParts.push({ type: 'text', content: textPart });
-          }
-        }
-        // Add HTML tag as-is
-        descParts.push({ type: 'html', content: match[0] });
-        lastIndex = match.index + match[0].length;
-      }
-      
-      // Add remaining text
-      if (lastIndex < htmlDesc.length) {
-        const textPart = htmlDesc.substring(lastIndex);
+    let desc = data.description;
+    
+    // Convert markdown italic _text_ to HTML <i>text</i>
+    desc = desc.replace(/_([^_]+)_/g, '<i>$1</i>');
+    
+    // Convert markdown bold **text** to HTML <b>text</b>
+    desc = desc.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+    
+    // Remove code blocks and backticks (we'll handle addresses separately)
+    desc = desc.replace(/```/g, "");
+    desc = desc.replace(/`/g, "");
+    
+    // Convert markdown links to HTML
+    desc = markdownLinkToHtml(desc);
+    
+    // Escape text parts but preserve HTML tags
+    const htmlTagRegex = /<[^>]+>/g;
+    const descParts: Array<{ type: 'text' | 'html'; content: string }> = [];
+    let lastIndex = 0;
+    let match;
+    
+    while ((match = htmlTagRegex.exec(desc)) !== null) {
+      // Add text before tag
+      if (match.index > lastIndex) {
+        const textPart = desc.substring(lastIndex, match.index);
         if (textPart) {
           descParts.push({ type: 'text', content: textPart });
         }
       }
-      
-      // Escape text parts, keep HTML parts
-      htmlDesc = descParts.map(part => 
-        part.type === 'html' ? part.content : escapeHtml(part.content)
-      ).join('');
-      
+      // Add HTML tag as-is
+      descParts.push({ type: 'html', content: match[0] });
+      lastIndex = match.index + match[0].length;
+    }
+    
+    // Add remaining text
+    if (lastIndex < desc.length) {
+      const textPart = desc.substring(lastIndex);
+      if (textPart) {
+        descParts.push({ type: 'text', content: textPart });
+      }
+    }
+    
+    // Escape text parts, keep HTML parts
+    const htmlDesc = descParts.map(part => 
+      part.type === 'html' ? part.content : escapeHtml(part.content)
+    ).join('');
+    
+    if (htmlDesc.trim()) {
       parts.push(htmlDesc);
     }
   }
@@ -118,7 +128,7 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
       }
 
       if (field.value) {
-        const value = formatFieldValueForHtml(field.value);
+        const value = formatFieldValueForHtml(field.value, field.name);
         if (value.trim()) {
           parts.push(value);
         }
@@ -197,21 +207,34 @@ function finalCleanup(text: string): string {
  * Format field value for Telegram HTML - handle code blocks, links, etc.
  * NO PLACEHOLDERS - format everything directly
  */
-function formatFieldValueForHtml(value: string): string {
+function formatFieldValueForHtml(value: string, fieldName?: string): string {
   if (!value) return "";
+  
+  // Convert markdown italic _text_ to HTML <i>text</i> (but not in code blocks)
+  // Do this before processing code blocks
+  value = value.replace(/(?<!`)_(?!`)([^_]+)(?<!`)_(?!`)/g, '<i>$1</i>');
+  
+  // Convert markdown bold **text** to HTML <b>text</b>
+  value = value.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
   
   // Convert markdown links to HTML first
   value = markdownLinkToHtml(value);
   
   // Handle code blocks (```address```) - convert addresses/contracts to clickable links
+  // Check if we're in a "Contract" field to determine if it's a Clanker contract
+  const isContractField = fieldName ? /Contract/i.test(fieldName) : /Contract/i.test(value);
+  
   value = value.replace(/```([^`]+)```/g, (match, content) => {
     const lines = content.trim().split("\n");
     return lines.map((line: string) => {
       const trimmed = line.trim();
       // Check if it's an Ethereum address/contract
       if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
-        const basescanUrl = `https://basescan.org/address/${trimmed}`;
-        return `<a href="${basescanUrl}">${escapeHtml(trimmed)}</a>`;
+        // If it's in a Contract field, link to Clanker, otherwise Basescan
+        const url = isContractField 
+          ? `https://www.clanker.world/clanker/${trimmed}`
+          : `https://basescan.org/address/${trimmed}`;
+        return `<a href="${url}">${escapeHtml(trimmed)}</a>`;
       }
       // Check if it's a Solana address
       if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(trimmed)) {
@@ -228,8 +251,11 @@ function formatFieldValueForHtml(value: string): string {
     const trimmed = content.trim();
     // Check if it's an Ethereum address/contract
     if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
-      const basescanUrl = `https://basescan.org/address/${trimmed}`;
-      return `<a href="${basescanUrl}">${escapeHtml(trimmed)}</a>`;
+      // If it's in a Contract field, link to Clanker, otherwise Basescan
+      const url = isContractField 
+        ? `https://www.clanker.world/clanker/${trimmed}`
+        : `https://basescan.org/address/${trimmed}`;
+      return `<a href="${url}">${escapeHtml(trimmed)}</a>`;
     }
     // Check if it's a Solana address
     if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(trimmed)) {
@@ -241,8 +267,9 @@ function formatFieldValueForHtml(value: string): string {
   });
   
   // Convert plain addresses (not in links) to clickable links
+  // Check if it's a Clanker contract or Zora contract and link appropriately
   const ethAddressRegex = /\b(0x[a-fA-F0-9]{40})\b/gi;
-  const ethMatches: Array<{ address: string; index: number }> = [];
+  const ethMatches: Array<{ address: string; index: number; isContract?: boolean }> = [];
   let ethMatch;
   let originalValue = value;
   
@@ -260,17 +287,33 @@ function formatFieldValueForHtml(value: string): string {
       continue;
     }
     
+    // Check if this address appears in a "Contract" field - if so, it's likely a Clanker contract
+    const isContract = /Contract/i.test(before) || /Contract/i.test(after);
+    
     ethMatches.push({
       address: ethMatch[1],
       index: ethMatch.index,
+      isContract,
     });
   }
   
   // Replace from end to start to preserve indices
   for (let i = ethMatches.length - 1; i >= 0; i--) {
-    const { address, index } = ethMatches[i];
-    const basescanUrl = `https://basescan.org/address/${address}`;
-    value = value.substring(0, index) + `<a href="${basescanUrl}">${escapeHtml(address)}</a>` + value.substring(index + address.length);
+    const { address, index, isContract } = ethMatches[i];
+    
+    // If it's a contract, try to link to Clanker first, then Zora, then Basescan
+    let url: string;
+    if (isContract) {
+      // Try Clanker first
+      url = `https://www.clanker.world/clanker/${address}`;
+      // Note: We can't check if it's actually a Clanker contract here without API call
+      // So we'll use Clanker URL for contracts, Basescan for wallets
+    } else {
+      // Regular wallet address - link to Basescan
+      url = `https://basescan.org/address/${address}`;
+    }
+    
+    value = value.substring(0, index) + `<a href="${url}">${escapeHtml(address)}</a>` + value.substring(index + address.length);
   }
   
   // Convert Solana addresses
@@ -919,39 +962,11 @@ function escapeMarkdownButPreserveLinks(text: string): string {
 }
 
 /**
- * Clean markdown text - remove unnecessary formatting
+ * Clean markdown text for HTML - remove markdown formatting, keep links
+ * NO ESCAPING - we're using HTML mode, so just clean up markdown syntax
  */
 function cleanMarkdownText(text: string): string {
   if (!text) return "";
-  
-  // Preserve links first
-  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-  const links: Array<{ full: string; text: string; url: string; placeholder: string }> = [];
-  let linkMatch2;
-  let linkIndex = 0;
-  const seenLinks = new Map<string, number>();
-  
-  let tempText = text;
-  while ((linkMatch2 = linkRegex.exec(text)) !== null) {
-    const fullMatch = linkMatch2[0];
-    const linkText = linkMatch2[1];
-    const linkUrl = linkMatch2[2];
-    const linkKey = `${linkText}|${linkUrl}`;
-    
-    if (!seenLinks.has(linkKey)) {
-      const placeholder = `__LINK_PLACEHOLDER_${linkIndex}__`;
-      seenLinks.set(linkKey, linkIndex);
-      links.push({
-        full: fullMatch,
-        text: linkText,
-        url: linkUrl,
-        placeholder,
-      });
-      tempText = tempText.replace(fullMatch, placeholder);
-      linkIndex++;
-    }
-  }
-  text = tempText;
   
   // Remove code block markers
   text = text.replace(/```/g, "");
@@ -959,83 +974,20 @@ function cleanMarkdownText(text: string): string {
   // Remove backticks
   text = text.replace(/`/g, "");
   
-  // Convert **bold** to *bold* (Telegram uses single asterisk)
-  text = text.replace(/\*\*([^*]+)\*\*/g, "*$1*");
+  // Remove **bold** markdown (we'll use HTML <b> instead)
+  text = text.replace(/\*\*([^*]+)\*\*/g, "$1");
   
-  // Remove __underline__
-  // But preserve our temporary link placeholders
-  text = text.replace(/__(?!TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_)([^_]+)__/g, "$1");
+  // Remove __underline__ markdown
+  text = text.replace(/__([^_]+)__/g, "$1");
   
-  // Convert usernames to clickable links
-  const { buildFarcasterProfileUrl } = require("../../../utils/farcasterLinks");
-  
-  // Convert labeled usernames
-  text = text.replace(/(Handle|Farcaster|Username):\s*@([a-zA-Z0-9_]+)/g, (match, label, username) => {
-    const url = buildFarcasterProfileUrl(username);
-    return `${label}: [${username}](${url})`;
-  });
-  
-  // Convert standalone @username patterns
-  let processedText = text;
-  const usernameRegex = /@([a-zA-Z0-9_]+)/g;
-  const usernameMatches: Array<{ match: string; username: string; offset: number }> = [];
-  
-  while ((linkMatch2 = usernameRegex.exec(text)) !== null) {
-    const before = text.substring(0, linkMatch2.index);
-    const after = text.substring(linkMatch2.index + linkMatch2[0].length);
-    
-    // Skip if it's in a URL
-    if (/https?:\/\/[^\s]*$/.test(before)) {
-      continue;
-    }
-    
-    // Skip if it's already in a markdown link
-    const linkStart = before.lastIndexOf('[');
-    const linkEnd = after.indexOf('](');
-    if (linkStart !== -1 && linkEnd !== -1) {
-      const between = before.substring(linkStart);
-      if (!between.includes(']')) {
-        continue;
-      }
-    }
-    
-    // Skip if it's part of a label we already processed
-    if (/(Handle|Farcaster|Username):\s*\[/.test(before)) {
-      continue;
-    }
-    
-    usernameMatches.push({
-      match: linkMatch2[0],
-      username: linkMatch2[1],
-      offset: linkMatch2.index,
-    });
-  }
-  
-  // Replace from end to start
-  for (let i = usernameMatches.length - 1; i >= 0; i--) {
-    const { match: matchStr, username, offset } = usernameMatches[i];
-    const url = buildFarcasterProfileUrl(username);
-    processedText = processedText.substring(0, offset) + `[${username}](${url})` + processedText.substring(offset + matchStr.length);
-  }
-  
-  text = processedText;
+  // Remove single * and _ (markdown emphasis)
+  text = text.replace(/\*([^*]+)\*/g, "$1");
+  text = text.replace(/_([^_]+)_/g, "$1");
   
   // Clean up extra whitespace
   text = text.replace(/\n{3,}/g, "\n\n");
   
-  // Preserve existing markdown links
-  text = escapeMarkdownButPreserveLinks(text);
-  
-  // Final cleanup: ensure no placeholders remain
-  text = text.replace(/__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_)\d+__/gi, "");
-  
-  // Remove triple asterisks
-  text = text.replace(/\*{3,}/g, "");
-  
-  // Remove any leftover backticks (Telegram doesn't need them)
-  text = text.replace(/`/g, "");
-  
-  return text;
+  return text.trim();
 }
 
 /**
