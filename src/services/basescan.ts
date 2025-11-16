@@ -14,13 +14,48 @@ export interface ContractCreation {
 /**
  * Get contract creation information from Basescan API
  * Returns the creator address and transaction hash
+ * Uses the transaction list to find the contract creation transaction
  */
 export async function getContractCreation(
   contractAddress: string,
 ): Promise<ContractCreation | null> {
   try {
-    // Basescan API endpoint for contract creation
-    // Note: This is a free endpoint that doesn't require an API key
+    // Method 1: Try to get the contract creation transaction
+    // Get the first transaction for this contract (which should be the creation transaction)
+    const txListUrl = `${BASESCAN_API_BASE}?module=account&action=txlist&address=${contractAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc`;
+    
+    const txResponse = await fetch(txListUrl, {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (txResponse.ok) {
+      const txData = (await txResponse.json()) as {
+        status?: string;
+        message?: string;
+        result?: Array<{
+          hash: string;
+          from: string;
+          to: string;
+          contractAddress?: string;
+        }>;
+      };
+
+      if (txData.status === "1" && txData.result && txData.result.length > 0) {
+        const firstTx = txData.result[0];
+        // If the "to" field is empty, it's a contract creation transaction
+        if (!firstTx.to || firstTx.to === "" || firstTx.contractAddress?.toLowerCase() === contractAddress.toLowerCase()) {
+          return {
+            contractAddress: contractAddress,
+            contractCreator: firstTx.from,
+            txHash: firstTx.hash,
+          };
+        }
+      }
+    }
+
+    // Method 2: Try the contract creation endpoint (may be deprecated but worth trying)
     const url = `${BASESCAN_API_BASE}?module=contract&action=getcontractcreation&contractaddresses=${contractAddress}`;
     
     const response = await fetch(url, {
@@ -29,33 +64,28 @@ export async function getContractCreation(
       },
     });
 
-    if (!response.ok) {
-      console.warn(
-        `Basescan API error (${response.status}): ${response.statusText}`,
-      );
-      return null;
+    if (response.ok) {
+      const data = (await response.json()) as {
+        status?: string;
+        message?: string;
+        result?: Array<{
+          contractAddress: string;
+          contractCreator: string;
+          txHash: string;
+        }>;
+      };
+
+      if (data.status === "1" && data.result && data.result.length > 0) {
+        const result = data.result[0];
+        return {
+          contractAddress: result.contractAddress,
+          contractCreator: result.contractCreator,
+          txHash: result.txHash,
+        };
+      }
     }
 
-    const data = (await response.json()) as {
-      status?: string;
-      message?: string;
-      result?: Array<{
-        contractAddress: string;
-        contractCreator: string;
-        txHash: string;
-      }>;
-    };
-
-    if (data.status !== "1" || !data.result || data.result.length === 0) {
-      return null;
-    }
-
-    const result = data.result[0];
-    return {
-      contractAddress: result.contractAddress,
-      contractCreator: result.contractCreator,
-      txHash: result.txHash,
-    };
+    return null;
   } catch (error) {
     console.error("Failed to fetch contract creation from Basescan:", error);
     return null;
