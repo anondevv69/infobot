@@ -20,6 +20,7 @@ export const env = {
   zoraApiKey: process.env.ZORA_API_KEY,
   bitqueryApiKey: process.env.BITQUERY_API_KEY,
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
+  basescanApiKey: process.env.BASESCAN_API_KEY, // Optional: for better rate limits
   farcasterReferralCode: process.env.FARCASTER_REFERRAL_CODE ?? "2ORGMS",
   brandName: process.env.BRAND_NAME ?? "InfoBot",
   brandIconUrl:

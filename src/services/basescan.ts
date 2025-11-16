@@ -3,7 +3,12 @@
  * Used to get contract creation information
  */
 
+import { env } from "../config";
+
 const BASESCAN_API_BASE = "https://api.basescan.org/api";
+
+// Cache creator addresses (they never change once a contract is deployed)
+const creatorCache = new Map<string, ContractCreation>();
 
 export interface ContractCreation {
   contractAddress: string;
@@ -20,9 +25,20 @@ export async function getContractCreation(
   contractAddress: string,
 ): Promise<ContractCreation | null> {
   try {
+    const normalizedAddress = contractAddress.toLowerCase();
+    
+    // Check cache first (creator addresses never change)
+    const cached = creatorCache.get(normalizedAddress);
+    if (cached) {
+      return cached;
+    }
+
+    // Build API key parameter (optional, but improves rate limits)
+    const apiKeyParam = env.basescanApiKey ? `&apikey=${env.basescanApiKey}` : "";
+
     // Method 1: Try to get the contract creation transaction
     // Get the first transaction for this contract (which should be the creation transaction)
-    const txListUrl = `${BASESCAN_API_BASE}?module=account&action=txlist&address=${contractAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc`;
+    const txListUrl = `${BASESCAN_API_BASE}?module=account&action=txlist&address=${contractAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc${apiKeyParam}`;
     
     const txResponse = await fetch(txListUrl, {
       headers: {
@@ -45,18 +61,28 @@ export async function getContractCreation(
       if (txData.status === "1" && txData.result && txData.result.length > 0) {
         const firstTx = txData.result[0];
         // If the "to" field is empty, it's a contract creation transaction
-        if (!firstTx.to || firstTx.to === "" || firstTx.contractAddress?.toLowerCase() === contractAddress.toLowerCase()) {
-          return {
+        // Also check if contractAddress matches (for contracts created via factory)
+        const isContractCreation = 
+          !firstTx.to || 
+          firstTx.to === "" || 
+          firstTx.contractAddress?.toLowerCase() === normalizedAddress ||
+          firstTx.to.toLowerCase() === normalizedAddress;
+        
+        if (isContractCreation) {
+          const result = {
             contractAddress: contractAddress,
             contractCreator: firstTx.from,
             txHash: firstTx.hash,
           };
+          // Cache the result
+          creatorCache.set(normalizedAddress, result);
+          return result;
         }
       }
     }
 
     // Method 2: Try the contract creation endpoint (may be deprecated but worth trying)
-    const url = `${BASESCAN_API_BASE}?module=contract&action=getcontractcreation&contractaddresses=${contractAddress}`;
+    const url = `${BASESCAN_API_BASE}?module=contract&action=getcontractcreation&contractaddresses=${contractAddress}${apiKeyParam}`;
     
     const response = await fetch(url, {
       headers: {
@@ -76,12 +102,15 @@ export async function getContractCreation(
       };
 
       if (data.status === "1" && data.result && data.result.length > 0) {
-        const result = data.result[0];
-        return {
-          contractAddress: result.contractAddress,
-          contractCreator: result.contractCreator,
-          txHash: result.txHash,
+        const apiResult = data.result[0];
+        const result = {
+          contractAddress: apiResult.contractAddress,
+          contractCreator: apiResult.contractCreator,
+          txHash: apiResult.txHash,
         };
+        // Cache the result
+        creatorCache.set(normalizedAddress, result);
+        return result;
       }
     }
 
