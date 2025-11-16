@@ -403,7 +403,9 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
     .replace(/\n{3,}/g, "\n\n") // Max 2 newlines
     .replace(/^\s+|\s+$/gm, "") // Trim lines
     .replace(/^None$/gm, "") // Remove standalone "None" values
-    .replace(/\*None\*/g, ""); // Remove bold "None"
+    .replace(/\*None\*/g, "") // Remove bold "None"
+    .replace(/<b>None<\/b>/g, "") // Remove HTML bold "None"
+    .replace(/<i>None<\/i>/g, ""); // Remove HTML italic "None"
 
   // Escape any remaining text (but HTML tags are already in place)
   // We need to be careful - don't escape HTML tags
@@ -699,7 +701,9 @@ function formatFieldValue(value: string): string {
     .replace(/\n{3,}/g, "\n\n") // Max 2 newlines
     .replace(/^\s+|\s+$/gm, "") // Trim lines
     .replace(/^None$/gm, "") // Remove standalone "None" values
-    .replace(/\*None\*/g, ""); // Remove bold "None"
+    .replace(/\*None\*/g, "") // Remove bold "None"
+    .replace(/<b>None<\/b>/g, "") // Remove HTML bold "None"
+    .replace(/<i>None<\/i>/g, ""); // Remove HTML italic "None"
 
   // CRITICAL: Restore the original links we preserved at the start (BEFORE escaping)
   // This MUST happen before escapeMarkdownButPreserveLinks, otherwise the placeholders
