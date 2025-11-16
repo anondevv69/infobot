@@ -26,6 +26,11 @@ export async function buildClankerTokenPages(
     (token) => token.contract_address?.toLowerCase() === normalizedAddress,
   );
 
+  // Debug: Log if we found tokens but no direct match
+  if (tokens.length > 0 && directClankerMatches.length === 0) {
+    console.log(`[Clanker] Found ${tokens.length} tokens for ${address}, but no direct contract match`);
+  }
+
   if (directClankerMatches.length === 0) {
     return [];
   }
