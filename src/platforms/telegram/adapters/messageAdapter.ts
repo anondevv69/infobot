@@ -445,9 +445,34 @@ function formatFieldValue(value: string): string {
     }
   });
 
-  // CRITICAL: If we still have TEMP_PLACEHOLDER_X placeholders, they should have been restored to TEMP_LINK_X
-  // by escapeMarkdown, but if they weren't, we need to try to find the original link data
-  // Extract all markdown links from the value to see if we can match them
+  // CRITICAL: If we still have TEMP_PLACEHOLDER_X or EXISTING_LINK_X placeholders, 
+  // we need to restore them aggressively. The issue is that these placeholders might
+  // have been escaped or modified, so we need to try multiple approaches.
+  
+  // First, try to restore EXISTING_LINK placeholders one more time with very aggressive matching
+  const existingLinkPattern = /__EXISTING_LINK_(\d+)__/gi;
+  let existingLinkMatch;
+  while ((existingLinkMatch = existingLinkPattern.exec(value)) !== null) {
+    const index = parseInt(existingLinkMatch[1], 10);
+    if (index < existingLinks.length) {
+      const link = existingLinks[index];
+      // Replace this specific occurrence
+      value = value.replace(existingLinkMatch[0], `[${link.text}](${link.url})`);
+    }
+  }
+  
+  // Also try escaped versions
+  const escapedExistingLinkPattern = /\\_\\_EXISTING_LINK_(\d+)\\_\\_/gi;
+  let escapedExistingLinkMatch;
+  while ((escapedExistingLinkMatch = escapedExistingLinkPattern.exec(value)) !== null) {
+    const index = parseInt(escapedExistingLinkMatch[1], 10);
+    if (index < existingLinks.length) {
+      const link = existingLinks[index];
+      value = value.replace(escapedExistingLinkMatch[0], `[${link.text}](${link.url})`);
+    }
+  }
+  
+  // Extract all markdown links from the value to see if we can match TEMP_PLACEHOLDER indices
   const allLinksRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
   const allLinks: Array<{ text: string; url: string }> = [];
   let allLinksMatch;
@@ -455,22 +480,38 @@ function formatFieldValue(value: string): string {
     allLinks.push({ text: allLinksMatch[1], url: allLinksMatch[2] });
   }
   
-  // Try to restore TEMP_PLACEHOLDER_X by converting them back to TEMP_LINK_X first
-  // This is a fallback - ideally escapeMarkdown should have done this
-  value = value.replace(/__TEMP_PLACEHOLDER_(\d+)__/gi, (match, index) => {
+  // Try to restore TEMP_PLACEHOLDER_X - these should have been restored by escapeMarkdown
+  // but if they weren't, try to match them with links we've seen
+  const tempPlaceholderPattern = /__TEMP_PLACEHOLDER_(\d+)__/gi;
+  let tempPlaceholderMatch;
+  while ((tempPlaceholderMatch = tempPlaceholderPattern.exec(value)) !== null) {
+    const index = parseInt(tempPlaceholderMatch[1], 10);
     // Try to find a corresponding link - this is a best-effort fallback
-    const linkIndex = parseInt(index, 10);
-    if (linkIndex < allLinks.length) {
-      const link = allLinks[linkIndex];
-      return `[${link.text}](${link.url})`;
+    // The index might correspond to a link that was extracted by escapeMarkdownButPreserveLinks
+    // but we don't have access to that data here, so we'll try to match by position
+    if (index < allLinks.length) {
+      const link = allLinks[index];
+      value = value.replace(tempPlaceholderMatch[0], `[${link.text}](${link.url})`);
+    } else if (index < existingLinks.length) {
+      // Fallback to existingLinks
+      const link = existingLinks[index];
+      value = value.replace(tempPlaceholderMatch[0], `[${link.text}](${link.url})`);
     }
-    // If we can't find it, try to restore from existingLinks
-    if (linkIndex < existingLinks.length) {
-      const link = existingLinks[linkIndex];
-      return `[${link.text}](${link.url})`;
+  }
+  
+  // Also try escaped versions of TEMP_PLACEHOLDER
+  const escapedTempPlaceholderPattern = /\\_\\_TEMP_PLACEHOLDER_(\d+)\\_\\_/gi;
+  let escapedTempPlaceholderMatch;
+  while ((escapedTempPlaceholderMatch = escapedTempPlaceholderPattern.exec(value)) !== null) {
+    const index = parseInt(escapedTempPlaceholderMatch[1], 10);
+    if (index < allLinks.length) {
+      const link = allLinks[index];
+      value = value.replace(escapedTempPlaceholderMatch[0], `[${link.text}](${link.url})`);
+    } else if (index < existingLinks.length) {
+      const link = existingLinks[index];
+      value = value.replace(escapedTempPlaceholderMatch[0], `[${link.text}](${link.url})`);
     }
-    return match; // Keep original if we can't restore
-  });
+  }
 
   // Final cleanup: ensure no placeholders remain (only after all restoration attempts)
   // Also handle escaped versions - but ONLY if they're truly unrecoverable
@@ -747,22 +788,53 @@ function escapeMarkdown(text: string): string {
   
   // Restore placeholders (they don't need escaping)
   // Restore in reverse order to preserve indices
+  // CRITICAL: After escaping, underscores in placeholders become \_, so we need to handle that
   // Do this multiple times to ensure all are restored
-  for (let restoreAttempt = 0; restoreAttempt < 3; restoreAttempt++) {
+  for (let restoreAttempt = 0; restoreAttempt < 5; restoreAttempt++) {
+    let restoredAny = false;
     for (let i = placeholders.length - 1; i >= 0; i--) {
       const { original, temp } = placeholders[i];
       // Try multiple patterns to catch escaped placeholders
+      // The temp placeholder might be escaped as \_\_TEMP_PLACEHOLDER_X\_\_
       const patterns = [
+        // Normal (unescaped) version
         new RegExp(temp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
-        new RegExp(temp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/_/g, '\\_'), 'gi'),
+        // Fully escaped version (all underscores escaped)
+        new RegExp(temp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/_/g, '\\\\_'), 'gi'),
+        // Partially escaped (some underscores escaped)
+        new RegExp(temp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/__/g, '\\\\_\\\\_'), 'gi'),
       ];
       
       patterns.forEach((pattern) => {
+        const beforeReplace = processed;
         if (processed.includes(temp) || pattern.test(processed)) {
           processed = processed.replace(pattern, original);
+          if (processed !== beforeReplace) {
+            restoredAny = true;
+          }
         }
       });
     }
+    
+    // If we didn't restore anything in this attempt, break early
+    if (!restoredAny) {
+      break;
+    }
+  }
+  
+  // Final verification: if any TEMP_PLACEHOLDER placeholders remain, they were escaped
+  // Try one more aggressive pass to restore them
+  const remainingTempPlaceholders = processed.match(/\\?__TEMP_PLACEHOLDER_\d+\\?__/gi);
+  if (remainingTempPlaceholders && remainingTempPlaceholders.length > 0) {
+    // Try to restore them by matching with the original TEMP_LINK placeholders
+    placeholders.forEach(({ original, temp }) => {
+      // Try to find escaped versions of temp and restore to original
+      const escapedTemp = temp.replace(/_/g, '\\\\_');
+      const escapedPattern = new RegExp(escapedTemp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      if (escapedPattern.test(processed)) {
+        processed = processed.replace(escapedPattern, original);
+      }
+    });
   }
   
   return processed;
