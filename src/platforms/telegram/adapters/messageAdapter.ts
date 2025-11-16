@@ -72,7 +72,34 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
   // Join all parts and do final cleanup
   let finalMessage = parts.join("\n").trim();
   
-  // CRITICAL: Before final cleanup, ensure ALL placeholders are removed
+  // CRITICAL: Before final cleanup, try one last time to restore any placeholders
+  // Extract all links from the message to see if we can match placeholder indices
+  const allLinksInMessage: Array<{ text: string; url: string }> = [];
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  let linkMatch;
+  while ((linkMatch = linkRegex.exec(finalMessage)) !== null) {
+    allLinksInMessage.push({ text: linkMatch[1], url: linkMatch[2] });
+  }
+  
+  // Try to restore EXISTING_LINK placeholders by matching with stored links
+  // This is a last-ditch effort before removing them
+  const existingLinkPattern = /__EXISTING_LINK_(\d+)__/gi;
+  let existingLinkMatch;
+  const seenPlaceholders = new Set<string>();
+  while ((existingLinkMatch = existingLinkPattern.exec(finalMessage)) !== null) {
+    const placeholder = existingLinkMatch[0];
+    if (seenPlaceholders.has(placeholder)) continue;
+    seenPlaceholders.add(placeholder);
+    
+    const index = parseInt(existingLinkMatch[1], 10);
+    // Try to find a matching link - this is best-effort
+    if (index < allLinksInMessage.length) {
+      const link = allLinksInMessage[index];
+      finalMessage = finalMessage.replace(placeholder, `[${link.text}](${link.url})`);
+    }
+  }
+  
+  // CRITICAL: Before final cleanup, ensure ALL remaining placeholders are removed
   // This is a safety net - if any placeholders remain, they'll break Telegram formatting
   // Remove any remaining placeholders (they should have been restored by now)
   finalMessage = finalMessage.replace(/__[A-Z_]+_\d+__/gi, "");
