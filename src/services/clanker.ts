@@ -88,6 +88,26 @@ export async function fetchTokensByQuery(query: string): Promise<ClankerToken[]>
 export async function fetchTokensByAddress(
   address: string,
 ): Promise<ClankerToken[]> {
+  const normalizedAddress = address.toLowerCase();
+  
+  // First try direct contract address search (most reliable)
+  const contractUrl = new URL(`${CLANKER_API_BASE}/tokens`);
+  contractUrl.searchParams.set("contractAddress", normalizedAddress);
+  contractUrl.searchParams.set("limit", "10");
+  contractUrl.searchParams.set("includeUser", "true");
+  contractUrl.searchParams.set("includeMarket", "true");
+  const byContract = await executeClankerRequest(contractUrl);
+  if (byContract.length > 0) {
+    // Filter to ensure exact match
+    const exactMatches = byContract.filter(
+      (token) => token.contract_address?.toLowerCase() === normalizedAddress,
+    );
+    if (exactMatches.length > 0) {
+      return exactMatches;
+    }
+  }
+
+  // Fallback to query search
   const queryUrl = new URL(`${CLANKER_API_BASE}/tokens`);
   queryUrl.searchParams.set("q", address);
   queryUrl.searchParams.set("limit", "10");
@@ -95,15 +115,26 @@ export async function fetchTokensByAddress(
   queryUrl.searchParams.set("includeMarket", "true");
   const byQuery = await executeClankerRequest(queryUrl);
   if (byQuery.length > 0) {
-    return byQuery;
+    // Filter to ensure exact match
+    const exactMatches = byQuery.filter(
+      (token) => token.contract_address?.toLowerCase() === normalizedAddress,
+    );
+    if (exactMatches.length > 0) {
+      return exactMatches;
+    }
   }
 
+  // Last resort: try pair address
   const pairUrl = new URL(`${CLANKER_API_BASE}/tokens`);
   pairUrl.searchParams.set("pairAddress", address);
   pairUrl.searchParams.set("limit", "10");
   pairUrl.searchParams.set("includeUser", "true");
   pairUrl.searchParams.set("includeMarket", "true");
-  return executeClankerRequest(pairUrl);
+  const byPair = await executeClankerRequest(pairUrl);
+  // Filter to ensure exact match
+  return byPair.filter(
+    (token) => token.contract_address?.toLowerCase() === normalizedAddress,
+  );
 }
 
 export interface ClankerTokenSummary {
