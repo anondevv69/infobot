@@ -1,6 +1,74 @@
 import type { EmbedBuilder } from "discord.js";
 
 /**
+ * Escape Telegram Markdown special characters
+ * IMPORTANT: This escapes text content, but NOT markdown links [text](url)
+ * URLs in markdown links should NOT be escaped
+ */
+function escapeTelegramMarkdown(text: string): string {
+  if (!text) return "";
+  
+  // Escape all special characters that Telegram Markdown interprets
+  return text
+    .replace(/_/g, "\\_")
+    .replace(/\*/g, "\\*")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/~/g, "\\~")
+    .replace(/`/g, "\\`")
+    .replace(/>/g, "\\>")
+    .replace(/#/g, "\\#")
+    .replace(/\+/g, "\\+")
+    .replace(/-/g, "\\-")
+    .replace(/=/g, "\\=")
+    .replace(/\|/g, "\\|")
+    .replace(/\{/g, "\\{")
+    .replace(/\}/g, "\\}")
+    .replace(/\./g, "\\.")
+    .replace(/!/g, "\\!");
+}
+
+/**
+ * Escape text but preserve markdown links [text](url)
+ * This is the main function to use for Telegram messages
+ */
+function escapeTelegramButPreserveLinks(text: string): string {
+  if (!text) return "";
+  
+  // Extract all markdown links first
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const links: Array<{ full: string; text: string; url: string; placeholder: string }> = [];
+  let match;
+  let linkIndex = 0;
+  
+  while ((match = linkRegex.exec(text)) !== null) {
+    const placeholder = `__TELEGRAM_LINK_${linkIndex}__`;
+    links.push({
+      full: match[0],
+      text: match[1],
+      url: match[2], // URLs should NOT be escaped
+      placeholder,
+    });
+    text = text.replace(match[0], placeholder);
+    linkIndex++;
+  }
+  
+  // Escape the rest of the text
+  text = escapeTelegramMarkdown(text);
+  
+  // Restore links (text is escaped, but URL is not)
+  links.forEach((link) => {
+    // Escape the link text, but NOT the URL
+    const escapedText = escapeTelegramMarkdown(link.text);
+    text = text.replace(link.placeholder, `[${escapedText}](${link.url})`);
+  });
+  
+  return text;
+}
+
+/**
  * Convert Discord embed to Telegram message format
  * Clean, concise format matching Discord's appearance
  */
@@ -11,10 +79,17 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
   // Title - make it clickable if there's a URL
   if (data.title) {
     let title = cleanMarkdownText(data.title);
+    // Escape title text first
+    const escapedTitle = escapeTelegramMarkdown(title);
+    
     // If embed has a URL, make the title clickable
     if (data.url) {
-      title = `[${title}](${data.url})`;
+      // URL should NOT be escaped - Telegram handles URLs in markdown links
+      title = `[${escapedTitle}](${data.url})`;
+    } else {
+      title = escapedTitle;
     }
+    // Wrap in bold asterisks (these are markdown, not escaped)
     parts.push(`*${title}*`);
   }
 
@@ -22,7 +97,8 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
   if (data.description) {
     const desc = cleanMarkdownText(data.description);
     if (desc.trim()) {
-      parts.push(desc);
+      // Escape description but preserve any links
+      parts.push(escapeTelegramButPreserveLinks(desc));
     }
   }
 
@@ -49,14 +125,17 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
         const name = cleanMarkdownText(field.name);
         // Only show field name if there's actual content
         if (field.value && field.value.trim()) {
-          parts.push(`*${name}*`);
+          // Escape field name
+          const escapedName = escapeTelegramMarkdown(name);
+          parts.push(`*${escapedName}*`);
         }
       }
 
       if (field.value) {
         const value = formatFieldValue(field.value);
         if (value.trim()) {
-          parts.push(value);
+          // Escape field value but preserve links
+          parts.push(escapeTelegramButPreserveLinks(value));
         }
       }
     }
@@ -66,42 +145,16 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
   if (data.footer?.text) {
     parts.push("");
     const footer = cleanMarkdownText(data.footer.text);
-    parts.push(`_${footer}_`);
+    // Escape footer text, then wrap in italic underscores (these are markdown, not escaped)
+    const escapedFooter = escapeTelegramMarkdown(footer);
+    parts.push(`_${escapedFooter}_`);
   }
 
   // Join all parts and do final cleanup
   let finalMessage = parts.join("\n").trim();
   
-  // CRITICAL: Before final cleanup, try one last time to restore any placeholders
-  // Extract all links from the message to see if we can match placeholder indices
-  const allLinksInMessage: Array<{ text: string; url: string }> = [];
-  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-  let linkMatch;
-  while ((linkMatch = linkRegex.exec(finalMessage)) !== null) {
-    allLinksInMessage.push({ text: linkMatch[1], url: linkMatch[2] });
-  }
-  
-  // Try to restore EXISTING_LINK placeholders by matching with stored links
-  // This is a last-ditch effort before removing them
-  const existingLinkPattern = /__EXISTING_LINK_(\d+)__/gi;
-  let existingLinkMatch;
-  const seenPlaceholders = new Set<string>();
-  while ((existingLinkMatch = existingLinkPattern.exec(finalMessage)) !== null) {
-    const placeholder = existingLinkMatch[0];
-    if (seenPlaceholders.has(placeholder)) continue;
-    seenPlaceholders.add(placeholder);
-    
-    const index = parseInt(existingLinkMatch[1], 10);
-    // Try to find a matching link - this is best-effort
-    if (index < allLinksInMessage.length) {
-      const link = allLinksInMessage[index];
-      finalMessage = finalMessage.replace(placeholder, `[${link.text}](${link.url})`);
-    }
-  }
-  
-  // CRITICAL: Before final cleanup, ensure ALL remaining placeholders are removed
-  // This is a safety net - if any placeholders remain, they'll break Telegram formatting
-  // Remove any remaining placeholders (they should have been restored by now)
+  // CRITICAL: Remove ALL placeholders before sending
+  // Placeholders with underscores break Telegram Markdown
   finalMessage = finalMessage.replace(/__[A-Z_]+_\d+__/gi, "");
   
   // Final cleanup: remove any leftover placeholders, extra asterisks, backticks
