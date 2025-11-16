@@ -279,14 +279,20 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
 
   if (directClankerMatches.length === 0) {
     // Check for Base network tokens (Rainbow, ApeStore, Fey, etc.)
+    // ONLY if it's NOT a Zora coin and NOT a Clanker token
+    // We already checked for Zora coins above, and Clanker tokens are filtered out here
     if (isEthAddress(address)) {
-      const [baseTokenData, factory, contractCreation] = await Promise.all([
+      // First check if it's a Base token (using DexScreener - no rate limits)
+      const [baseTokenData, factory] = await Promise.all([
         fetchBaseTokenData(address),
         detectTokenFactory(address),
-        getContractCreation(address).catch(() => null),
       ]);
 
       if (baseTokenData) {
+        // Only fetch creator from Basescan if it's a Base token that's NOT Zora/Clanker
+        // This saves API calls since Zora/Clanker already have creator info
+        const contractCreation = await getContractCreation(address).catch(() => null);
+
         const { embed, components } = await buildBaseTokenEmbed(
           address,
           null, // Token name - could be fetched from ERC20 contract

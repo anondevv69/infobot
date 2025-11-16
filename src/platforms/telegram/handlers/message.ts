@@ -61,42 +61,9 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
     if (isEthAddress(text)) {
       const address = extractFirstAddress(text);
       if (address) {
-        // Check for Base network tokens FIRST (like Discord does)
-        const { fetchBaseTokenData } = await import("../../../services/dexscreener");
-        const { detectTokenFactory } = await import("../../../services/baseFactories");
-        const { buildBaseTokenEmbed } = await import("../../../utils/baseTokenEmbeds");
-        const { embedsToTelegram } = await import("../adapters/telegramAdapter");
-        const { getContractCreation } = await import("../../../services/basescan");
+        // Check Zora/Clanker FIRST (they have creator info, so we don't need Basescan API)
+        // Only use Basescan API for Base tokens that are NOT Zora/Clanker
         
-        const [baseTokenData, factory, contractCreation] = await Promise.all([
-          fetchBaseTokenData(address),
-          detectTokenFactory(address),
-          getContractCreation(address).catch(() => null),
-        ]);
-
-        if (baseTokenData) {
-          const { embed } = await buildBaseTokenEmbed(
-            address,
-            null, // Token name
-            null, // Token symbol
-            baseTokenData,
-            factory,
-            contractCreation?.contractCreator ?? null,
-          );
-
-          const factoryName = factory ? ` (${factory.name})` : "";
-          const messages = embedsToTelegram([embed]);
-          await bot.sendMessage(chatId, `Base token detected${factoryName} for <code>${address}</code>.`, {
-            parse_mode: "HTML",
-            disable_web_page_preview: true,
-          });
-          await bot.sendMessage(chatId, messages[0], {
-            parse_mode: "HTML",
-            disable_web_page_preview: true,
-          });
-          return;
-        }
-
         // Try Clanker first (build all pages)
         const clankerSent = await sendClankerTokenPages(bot, chatId, address);
         if (clankerSent) {
@@ -135,6 +102,47 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           
           const identifier = `zora_wallet_${address.toLowerCase()}`;
           await sendPaginatedTelegramMessage(bot, chatId, zoraResponse.embeds, identifier);
+          return;
+        }
+
+        // NOW check for Base network tokens (only if NOT Zora/Clanker)
+        // Only use Basescan API here since we've confirmed it's NOT Zora/Clanker
+        const { fetchBaseTokenData } = await import("../../../services/dexscreener");
+        const { detectTokenFactory } = await import("../../../services/baseFactories");
+        const { buildBaseTokenEmbed } = await import("../../../utils/baseTokenEmbeds");
+        const { embedsToTelegram } = await import("../adapters/telegramAdapter");
+        
+        // First check if it's a Base token (DexScreener - no rate limits)
+        const [baseTokenData, factory] = await Promise.all([
+          fetchBaseTokenData(address),
+          detectTokenFactory(address),
+        ]);
+
+        if (baseTokenData) {
+          // Only fetch creator from Basescan if it's a Base token that's NOT Zora/Clanker
+          // This saves API calls since Zora/Clanker already have creator info
+          const { getContractCreation } = await import("../../../services/basescan");
+          const contractCreation = await getContractCreation(address).catch(() => null);
+
+          const { embed } = await buildBaseTokenEmbed(
+            address,
+            null, // Token name
+            null, // Token symbol
+            baseTokenData,
+            factory,
+            contractCreation?.contractCreator ?? null,
+          );
+
+          const factoryName = factory ? ` (${factory.name})` : "";
+          const messages = embedsToTelegram([embed]);
+          await bot.sendMessage(chatId, `Base token detected${factoryName} for <code>${address}</code>.`, {
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          });
+          await bot.sendMessage(chatId, messages[0], {
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          });
           return;
         }
 
@@ -439,22 +447,25 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           return;
         }
 
-        // Check for Base network tokens FIRST (like Discord does)
+        // Check for Base network tokens (only if NOT Zora/Clanker to save Basescan API calls)
         if (isEthAddress(address)) {
           const { fetchBaseTokenData } = await import("../../../services/dexscreener");
           const { detectTokenFactory } = await import("../../../services/baseFactories");
           const { buildBaseTokenEmbed } = await import("../../../utils/baseTokenEmbeds");
           const { embedsToTelegram } = await import("../adapters/telegramAdapter");
           
-          const { getContractCreation } = await import("../../../services/basescan");
-          
-          const [baseTokenData, factory, contractCreation] = await Promise.all([
+          // First check if it's a Base token (DexScreener - no rate limits)
+          const [baseTokenData, factory] = await Promise.all([
             fetchBaseTokenData(address),
             detectTokenFactory(address),
-            getContractCreation(address).catch(() => null),
           ]);
 
           if (baseTokenData) {
+            // Only fetch creator from Basescan if it's a Base token that's NOT Zora/Clanker
+            // This saves API calls since Zora/Clanker already have creator info
+            const { getContractCreation } = await import("../../../services/basescan");
+            const contractCreation = await getContractCreation(address).catch(() => null);
+
             const { embed } = await buildBaseTokenEmbed(
               address,
               null, // Token name
