@@ -85,11 +85,14 @@ function finalCleanup(text: string): string {
   if (!text) return "";
   
   // Remove any leftover placeholders (they should have been restored by now)
-  // Check for all possible placeholder formats
-  text = text.replace(/__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_|TELEGRAM_LINK_)\d+__/gi, "");
+  // Check for all possible placeholder formats (including escaped versions)
+  text = text.replace(/\\?__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_|TELEGRAM_LINK_)\d+\\?__/gi, "");
   
   // Also check for placeholders without underscores (just in case)
   text = text.replace(/(?:TEMP_LINK|TEMP_PLACEHOLDER|LINK_PLACEHOLDER|EXISTING_LINK|PLACEHOLDER|TELEGRAM_LINK)\d+/gi, "");
+  
+  // Remove any escaped placeholder remnants
+  text = text.replace(/\\_\\_(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_|TELEGRAM_LINK_)\d+\\_\\_/gi, "");
   
   // Remove triple or more asterisks (*** or more)
   text = text.replace(/\*{3,}/g, "");
@@ -408,8 +411,20 @@ function formatFieldValue(value: string): string {
     }
   });
 
+  // Before final cleanup, try one more time to restore any escaped placeholders
+  // Handle cases where placeholders were escaped (e.g., \_\_TEMP_LINK_0\_\_)
+  existingLinks.forEach((link) => {
+    // Try to restore escaped placeholders
+    const escapedPlaceholder = link.placeholder.replace(/_/g, '\\_');
+    const escapedPattern = new RegExp(escapedPlaceholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    if (escapedPattern.test(value)) {
+      value = value.replace(escapedPattern, `[${link.text}](${link.url})`);
+    }
+  });
+
   // Final cleanup: ensure no placeholders remain (only after all restoration attempts)
-  value = value.replace(/__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_)\d+__/gi, "");
+  // Also handle escaped versions
+  value = value.replace(/\\?__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_)\d+\\?__/gi, "");
   
   // Remove triple asterisks
   value = value.replace(/\*{3,}/g, "");
@@ -480,14 +495,24 @@ function escapeMarkdownButPreserveLinks(text: string): string {
   }
   
   // Final safety check: if any TEMP_LINK placeholders remain, they should have been restored
-  // If they weren't, something went wrong - log it but don't break
-  const remainingPlaceholders = processed.match(/__TEMP_LINK_\d+__/g);
+  // If they weren't, something went wrong - try to restore them
+  // Also check for escaped versions
+  const remainingPlaceholders = processed.match(/\\?__(?:TEMP_LINK_|TEMP_PLACEHOLDER_)\d+\\?__/g);
   if (remainingPlaceholders && remainingPlaceholders.length > 0) {
     console.warn("Warning: Some TEMP_LINK placeholders were not restored:", remainingPlaceholders);
-    // Try one more aggressive restoration
+    // Try one more aggressive restoration with multiple patterns
     links.forEach((link) => {
-      const placeholderPattern = new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-      processed = processed.replace(placeholderPattern, `[${link.text}](${link.url})`);
+      const patterns = [
+        new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+        new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/_/g, '\\_'), 'gi'),
+        new RegExp(link.placeholder.replace(/_/g, '\\\\_'), 'gi'), // Fully escaped
+      ];
+      
+      patterns.forEach((pattern) => {
+        if (pattern.test(processed)) {
+          processed = processed.replace(pattern, `[${link.text}](${link.url})`);
+        }
+      });
     });
   }
   
