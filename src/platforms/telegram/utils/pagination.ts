@@ -130,7 +130,7 @@ export async function handleTelegramPagination(
   await bot.editMessageText(embeds[page], {
     chat_id: chatId,
     message_id: messageId,
-    parse_mode: "Markdown",
+    parse_mode: "HTML",
     disable_web_page_preview: true,
     reply_markup: {
       inline_keyboard: keyboard,

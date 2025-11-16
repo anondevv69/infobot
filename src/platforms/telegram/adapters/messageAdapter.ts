@@ -1,68 +1,32 @@
 import type { EmbedBuilder } from "discord.js";
 
 /**
- * Escape Telegram Markdown special characters
- * Only escape the essential characters that break Telegram Markdown
- * Don't escape periods, exclamation marks, etc. - they're usually fine
+ * Escape HTML special characters for Telegram HTML mode
+ * Only need to escape < and >, and & for ampersands
  */
-function escapeTelegramMarkdown(text: string): string {
+function escapeHtml(text: string): string {
   if (!text) return "";
-  
-  // Only escape characters that commonly break Telegram Markdown
-  // Don't escape periods, exclamation marks, etc. unless they're in problematic contexts
   return text
-    .replace(/\*/g, "\\*")  // Asterisks for bold
-    .replace(/_/g, "\\_")   // Underscores for italic
-    .replace(/`/g, "\\`")   // Backticks for code
-    .replace(/\[/g, "\\[")  // Square brackets (but we'll handle links separately)
-    .replace(/\]/g, "\\]")
-    .replace(/\(/g, "\\(")  // Parentheses (but we'll handle links separately)
-    .replace(/\)/g, "\\)");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**
- * Escape text but preserve markdown links [text](url)
- * This is the main function to use for Telegram messages
+ * Convert markdown link [text](url) to HTML link <a href="url">text</a>
  */
-function escapeTelegramButPreserveLinks(text: string): string {
-  if (!text) return "";
-  
-  // Extract all markdown links first
+function markdownLinkToHtml(markdown: string): string {
   const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-  const links: Array<{ full: string; text: string; url: string; placeholder: string }> = [];
-  let match;
-  let linkIndex = 0;
-  const originalText = text;
-  
-  // Find all links and replace with placeholders
-  while ((match = linkRegex.exec(originalText)) !== null) {
-    const placeholder = `__LINK_${linkIndex}__`;
-    links.push({
-      full: match[0],
-      text: match[1],
-      url: match[2], // URLs should NOT be escaped
-      placeholder,
-    });
-    text = text.replace(match[0], placeholder);
-    linkIndex++;
-  }
-  
-  // Escape the rest of the text (but not the placeholders)
-  text = escapeTelegramMarkdown(text);
-  
-  // Restore links - escape the link text, but NOT the URL
-  links.forEach((link) => {
-    // Escape the link text, but NOT the URL
-    const escapedText = escapeTelegramMarkdown(link.text);
-    text = text.replace(link.placeholder, `[${escapedText}](${link.url})`);
+  return markdown.replace(linkRegex, (_, text, url) => {
+    const escapedText = escapeHtml(text);
+    return `<a href="${url}">${escapedText}</a>`;
   });
-  
-  return text;
 }
 
 /**
- * Convert Discord embed to Telegram message format
+ * Convert Discord embed to Telegram message format using HTML
  * Clean, concise format matching Discord's appearance
+ * HTML is much simpler and more reliable than MarkdownV2
  */
 export function convertToTelegramMessage(embed: EmbedBuilder): string {
   const data = embed.data;
@@ -71,26 +35,58 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
   // Title - make it clickable if there's a URL
   if (data.title) {
     let title = cleanMarkdownText(data.title);
-    // Escape title text first
-    const escapedTitle = escapeTelegramMarkdown(title);
+    const escapedTitle = escapeHtml(title);
     
     // If embed has a URL, make the title clickable
     if (data.url) {
-      // URL should NOT be escaped - Telegram handles URLs in markdown links
-      title = `[${escapedTitle}](${data.url})`;
+      title = `<b><a href="${data.url}">${escapedTitle}</a></b>`;
     } else {
-      title = escapedTitle;
+      title = `<b>${escapedTitle}</b>`;
     }
-    // Wrap in bold asterisks (these are markdown, not escaped)
-    parts.push(`*${title}*`);
+    parts.push(title);
   }
 
   // Description (if present)
   if (data.description) {
     const desc = cleanMarkdownText(data.description);
     if (desc.trim()) {
-      // Escape description but preserve any links
-      parts.push(escapeTelegramButPreserveLinks(desc));
+      // Convert markdown links to HTML first
+      let htmlDesc = markdownLinkToHtml(desc);
+      
+      // Escape text parts but preserve HTML tags
+      // Split by HTML tags, escape text, keep HTML
+      const htmlTagRegex = /<[^>]+>/g;
+      const descParts: Array<{ type: 'text' | 'html'; content: string }> = [];
+      let lastIndex = 0;
+      let match;
+      
+      while ((match = htmlTagRegex.exec(htmlDesc)) !== null) {
+        // Add text before tag
+        if (match.index > lastIndex) {
+          const textPart = htmlDesc.substring(lastIndex, match.index);
+          if (textPart) {
+            descParts.push({ type: 'text', content: textPart });
+          }
+        }
+        // Add HTML tag as-is
+        descParts.push({ type: 'html', content: match[0] });
+        lastIndex = match.index + match[0].length;
+      }
+      
+      // Add remaining text
+      if (lastIndex < htmlDesc.length) {
+        const textPart = htmlDesc.substring(lastIndex);
+        if (textPart) {
+          descParts.push({ type: 'text', content: textPart });
+        }
+      }
+      
+      // Escape text parts, keep HTML parts
+      htmlDesc = descParts.map(part => 
+        part.type === 'html' ? part.content : escapeHtml(part.content)
+      ).join('');
+      
+      parts.push(htmlDesc);
     }
   }
 
@@ -105,9 +101,8 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
         continue;
       }
       
-      // Skip fields with only separators or placeholders
-      if (valueTrimmed.includes("__LINK_") && !valueTrimmed.match(/\[.*\]\(.*\)/)) {
-        // If it only has broken link placeholders, skip it
+      // Skip fields with only placeholders
+      if (valueTrimmed.match(/^__[A-Z_]+_\d+__$/)) {
         continue;
       }
 
@@ -117,24 +112,15 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
         const name = cleanMarkdownText(field.name);
         // Only show field name if there's actual content
         if (field.value && field.value.trim()) {
-          // Escape field name
-          const escapedName = escapeTelegramMarkdown(name);
-          parts.push(`*${escapedName}*`);
+          const escapedName = escapeHtml(name);
+          parts.push(`<b>${escapedName}</b>`);
         }
       }
 
       if (field.value) {
-        const value = formatFieldValue(field.value);
+        const value = formatFieldValueForHtml(field.value);
         if (value.trim()) {
-          // formatFieldValue should have restored all placeholders, but if any remain, remove them
-          // Then escape but preserve links
-          let processedValue = value;
-          
-          // Remove any remaining placeholders (they should have been restored)
-          processedValue = processedValue.replace(/__[A-Z_]+_\d+__/gi, "");
-          
-          // Now escape but preserve links
-          parts.push(escapeTelegramButPreserveLinks(processedValue));
+          parts.push(value);
         }
       }
     }
@@ -144,37 +130,18 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
   if (data.footer?.text) {
     parts.push("");
     const footer = cleanMarkdownText(data.footer.text);
-    // Escape footer text, then wrap in italic underscores (these are markdown, not escaped)
-    const escapedFooter = escapeTelegramMarkdown(footer);
-    parts.push(`_${escapedFooter}_`);
+    const escapedFooter = escapeHtml(footer);
+    parts.push(`<i>${escapedFooter}</i>`);
   }
 
-  // Join all parts and do final cleanup
+  // Join all parts
   let finalMessage = parts.join("\n").trim();
   
-  // CRITICAL: Remove ALL placeholders before sending
-  // Placeholders with underscores break Telegram Markdown
-  // Try multiple patterns to catch all variants
-  const placeholderPatterns = [
-    /__[A-Z_]+_\d+__/gi,
-    /__LINK_\d+__/gi,
-    /__TELEGRAM_LINK_\d+__/gi,
-    /__EXISTING_LINK_\d+__/gi,
-    /__TEMP_LINK_\d+__/gi,
-    /__TEMP_PLACEHOLDER_\d+__/gi,
-    /__LINK_PLACEHOLDER_\d+__/gi,
-    /\\_\\_[A-Z_]+_\d+\\_\\_/gi,  // Escaped placeholders
-  ];
+  // Remove any remaining placeholders (shouldn't be any, but safety check)
+  finalMessage = finalMessage.replace(/__[A-Z_]+_\d+__/gi, "");
   
-  placeholderPatterns.forEach((pattern) => {
-    finalMessage = finalMessage.replace(pattern, "");
-  });
-  
-  // Also remove any lines that only contain placeholders
-  finalMessage = finalMessage.replace(/^.*__[A-Z_]+_\d+__.*$/gm, "");
-  
-  // Final cleanup: remove any leftover placeholders, extra asterisks, backticks
-  finalMessage = finalCleanup(finalMessage);
+  // Clean up extra whitespace
+  finalMessage = finalMessage.replace(/\n{3,}/g, "\n\n").trim();
 
   return finalMessage;
 }
@@ -227,7 +194,214 @@ function finalCleanup(text: string): string {
 }
 
 /**
+ * Format field value for Telegram HTML - handle code blocks, links, etc.
+ * NO PLACEHOLDERS - format everything directly
+ */
+function formatFieldValueForHtml(value: string): string {
+  if (!value) return "";
+  
+  // Convert markdown links to HTML first
+  value = markdownLinkToHtml(value);
+  
+  // Handle code blocks (```address```) - convert addresses/contracts to clickable links
+  value = value.replace(/```([^`]+)```/g, (match, content) => {
+    const lines = content.trim().split("\n");
+    return lines.map((line: string) => {
+      const trimmed = line.trim();
+      // Check if it's an Ethereum address/contract
+      if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
+        const basescanUrl = `https://basescan.org/address/${trimmed}`;
+        return `<a href="${basescanUrl}">${escapeHtml(trimmed)}</a>`;
+      }
+      // Check if it's a Solana address
+      if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(trimmed)) {
+        const solscanUrl = `https://solscan.io/account/${trimmed}`;
+        return `<a href="${solscanUrl}">${escapeHtml(trimmed)}</a>`;
+      }
+      // Not an address, keep as code
+      return `<code>${escapeHtml(trimmed)}</code>`;
+    }).join("\n");
+  });
+
+  // Handle inline code (`code`) - convert addresses/contracts to clickable links
+  value = value.replace(/`([^`]+)`/g, (match, content) => {
+    const trimmed = content.trim();
+    // Check if it's an Ethereum address/contract
+    if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
+      const basescanUrl = `https://basescan.org/address/${trimmed}`;
+      return `<a href="${basescanUrl}">${escapeHtml(trimmed)}</a>`;
+    }
+    // Check if it's a Solana address
+    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(trimmed)) {
+      const solscanUrl = `https://solscan.io/account/${trimmed}`;
+      return `<a href="${solscanUrl}">${escapeHtml(trimmed)}</a>`;
+    }
+    // Not an address, keep as code
+    return `<code>${escapeHtml(trimmed)}</code>`;
+  });
+  
+  // Convert plain addresses (not in links) to clickable links
+  const ethAddressRegex = /\b(0x[a-fA-F0-9]{40})\b/gi;
+  const ethMatches: Array<{ address: string; index: number }> = [];
+  let ethMatch;
+  let originalValue = value;
+  
+  while ((ethMatch = ethAddressRegex.exec(originalValue)) !== null) {
+    const before = originalValue.substring(0, ethMatch.index);
+    const after = originalValue.substring(ethMatch.index + ethMatch[0].length);
+    
+    // Skip if it's already in an HTML link
+    if (before.includes('<a href') && after.includes('</a>')) {
+      continue;
+    }
+    
+    // Skip if it's in a URL
+    if (/https?:\/\/[^\s]*$/.test(before)) {
+      continue;
+    }
+    
+    ethMatches.push({
+      address: ethMatch[1],
+      index: ethMatch.index,
+    });
+  }
+  
+  // Replace from end to start to preserve indices
+  for (let i = ethMatches.length - 1; i >= 0; i--) {
+    const { address, index } = ethMatches[i];
+    const basescanUrl = `https://basescan.org/address/${address}`;
+    value = value.substring(0, index) + `<a href="${basescanUrl}">${escapeHtml(address)}</a>` + value.substring(index + address.length);
+  }
+  
+  // Convert Solana addresses
+  const solAddressRegex = /\b([1-9A-HJ-NP-Za-km-z]{32,44})\b/gi;
+  const solMatches: Array<{ address: string; index: number }> = [];
+  let solMatch;
+  originalValue = value;
+  
+  while ((solMatch = solAddressRegex.exec(originalValue)) !== null) {
+    const before = originalValue.substring(0, solMatch.index);
+    const after = originalValue.substring(solMatch.index + solMatch[0].length);
+    
+    // Skip if it's already in an HTML link
+    if (before.includes('<a href') && after.includes('</a>')) {
+      continue;
+    }
+    
+    // Skip if it's in a URL
+    if (/https?:\/\/[^\s]*$/.test(before)) {
+      continue;
+    }
+    
+    solMatches.push({
+      address: solMatch[1],
+      index: solMatch.index,
+    });
+  }
+  
+  // Replace from end to start
+  for (let i = solMatches.length - 1; i >= 0; i--) {
+    const { address, index } = solMatches[i];
+    const solscanUrl = `https://solscan.io/account/${address}`;
+    value = value.substring(0, index) + `<a href="${solscanUrl}">${escapeHtml(address)}</a>` + value.substring(index + address.length);
+  }
+
+  // Convert usernames to clickable links
+  const { buildFarcasterProfileUrl } = require("../../../utils/farcasterLinks");
+  
+  // Convert labeled usernames (Handle:, Farcaster:, Username:)
+  value = value.replace(/(Handle|Farcaster|Username):\s*@([a-zA-Z0-9_]+)/g, (match, label, username) => {
+    const url = buildFarcasterProfileUrl(username);
+    return `${escapeHtml(label)}: <a href="${url}">${escapeHtml(username)}</a>`;
+  });
+  
+  // Handle standalone @username patterns
+  const usernameRegex = /@([a-zA-Z0-9_]+)/g;
+  const usernameMatches: Array<{ match: string; username: string; offset: number }> = [];
+  let usernameMatch;
+  
+  while ((usernameMatch = usernameRegex.exec(value)) !== null) {
+    const before = value.substring(0, usernameMatch.index);
+    const after = value.substring(usernameMatch.index + usernameMatch[0].length);
+    
+    // Skip if it's in a URL
+    if (/https?:\/\/[^\s]*$/.test(before)) {
+      continue;
+    }
+    
+    // Skip if it's already in an HTML link
+    if (before.includes('<a href') && after.includes('</a>')) {
+      continue;
+    }
+    
+    // Skip if it's part of a label we already processed
+    if (/(Handle|Farcaster|Username):\s*<a/.test(before)) {
+      continue;
+    }
+    
+    usernameMatches.push({
+      match: usernameMatch[0],
+      username: usernameMatch[1],
+      offset: usernameMatch.index,
+    });
+  }
+  
+  // Replace from end to start to preserve offsets
+  for (let i = usernameMatches.length - 1; i >= 0; i--) {
+    const { match: matchStr, username, offset } = usernameMatches[i];
+    const url = buildFarcasterProfileUrl(username);
+    value = value.substring(0, offset) + `<a href="${url}">${escapeHtml(username)}</a>` + value.substring(offset + matchStr.length);
+  }
+
+  // Clean up separators and extra formatting
+  value = value
+    .replace(/^---+\s*$/gm, "") // Remove separator lines
+    .replace(/^\.\.\.\+\d+$/gm, "") // Remove "...+1" type indicators
+    .replace(/\n{3,}/g, "\n\n") // Max 2 newlines
+    .replace(/^\s+|\s+$/gm, "") // Trim lines
+    .replace(/^None$/gm, "") // Remove standalone "None" values
+    .replace(/\*None\*/g, ""); // Remove bold "None"
+
+  // Escape any remaining text (but HTML tags are already in place)
+  // We need to be careful - don't escape HTML tags
+  // Split by HTML tags, escape text parts, keep HTML tags
+  const htmlTagRegex = /<[^>]+>/g;
+  const parts: Array<{ type: 'text' | 'html'; content: string }> = [];
+  let lastIndex = 0;
+  let match;
+  
+  while ((match = htmlTagRegex.exec(value)) !== null) {
+    // Add text before tag
+    if (match.index > lastIndex) {
+      const textPart = value.substring(lastIndex, match.index);
+      if (textPart) {
+        parts.push({ type: 'text', content: textPart });
+      }
+    }
+    // Add HTML tag as-is
+    parts.push({ type: 'html', content: match[0] });
+    lastIndex = match.index + match[0].length;
+  }
+  
+  // Add remaining text
+  if (lastIndex < value.length) {
+    const textPart = value.substring(lastIndex);
+    if (textPart) {
+      parts.push({ type: 'text', content: textPart });
+    }
+  }
+  
+  // Escape text parts, keep HTML parts
+  value = parts.map(part => 
+    part.type === 'html' ? part.content : escapeHtml(part.content)
+  ).join('');
+
+  return value.trim();
+}
+
+/**
  * Format field value for Telegram - handle code blocks, links, etc.
+ * @deprecated - Use formatFieldValueForHtml instead
  */
 function formatFieldValue(value: string): string {
   // First, preserve existing markdown links by extracting them

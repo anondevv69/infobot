@@ -34,7 +34,7 @@ export async function sendPaginatedTelegramMessage(
       : undefined;
 
   await bot.sendMessage(chatId, messages[0], {
-    parse_mode: "Markdown",
+    parse_mode: "HTML",
     disable_web_page_preview: true,
     reply_markup: keyboard
       ? {
