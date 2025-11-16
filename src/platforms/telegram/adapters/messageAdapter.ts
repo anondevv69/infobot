@@ -126,8 +126,15 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
       if (field.value) {
         const value = formatFieldValue(field.value);
         if (value.trim()) {
-          // Escape field value but preserve links
-          parts.push(escapeTelegramButPreserveLinks(value));
+          // formatFieldValue should have restored all placeholders, but if any remain, remove them
+          // Then escape but preserve links
+          let processedValue = value;
+          
+          // Remove any remaining placeholders (they should have been restored)
+          processedValue = processedValue.replace(/__[A-Z_]+_\d+__/gi, "");
+          
+          // Now escape but preserve links
+          parts.push(escapeTelegramButPreserveLinks(processedValue));
         }
       }
     }
@@ -147,13 +154,24 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
   
   // CRITICAL: Remove ALL placeholders before sending
   // Placeholders with underscores break Telegram Markdown
-  // Remove all placeholder variants
-  finalMessage = finalMessage.replace(/__[A-Z_]+_\d+__/gi, "");
-  finalMessage = finalMessage.replace(/__LINK_\d+__/gi, "");
-  finalMessage = finalMessage.replace(/__TELEGRAM_LINK_\d+__/gi, "");
-  finalMessage = finalMessage.replace(/__EXISTING_LINK_\d+__/gi, "");
-  finalMessage = finalMessage.replace(/__TEMP_LINK_\d+__/gi, "");
-  finalMessage = finalMessage.replace(/__TEMP_PLACEHOLDER_\d+__/gi, "");
+  // Try multiple patterns to catch all variants
+  const placeholderPatterns = [
+    /__[A-Z_]+_\d+__/gi,
+    /__LINK_\d+__/gi,
+    /__TELEGRAM_LINK_\d+__/gi,
+    /__EXISTING_LINK_\d+__/gi,
+    /__TEMP_LINK_\d+__/gi,
+    /__TEMP_PLACEHOLDER_\d+__/gi,
+    /__LINK_PLACEHOLDER_\d+__/gi,
+    /\\_\\_[A-Z_]+_\d+\\_\\_/gi,  // Escaped placeholders
+  ];
+  
+  placeholderPatterns.forEach((pattern) => {
+    finalMessage = finalMessage.replace(pattern, "");
+  });
+  
+  // Also remove any lines that only contain placeholders
+  finalMessage = finalMessage.replace(/^.*__[A-Z_]+_\d+__.*$/gm, "");
   
   // Final cleanup: remove any leftover placeholders, extra asterisks, backticks
   finalMessage = finalCleanup(finalMessage);
