@@ -203,6 +203,11 @@ function formatFieldValue(value: string): string {
     const before = originalValue.substring(0, ethMatch.index);
     const after = originalValue.substring(ethMatch.index + ethMatch[0].length);
     
+    // Skip if it's inside a placeholder
+    if (/__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_)\d+__/.test(before + ethMatch[0] + after)) {
+      continue;
+    }
+    
     // Skip if it's already in a markdown link [text](url)
     const linkStart = before.lastIndexOf('[');
     const linkEnd = after.indexOf('](');
@@ -242,6 +247,11 @@ function formatFieldValue(value: string): string {
   while ((solMatch = solAddressRegex.exec(originalValue)) !== null) {
     const before = originalValue.substring(0, solMatch.index);
     const after = originalValue.substring(solMatch.index + solMatch[0].length);
+    
+    // Skip if it's inside a placeholder
+    if (/__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_)\d+__/.test(before + solMatch[0] + after)) {
+      continue;
+    }
     
     // Skip if it's already in a markdown link
     const linkStart = before.lastIndexOf('[');
@@ -314,6 +324,11 @@ function formatFieldValue(value: string): string {
     const before = value.substring(0, usernameMatch2.index);
     const after = value.substring(usernameMatch2.index + usernameMatch2[0].length);
     
+    // Skip if it's inside a placeholder
+    if (/__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_)\d+__/.test(before + usernameMatch2[0] + after)) {
+      continue;
+    }
+    
     // Skip if it's in a URL
     if (/https?:\/\/[^\s]*$/.test(before)) {
       continue;
@@ -360,17 +375,40 @@ function formatFieldValue(value: string): string {
     .replace(/\*None\*/g, ""); // Remove bold "None"
 
   // Restore the original links we preserved at the start (BEFORE escaping)
-  existingLinks.forEach((link) => {
-    const placeholderRegex = new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-    value = value.replace(placeholderRegex, `[${link.text}](${link.url})`);
-  });
+  // Do this multiple times to ensure all are restored
+  for (let restoreAttempt = 0; restoreAttempt < 3; restoreAttempt++) {
+    existingLinks.forEach((link) => {
+      // Try multiple regex patterns to catch escaped or modified placeholders
+      const patterns = [
+        new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+        new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/_/g, '\\_'), 'gi'),
+        new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/__/g, '__'), 'gi'),
+      ];
+      
+      patterns.forEach((pattern) => {
+        if (value.includes(link.placeholder) || pattern.test(value)) {
+          value = value.replace(pattern, `[${link.text}](${link.url})`);
+        }
+      });
+    });
+  }
 
   // Now escape markdown but preserve all links (both original and newly created)
   // This function will extract ALL links (including ones we just restored and newly created),
   // escape markdown, then restore them
   value = escapeMarkdownButPreserveLinks(value);
 
-  // Final cleanup: ensure no placeholders remain
+  // Final aggressive restoration: if any placeholders remain, try to restore them
+  // This is a safety net in case some placeholders weren't caught earlier
+  existingLinks.forEach((link) => {
+    // Try to restore any remaining placeholders
+    const placeholderPattern = new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    if (placeholderPattern.test(value)) {
+      value = value.replace(placeholderPattern, `[${link.text}](${link.url})`);
+    }
+  });
+
+  // Final cleanup: ensure no placeholders remain (only after all restoration attempts)
   value = value.replace(/__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_)\d+__/gi, "");
   
   // Remove triple asterisks
@@ -421,12 +459,36 @@ function escapeMarkdownButPreserveLinks(text: string): string {
   
   // Escape markdown in the rest
   processed = escapeMarkdown(processed);
-  
+
   // Restore links (in reverse order to preserve indices)
-  for (let i = links.length - 1; i >= 0; i--) {
-    const link = links[i];
-    const placeholderRegex = new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-    processed = processed.replace(placeholderRegex, `[${link.text}](${link.url})`);
+  // Do this multiple times to ensure all are restored
+  for (let restoreAttempt = 0; restoreAttempt < 3; restoreAttempt++) {
+    for (let i = links.length - 1; i >= 0; i--) {
+      const link = links[i];
+      // Try multiple patterns to catch escaped placeholders
+      const patterns = [
+        new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+        new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/_/g, '\\_'), 'gi'),
+      ];
+      
+      patterns.forEach((pattern) => {
+        if (processed.includes(link.placeholder) || pattern.test(processed)) {
+          processed = processed.replace(pattern, `[${link.text}](${link.url})`);
+        }
+      });
+    }
+  }
+  
+  // Final safety check: if any TEMP_LINK placeholders remain, they should have been restored
+  // If they weren't, something went wrong - log it but don't break
+  const remainingPlaceholders = processed.match(/__TEMP_LINK_\d+__/g);
+  if (remainingPlaceholders && remainingPlaceholders.length > 0) {
+    console.warn("Warning: Some TEMP_LINK placeholders were not restored:", remainingPlaceholders);
+    // Try one more aggressive restoration
+    links.forEach((link) => {
+      const placeholderPattern = new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      processed = processed.replace(placeholderPattern, `[${link.text}](${link.url})`);
+    });
   }
   
   return processed;
@@ -593,10 +655,22 @@ function escapeMarkdown(text: string): string {
   
   // Restore placeholders (they don't need escaping)
   // Restore in reverse order to preserve indices
-  for (let i = placeholders.length - 1; i >= 0; i--) {
-    const { original, temp } = placeholders[i];
-    const tempRegex = new RegExp(temp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-    processed = processed.replace(tempRegex, original);
+  // Do this multiple times to ensure all are restored
+  for (let restoreAttempt = 0; restoreAttempt < 3; restoreAttempt++) {
+    for (let i = placeholders.length - 1; i >= 0; i--) {
+      const { original, temp } = placeholders[i];
+      // Try multiple patterns to catch escaped placeholders
+      const patterns = [
+        new RegExp(temp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+        new RegExp(temp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/_/g, '\\_'), 'gi'),
+      ];
+      
+      patterns.forEach((pattern) => {
+        if (processed.includes(temp) || pattern.test(processed)) {
+          processed = processed.replace(pattern, original);
+        }
+      });
+    }
   }
   
   return processed;
