@@ -422,8 +422,52 @@ function formatFieldValue(value: string): string {
     }
   });
 
+  // CRITICAL: If we still have TEMP_PLACEHOLDER_X placeholders, they should have been restored to TEMP_LINK_X
+  // by escapeMarkdown, but if they weren't, we need to try to find the original link data
+  // Extract all markdown links from the value to see if we can match them
+  const allLinksRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const allLinks: Array<{ text: string; url: string }> = [];
+  let allLinksMatch;
+  while ((allLinksMatch = allLinksRegex.exec(value)) !== null) {
+    allLinks.push({ text: allLinksMatch[1], url: allLinksMatch[2] });
+  }
+  
+  // Try to restore TEMP_PLACEHOLDER_X by converting them back to TEMP_LINK_X first
+  // This is a fallback - ideally escapeMarkdown should have done this
+  value = value.replace(/__TEMP_PLACEHOLDER_(\d+)__/gi, (match, index) => {
+    // Try to find a corresponding link - this is a best-effort fallback
+    const linkIndex = parseInt(index, 10);
+    if (linkIndex < allLinks.length) {
+      const link = allLinks[linkIndex];
+      return `[${link.text}](${link.url})`;
+    }
+    // If we can't find it, try to restore from existingLinks
+    if (linkIndex < existingLinks.length) {
+      const link = existingLinks[linkIndex];
+      return `[${link.text}](${link.url})`;
+    }
+    return match; // Keep original if we can't restore
+  });
+
   // Final cleanup: ensure no placeholders remain (only after all restoration attempts)
-  // Also handle escaped versions
+  // Also handle escaped versions - but ONLY if they're truly unrecoverable
+  // First, try one more aggressive pass to restore EXISTING_LINK placeholders
+  const remainingExistingLinks = value.match(/__EXISTING_LINK_\d+__/gi);
+  if (remainingExistingLinks) {
+    // Try to restore them by matching with existingLinks array
+    remainingExistingLinks.forEach((placeholder) => {
+      const match = placeholder.match(/__EXISTING_LINK_(\d+)__/i);
+      if (match) {
+        const index = parseInt(match[1], 10);
+        if (index < existingLinks.length) {
+          const link = existingLinks[index];
+          value = value.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), `[${link.text}](${link.url})`);
+        }
+      }
+    });
+  }
+  
+  // Now remove any remaining placeholders that couldn't be restored
   value = value.replace(/\\?__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_)\d+\\?__/gi, "");
   
   // Remove triple asterisks
