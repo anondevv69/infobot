@@ -377,9 +377,12 @@ function formatFieldValue(value: string): string {
     .replace(/^None$/gm, "") // Remove standalone "None" values
     .replace(/\*None\*/g, ""); // Remove bold "None"
 
-  // Restore the original links we preserved at the start (BEFORE escaping)
+  // CRITICAL: Restore the original links we preserved at the start (BEFORE escaping)
+  // This MUST happen before escapeMarkdownButPreserveLinks, otherwise the placeholders
+  // will be treated as plain text and not extracted as links
   // Do this multiple times to ensure all are restored
-  for (let restoreAttempt = 0; restoreAttempt < 3; restoreAttempt++) {
+  for (let restoreAttempt = 0; restoreAttempt < 5; restoreAttempt++) {
+    let restoredAny = false;
     existingLinks.forEach((link) => {
       // Try multiple regex patterns to catch escaped or modified placeholders
       const patterns = [
@@ -390,9 +393,29 @@ function formatFieldValue(value: string): string {
       
       patterns.forEach((pattern) => {
         if (value.includes(link.placeholder) || pattern.test(value)) {
+          const beforeReplace = value;
           value = value.replace(pattern, `[${link.text}](${link.url})`);
+          if (value !== beforeReplace) {
+            restoredAny = true;
+          }
         }
       });
+    });
+    
+    // If we didn't restore anything in this attempt, break early
+    if (!restoredAny) {
+      break;
+    }
+  }
+
+  // Verify all EXISTING_LINK placeholders are restored before proceeding
+  const remainingExisting = value.match(/__EXISTING_LINK_\d+__/gi);
+  if (remainingExisting && remainingExisting.length > 0) {
+    console.warn("Warning: Some EXISTING_LINK placeholders remain after restoration attempts:", remainingExisting);
+    // Try one more aggressive pass
+    existingLinks.forEach((link) => {
+      const placeholderPattern = new RegExp(link.placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      value = value.replace(placeholderPattern, `[${link.text}](${link.url})`);
     });
   }
 
