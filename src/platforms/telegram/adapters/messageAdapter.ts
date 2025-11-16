@@ -69,7 +69,52 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
     parts.push(`_${footer}_`);
   }
 
-  return parts.join("\n").trim();
+  // Join all parts and do final cleanup
+  let finalMessage = parts.join("\n").trim();
+  
+  // Final cleanup: remove any leftover placeholders, extra asterisks, backticks
+  finalMessage = finalCleanup(finalMessage);
+
+  return finalMessage;
+}
+
+/**
+ * Final cleanup to remove any leftover placeholders and formatting artifacts
+ */
+function finalCleanup(text: string): string {
+  if (!text) return "";
+  
+  // Remove any leftover placeholders (they should have been restored by now)
+  text = text.replace(/__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_)\d+__/gi, "");
+  
+  // Remove triple or more asterisks (*** or more)
+  text = text.replace(/\*{3,}/g, "");
+  
+  // Remove any standalone backticks that aren't part of code blocks
+  // Remove single backticks (not part of `` pairs)
+  // We'll preserve backticks that are in pairs (``code``)
+  // Simple approach: remove single backticks, but keep double backticks
+  // First, temporarily mark double backticks
+  text = text.replace(/``/g, "__DOUBLE_BACKTICK__");
+  // Remove all single backticks
+  text = text.replace(/`/g, "");
+  // Restore double backticks (but we don't want them either, so just leave them removed)
+  text = text.replace(/__DOUBLE_BACKTICK__/g, "");
+  
+  // Remove any escaped markdown that shouldn't be escaped (like \* \_ \`)
+  // But keep them if they're actually needed for Telegram
+  // Actually, we should keep escaped markdown as-is since Telegram needs it
+  
+  // Remove any double spaces
+  text = text.replace(/  +/g, " ");
+  
+  // Remove any empty lines with just whitespace
+  text = text.replace(/^\s+$/gm, "");
+  
+  // Clean up multiple newlines (max 2)
+  text = text.replace(/\n{3,}/g, "\n\n");
+  
+  return text.trim();
 }
 
 /**
@@ -326,6 +371,16 @@ function formatFieldValue(value: string): string {
   // escape markdown, then restore them
   value = escapeMarkdownButPreserveLinks(value);
 
+  // Final cleanup: ensure no placeholders remain
+  value = value.replace(/__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_)\d+__/gi, "");
+  
+  // Remove triple asterisks
+  value = value.replace(/\*{3,}/g, "");
+  
+  // Remove any leftover backticks (Telegram doesn't need them for addresses)
+  // We've already converted addresses to links, so backticks are no longer needed
+  value = value.replace(/`/g, "");
+
   return value.trim();
 }
 
@@ -485,6 +540,15 @@ function cleanMarkdownText(text: string): string {
   
   // Preserve existing markdown links
   text = escapeMarkdownButPreserveLinks(text);
+  
+  // Final cleanup: ensure no placeholders remain
+  text = text.replace(/__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_)\d+__/gi, "");
+  
+  // Remove triple asterisks
+  text = text.replace(/\*{3,}/g, "");
+  
+  // Remove any leftover backticks (Telegram doesn't need them)
+  text = text.replace(/`/g, "");
   
   return text;
 }
