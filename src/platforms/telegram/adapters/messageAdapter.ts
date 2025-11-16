@@ -2,32 +2,22 @@ import type { EmbedBuilder } from "discord.js";
 
 /**
  * Escape Telegram Markdown special characters
- * IMPORTANT: This escapes text content, but NOT markdown links [text](url)
- * URLs in markdown links should NOT be escaped
+ * Only escape the essential characters that break Telegram Markdown
+ * Don't escape periods, exclamation marks, etc. - they're usually fine
  */
 function escapeTelegramMarkdown(text: string): string {
   if (!text) return "";
   
-  // Escape all special characters that Telegram Markdown interprets
+  // Only escape characters that commonly break Telegram Markdown
+  // Don't escape periods, exclamation marks, etc. unless they're in problematic contexts
   return text
-    .replace(/_/g, "\\_")
-    .replace(/\*/g, "\\*")
-    .replace(/\[/g, "\\[")
+    .replace(/\*/g, "\\*")  // Asterisks for bold
+    .replace(/_/g, "\\_")   // Underscores for italic
+    .replace(/`/g, "\\`")   // Backticks for code
+    .replace(/\[/g, "\\[")  // Square brackets (but we'll handle links separately)
     .replace(/\]/g, "\\]")
-    .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)")
-    .replace(/~/g, "\\~")
-    .replace(/`/g, "\\`")
-    .replace(/>/g, "\\>")
-    .replace(/#/g, "\\#")
-    .replace(/\+/g, "\\+")
-    .replace(/-/g, "\\-")
-    .replace(/=/g, "\\=")
-    .replace(/\|/g, "\\|")
-    .replace(/\{/g, "\\{")
-    .replace(/\}/g, "\\}")
-    .replace(/\./g, "\\.")
-    .replace(/!/g, "\\!");
+    .replace(/\(/g, "\\(")  // Parentheses (but we'll handle links separately)
+    .replace(/\)/g, "\\)");
 }
 
 /**
@@ -42,9 +32,11 @@ function escapeTelegramButPreserveLinks(text: string): string {
   const links: Array<{ full: string; text: string; url: string; placeholder: string }> = [];
   let match;
   let linkIndex = 0;
+  const originalText = text;
   
-  while ((match = linkRegex.exec(text)) !== null) {
-    const placeholder = `__TELEGRAM_LINK_${linkIndex}__`;
+  // Find all links and replace with placeholders
+  while ((match = linkRegex.exec(originalText)) !== null) {
+    const placeholder = `__LINK_${linkIndex}__`;
     links.push({
       full: match[0],
       text: match[1],
@@ -55,10 +47,10 @@ function escapeTelegramButPreserveLinks(text: string): string {
     linkIndex++;
   }
   
-  // Escape the rest of the text
+  // Escape the rest of the text (but not the placeholders)
   text = escapeTelegramMarkdown(text);
   
-  // Restore links (text is escaped, but URL is not)
+  // Restore links - escape the link text, but NOT the URL
   links.forEach((link) => {
     // Escape the link text, but NOT the URL
     const escapedText = escapeTelegramMarkdown(link.text);
@@ -155,7 +147,13 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
   
   // CRITICAL: Remove ALL placeholders before sending
   // Placeholders with underscores break Telegram Markdown
+  // Remove all placeholder variants
   finalMessage = finalMessage.replace(/__[A-Z_]+_\d+__/gi, "");
+  finalMessage = finalMessage.replace(/__LINK_\d+__/gi, "");
+  finalMessage = finalMessage.replace(/__TELEGRAM_LINK_\d+__/gi, "");
+  finalMessage = finalMessage.replace(/__EXISTING_LINK_\d+__/gi, "");
+  finalMessage = finalMessage.replace(/__TEMP_LINK_\d+__/gi, "");
+  finalMessage = finalMessage.replace(/__TEMP_PLACEHOLDER_\d+__/gi, "");
   
   // Final cleanup: remove any leftover placeholders, extra asterisks, backticks
   finalMessage = finalCleanup(finalMessage);
