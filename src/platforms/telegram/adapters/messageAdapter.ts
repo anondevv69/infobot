@@ -72,6 +72,11 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
   // Join all parts and do final cleanup
   let finalMessage = parts.join("\n").trim();
   
+  // CRITICAL: Before final cleanup, ensure ALL placeholders are removed
+  // This is a safety net - if any placeholders remain, they'll break Telegram formatting
+  // Remove any remaining placeholders (they should have been restored by now)
+  finalMessage = finalMessage.replace(/__[A-Z_]+_\d+__/gi, "");
+  
   // Final cleanup: remove any leftover placeholders, extra asterisks, backticks
   finalMessage = finalCleanup(finalMessage);
 
@@ -80,25 +85,34 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
 
 /**
  * Final cleanup to remove any leftover placeholders and formatting artifacts
+ * CRITICAL: This must remove ALL placeholders, as they will break Telegram formatting
  */
 function finalCleanup(text: string): string {
   if (!text) return "";
   
-  // Remove any leftover placeholders (they should have been restored by now)
-  // Check for all possible placeholder formats (including escaped versions)
-  text = text.replace(/\\?__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_|TELEGRAM_LINK_)\d+\\?__/gi, "");
+  // AGGRESSIVE: Remove ALL placeholder variants (they should have been restored by now)
+  // If any remain, they'll break Telegram Markdown parsing
+  const placeholderPatterns = [
+    // Standard placeholders
+    /__[A-Z_]+_\d+__/gi,
+    // Escaped placeholders
+    /\\?__[A-Z_]+_\d+\\?__/gi,
+    // Fully escaped placeholders
+    /\\_\\_[A-Z_]+_\d+\\_\\_/gi,
+    // Placeholders without underscores
+    /(?:TEMP_LINK|TEMP_PLACEHOLDER|LINK_PLACEHOLDER|EXISTING_LINK|PLACEHOLDER|TELEGRAM_LINK)\d+/gi,
+    // Lines containing only placeholders
+    /^.*__(?:TEMP_|PLACEHOLDER_|LINK_|EXISTING_).*$/gm,
+  ];
   
-  // Also check for placeholders without underscores (just in case)
-  text = text.replace(/(?:TEMP_LINK|TEMP_PLACEHOLDER|LINK_PLACEHOLDER|EXISTING_LINK|PLACEHOLDER|TELEGRAM_LINK)\d+/gi, "");
-  
-  // Remove any escaped placeholder remnants
-  text = text.replace(/\\_\\_(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_|TELEGRAM_LINK_)\d+\\_\\_/gi, "");
+  placeholderPatterns.forEach((pattern) => {
+    text = text.replace(pattern, "");
+  });
   
   // Remove triple or more asterisks (*** or more)
   text = text.replace(/\*{3,}/g, "");
   
   // Remove any leftover backticks (we've already converted addresses to links)
-  // Remove all backticks - Telegram doesn't need them since addresses are now links
   text = text.replace(/`/g, "");
   
   // Remove any escaped backticks that are now unnecessary
@@ -112,9 +126,6 @@ function finalCleanup(text: string): string {
   
   // Clean up multiple newlines (max 2)
   text = text.replace(/\n{3,}/g, "\n\n");
-  
-  // Remove any lines that only contain placeholders or artifacts
-  text = text.replace(/^.*__(?:TEMP_|PLACEHOLDER_|LINK_).*$/gm, "");
   
   return text.trim();
 }
@@ -531,8 +542,18 @@ function formatFieldValue(value: string): string {
     });
   }
   
-  // Now remove any remaining placeholders that couldn't be restored
-  value = value.replace(/\\?__(?:TEMP_LINK_|TEMP_PLACEHOLDER_|LINK_PLACEHOLDER_|EXISTING_LINK_|PLACEHOLDER_)\d+\\?__/gi, "");
+  // CRITICAL: Remove any remaining placeholders that couldn't be restored
+  // If placeholders remain, they'll break Telegram formatting
+  // Try one more aggressive pass to remove ALL placeholder variants
+  const allPlaceholderPatterns = [
+    /__[A-Z_]+_\d+__/gi,  // Any placeholder format
+    /\\?__[A-Z_]+_\d+\\?__/gi,  // Escaped placeholders
+    /\\_\\_[A-Z_]+_\d+\\_\\_/gi,  // Fully escaped placeholders
+  ];
+  
+  allPlaceholderPatterns.forEach((pattern) => {
+    value = value.replace(pattern, "");
+  });
   
   // Remove triple asterisks
   value = value.replace(/\*{3,}/g, "");
