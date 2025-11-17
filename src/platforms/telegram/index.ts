@@ -2,7 +2,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { env } from "../../config";
 import { handleTelegramMessage } from "./handlers/message";
 import { handleTelegramCommand } from "./handlers/command";
-import { showTelegramTypingIndicator } from "../../utils/typingIndicator";
+import { showTelegramTypingIndicator, showTelegramEyeIndicator, deleteTelegramMessage } from "../../utils/typingIndicator";
 
 export async function startTelegramBot(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -30,96 +30,167 @@ export async function startTelegramBot(): Promise<void> {
     // Commands (starting with /) are handled by onText handlers below
     // Commands work in groups without mentioning the bot
     if (msg.text && !msg.text.startsWith("/")) {
-      // Show typing indicator for auto-detected messages
+      // Show eye emoji indicator that stays until response
+      let eyeMessageId: number | null = null;
       if (msg.chat.id) {
-        await showTelegramTypingIndicator(bot, msg.chat.id);
+        eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id);
       }
+      
+      // Handle the message
       await handleTelegramMessage(bot, msg);
+      
+      // Delete eye emoji after response is sent (wait longer to ensure all responses are sent)
+      if (eyeMessageId && msg.chat.id) {
+        // Delay to ensure response is fully sent before removing eye emoji
+        setTimeout(() => {
+          deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
+        }, 2000);
+      }
     }
   });
 
   bot.onText(/\/start/, async (msg) => {
+    let eyeMessageId: number | null = null;
     if (msg.chat.id) {
-      await showTelegramTypingIndicator(bot, msg.chat.id);
+      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id);
     }
     await handleTelegramCommand(bot, msg, "start");
+    if (eyeMessageId && msg.chat.id) {
+      setTimeout(() => {
+        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
+      }, 2000);
+    }
   });
 
   bot.onText(/\/help/, async (msg) => {
+    let eyeMessageId: number | null = null;
     if (msg.chat.id) {
-      await showTelegramTypingIndicator(bot, msg.chat.id);
+      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id);
     }
     await handleTelegramCommand(bot, msg, "help");
+    if (eyeMessageId && msg.chat.id) {
+      setTimeout(() => {
+        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
+      }, 2000);
+    }
   });
 
   // Commands with parameters
   bot.onText(/\/search (.+)/, async (msg, match) => {
+    let eyeMessageId: number | null = null;
     if (msg.chat.id) {
-      await showTelegramTypingIndicator(bot, msg.chat.id);
+      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id);
     }
     const query = match?.[1];
     if (query) {
       await handleTelegramCommand(bot, msg, "search", query);
     }
+    if (eyeMessageId && msg.chat.id) {
+      setTimeout(() => {
+        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
+      }, 2000);
+    }
   });
 
   bot.onText(/\/zora (.+)/, async (msg, match) => {
+    let eyeMessageId: number | null = null;
     if (msg.chat.id) {
-      await showTelegramTypingIndicator(bot, msg.chat.id);
+      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id);
     }
     const query = match?.[1];
     if (query) {
       await handleTelegramCommand(bot, msg, "zora", query);
     }
+    if (eyeMessageId && msg.chat.id) {
+      setTimeout(() => {
+        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
+      }, 2000);
+    }
   });
 
   bot.onText(/\/clanker (.+)/, async (msg, match) => {
+    let eyeMessageId: number | null = null;
     if (msg.chat.id) {
-      await showTelegramTypingIndicator(bot, msg.chat.id);
+      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id);
     }
     const query = match?.[1];
     if (query) {
       await handleTelegramCommand(bot, msg, "clanker", query);
     }
+    if (eyeMessageId && msg.chat.id) {
+      setTimeout(() => {
+        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
+      }, 2000);
+    }
   });
 
   bot.onText(/\/casts (.+)/, async (msg, match) => {
+    let eyeMessageId: number | null = null;
     if (msg.chat.id) {
-      await showTelegramTypingIndicator(bot, msg.chat.id);
+      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id);
     }
     const keyword = match?.[1];
     if (keyword) {
       await handleTelegramCommand(bot, msg, "casts", keyword);
     }
+    if (eyeMessageId && msg.chat.id) {
+      setTimeout(() => {
+        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
+      }, 2000);
+    }
   });
 
   // Commands without parameters (show usage)
   bot.onText(/\/search$/, async (msg) => {
+    let eyeMessageId: number | null = null;
     if (msg.chat.id) {
-      await showTelegramTypingIndicator(bot, msg.chat.id);
+      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id);
     }
     await handleTelegramCommand(bot, msg, "search");
+    if (eyeMessageId && msg.chat.id) {
+      setTimeout(() => {
+        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
+      }, 2000);
+    }
   });
 
   bot.onText(/\/zora$/, async (msg) => {
+    let eyeMessageId: number | null = null;
     if (msg.chat.id) {
-      await showTelegramTypingIndicator(bot, msg.chat.id);
+      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id);
     }
     await handleTelegramCommand(bot, msg, "zora");
+    if (eyeMessageId && msg.chat.id) {
+      setTimeout(() => {
+        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
+      }, 2000);
+    }
   });
 
   bot.onText(/\/clanker$/, async (msg) => {
+    let eyeMessageId: number | null = null;
     if (msg.chat.id) {
-      await showTelegramTypingIndicator(bot, msg.chat.id);
+      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id);
     }
     await handleTelegramCommand(bot, msg, "clanker");
+    if (eyeMessageId && msg.chat.id) {
+      setTimeout(() => {
+        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
+      }, 2000);
+    }
   });
 
   bot.onText(/\/casts$/, async (msg) => {
+    let eyeMessageId: number | null = null;
     if (msg.chat.id) {
-      await showTelegramTypingIndicator(bot, msg.chat.id);
+      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id);
     }
     await handleTelegramCommand(bot, msg, "casts");
+    if (eyeMessageId && msg.chat.id) {
+      setTimeout(() => {
+        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
+      }, 2000);
+    }
   });
 
   // Handle pagination callbacks

@@ -15,6 +15,7 @@ import { collectZoraIdentifiers } from "../../../utils/zoraPresentation";
 import { isSummaryAssociatedWithUser } from "../../../utils/zoraAssociation";
 import { splitEmbedIntoPages } from "../../../utils/pagination";
 import { findUserByXHandle } from "../../../services/neynar";
+import { showTelegramEyeIndicator, deleteTelegramMessage } from "../../../utils/typingIndicator";
 
 export async function handleTelegramMessage(
   bot: TelegramBot,
