@@ -18,6 +18,30 @@ export const BASE_FACTORIES: Record<string, BaseFactory> = {
     explorerUrl: "https://basescan.org/address/0x33128a8dc178e51cc32f0ea8d2b06dfc2febb8ce",
     swapUrl: "https://app.uniswap.org/#/swap?chain=base&outputCurrency=",
   },
+  // Virtuals Factory (found from token 0xFAC77f01957ed1B3DD1cbEa992199B8f85B6E886)
+  "0x42f4f5a3389ca0bed694de339f4d432acddb1ea9": {
+    name: "Virtuals",
+    address: "0x42f4f5a3389ca0bed694de339f4d432acddb1ea9",
+    explorerUrl: "https://basescan.org/address/0x42f4f5a3389ca0bed694de339f4d432acddb1ea9",
+  },
+  // Fey Factory (found from token 0xD09cf0982A32DD6856e12d6BF2F08A822eA5D91D)
+  "0xbc13a34e6fed856e66a153a1ef8e2903e8963924": {
+    name: "Fey",
+    address: "0xbc13a34e6fed856e66a153a1ef8e2903e8963924",
+    explorerUrl: "https://basescan.org/address/0xbc13a34e6fed856e66a153a1ef8e2903e8963924",
+  },
+  // ApeStore Factory (TODO: Need to find the correct address)
+  // "0x...": {
+  //   name: "ApeStore",
+  //   address: "0x...",
+  //   explorerUrl: "https://basescan.org/address/0x...",
+  // },
+  // Klik Finance Factory (TODO: Need to find the correct address)
+  // "0x...": {
+  //   name: "Klik Finance",
+  //   address: "0x...",
+  //   explorerUrl: "https://basescan.org/address/0x...",
+  // },
   // Rainbow Factory (partial address provided - need full address)
   // "0xd2ce...939": {
   //   name: "Rainbow",
