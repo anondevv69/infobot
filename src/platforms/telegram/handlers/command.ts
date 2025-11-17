@@ -104,18 +104,14 @@ Just send:
           return;
         }
         
-        // Send eye emoji immediately
-        const processingMsg = await bot.sendMessage(chatId, "👁️ Processing...", { parse_mode: "HTML" });
+        // Send typing indicator
+        await bot.sendChatAction(chatId, "typing");
         
         try {
           // Extract transaction hash from input
           const txHash = extractTransactionHash(query);
           if (!txHash) {
-            await bot.editMessageText("❌ Could not extract a valid transaction hash from the provided input. Please provide a transaction hash (0x...) or a transaction link from a block explorer.", {
-              chat_id: chatId,
-              message_id: processingMsg.message_id,
-              parse_mode: "HTML",
-            });
+            await bot.sendMessage(chatId, "❌ Could not extract a valid transaction hash from the provided input. Please provide a transaction hash (0x...) or a transaction link from a block explorer.", { parse_mode: "HTML" });
             return;
           }
 
@@ -126,11 +122,7 @@ Just send:
           const transaction = await fetchRelayTransaction(txHash, sourceChainId || undefined);
 
           if (!transaction) {
-            await bot.editMessageText(`❌ Transaction <code>${txHash}</code> not found on Relay.link API.\n\n<b>Possible reasons:</b>\n• The transaction may not be a Relay cross-chain transaction\n• The wallet address could not be extracted from the transaction\n• The transaction may not be indexed yet\n\n<b>Note:</b> Relay API requires querying by wallet address, not transaction hash. If the transaction is very recent, it may take a few minutes to appear.`, {
-              chat_id: chatId,
-              message_id: processingMsg.message_id,
-              parse_mode: "HTML",
-            });
+            await bot.sendMessage(chatId, `❌ Transaction <code>${txHash}</code> not found on Relay.link API.\n\n<b>Possible reasons:</b>\n• The transaction may not be a Relay cross-chain transaction\n• The wallet address could not be extracted from the transaction\n• The transaction may not be indexed yet\n\n<b>Note:</b> Relay API requires querying by wallet address, not transaction hash. If the transaction is very recent, it may take a few minutes to appear.`, { parse_mode: "HTML" });
             return;
           }
 
@@ -163,18 +155,10 @@ Just send:
 
           message += `\n<b>Transaction Hash:</b>\n<code>${txHash}</code>`;
 
-          await bot.editMessageText(message, {
-            chat_id: chatId,
-            message_id: processingMsg.message_id,
-            parse_mode: "HTML",
-          });
+          await bot.sendMessage(chatId, message, { parse_mode: "HTML" });
         } catch (error) {
           console.error("Error handling relay command:", error);
-          await bot.editMessageText(`❌ Error fetching transaction data: ${error instanceof Error ? error.message : "Unknown error"}`, {
-            chat_id: chatId,
-            message_id: processingMsg.message_id,
-            parse_mode: "HTML",
-          });
+          await bot.sendMessage(chatId, `❌ Error fetching transaction data: ${error instanceof Error ? error.message : "Unknown error"}`, { parse_mode: "HTML" });
         }
         break;
       }
