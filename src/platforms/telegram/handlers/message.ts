@@ -162,7 +162,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
               if (rpcResponse.ok) {
                 const rpcData = (await rpcResponse.json()) as { result?: { from?: string; to?: string | null } };
                 if (rpcData.result?.to) {
-                  // The "to" field is the TOKEN factory address (Fey, AperStore, KLIK, etc.)
+                  // The "to" field is the TOKEN factory address (Fey, ApeStore, KLIK, etc.)
                   const tokenFactoryAddress = rpcData.result.to.toLowerCase();
                   const { getTokenFactoryName, createTokenFactory } = await import("../../../services/baseFactories");
                   const tokenFactoryName = getTokenFactoryName(tokenFactoryAddress);

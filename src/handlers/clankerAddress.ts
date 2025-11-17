@@ -343,7 +343,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
             if (rpcResponse.ok) {
               const rpcData = (await rpcResponse.json()) as { result?: { from?: string; to?: string | null } };
               if (rpcData.result?.to) {
-                // The "to" field is the TOKEN factory address (Fey, AperStore, KLIK, etc.)
+                // The "to" field is the TOKEN factory address (Fey, ApeStore, KLIK, etc.)
                 detectedFactoryAddress = rpcData.result.to.toLowerCase();
                 console.log(`[Base Token] Found token factory address from transaction 'to' field: ${detectedFactoryAddress}`);
                 
