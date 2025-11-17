@@ -171,12 +171,14 @@ export async function indexRelayTransaction(
 async function getWalletFromTransaction(
   txHash: string,
   chainId: number,
-): Promise<{ from: string | null; to: string | null }> {
+): Promise<{ from: string | null; to: string | null; userAddress: string | null }> {
   try {
     // For Base chain, use Base RPC
     if (chainId === 8453) {
       const BASE_RPC_URL = "https://mainnet.base.org";
-      const response = await fetch(BASE_RPC_URL, {
+      
+      // Get transaction details
+      const txResponse = await fetch(BASE_RPC_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -189,18 +191,64 @@ async function getWalletFromTransaction(
         }),
       });
 
-      const data = await response.json();
-      if (data.result) {
-        const from = data.result.from ? data.result.from.toLowerCase() : null;
-        const to = data.result.to ? data.result.to.toLowerCase() : null;
-        console.log(`Extracted addresses from transaction - from: ${from}, to: ${to}`);
-        return { from, to };
+      const txData = await txResponse.json();
+      let from: string | null = null;
+      let to: string | null = null;
+      
+      if (txData.result) {
+        from = txData.result.from ? txData.result.from.toLowerCase() : null;
+        to = txData.result.to ? txData.result.to.toLowerCase() : null;
       }
       
+      // Get transaction receipt to check logs for user address
+      // For Relay deposits, the user address might be in the logs
+      const receiptResponse = await fetch(BASE_RPC_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "eth_getTransactionReceipt",
+          params: [txHash],
+          id: 2,
+        }),
+      });
+
+      const receiptData = await receiptResponse.json();
+      let userAddress: string | null = null;
+      
+      // Check logs for Transfer events or other events that might contain user address
+      if (receiptData.result && receiptData.result.logs) {
+        // Look for addresses in log topics (first 20 bytes after 0x)
+        for (const log of receiptData.result.logs) {
+          if (log.topics && log.topics.length > 0) {
+            // Topics often contain addresses - check if any look like user addresses
+            for (const topic of log.topics) {
+              if (topic && topic.length === 66) { // 0x + 64 hex chars
+                const addr = "0x" + topic.slice(-40); // Last 20 bytes
+                // Skip zero address and contract addresses (might be Relay contract)
+                if (addr !== "0x0000000000000000000000000000000000000000" && 
+                    addr !== from && 
+                    addr !== to &&
+                    addr.length === 42) {
+                  userAddress = addr.toLowerCase();
+                  break;
+                }
+              }
+            }
+            if (userAddress) break;
+          }
+        }
+      }
+      
+      console.log(`Extracted addresses from transaction - from: ${from}, to: ${to}, userAddress from logs: ${userAddress}`);
+      return { from, to, userAddress };
+      
       // If no result, log the error
-      if (data.error) {
-        console.error(`RPC error fetching transaction:`, data.error);
-      } else {
+      if (txData.error) {
+        console.error(`RPC error fetching transaction:`, txData.error);
+      } else if (!txData.result) {
         console.warn(`Transaction ${txHash} returned no result from RPC`);
       }
     }
@@ -208,7 +256,7 @@ async function getWalletFromTransaction(
     // For Ethereum mainnet
     if (chainId === 1) {
       const ETH_RPC_URL = "https://eth.llamarpc.com";
-      const response = await fetch(ETH_RPC_URL, {
+      const txResponse = await fetch(ETH_RPC_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -221,21 +269,62 @@ async function getWalletFromTransaction(
         }),
       });
 
-      const data = await response.json();
-      if (data.result) {
-        const from = data.result.from ? data.result.from.toLowerCase() : null;
-        const to = data.result.to ? data.result.to.toLowerCase() : null;
-        console.log(`Extracted addresses from transaction - from: ${from}, to: ${to}`);
-        return { from, to };
+      const txData = await txResponse.json();
+      let from: string | null = null;
+      let to: string | null = null;
+      
+      if (txData.result) {
+        from = txData.result.from ? txData.result.from.toLowerCase() : null;
+        to = txData.result.to ? txData.result.to.toLowerCase() : null;
       }
+      
+      // Get receipt for logs
+      const receiptResponse = await fetch(ETH_RPC_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "eth_getTransactionReceipt",
+          params: [txHash],
+          id: 2,
+        }),
+      });
+
+      const receiptData = await receiptResponse.json();
+      let userAddress: string | null = null;
+      
+      if (receiptData.result && receiptData.result.logs) {
+        for (const log of receiptData.result.logs) {
+          if (log.topics && log.topics.length > 0) {
+            for (const topic of log.topics) {
+              if (topic && topic.length === 66) {
+                const addr = "0x" + topic.slice(-40);
+                if (addr !== "0x0000000000000000000000000000000000000000" && 
+                    addr !== from && 
+                    addr !== to &&
+                    addr.length === 42) {
+                  userAddress = addr.toLowerCase();
+                  break;
+                }
+              }
+            }
+            if (userAddress) break;
+          }
+        }
+      }
+      
+      console.log(`Extracted addresses from transaction - from: ${from}, to: ${to}, userAddress from logs: ${userAddress}`);
+      return { from, to, userAddress };
     }
 
     // For other chains, you could add similar RPC calls here
     // For now, return null if we can't fetch it
-    return { from: null, to: null };
+    return { from: null, to: null, userAddress: null };
   } catch (error) {
     console.error(`Error fetching transaction ${txHash} from chain ${chainId}:`, error);
-    return { from: null, to: null };
+    return { from: null, to: null, userAddress: null };
   }
 }
 
@@ -253,15 +342,17 @@ export async function fetchRelayTransaction(
 
     // If wallet address not provided, try to fetch it from the transaction
     let wallet: string | undefined = walletAddress;
+    let addresses: { from: string | null; to: string | null; userAddress: string | null } | null = null;
+    
     if (!wallet) {
-      const addresses = await getWalletFromTransaction(txHash, chainIdToUse);
-      if (!addresses.from && !addresses.to) {
+      addresses = await getWalletFromTransaction(txHash, chainIdToUse);
+      if (!addresses.from && !addresses.to && !addresses.userAddress) {
         console.warn(`Could not extract wallet address from transaction ${txHash}`);
         return null;
       }
-      // For deposits, try "from" address first (the user's address on source chain)
-      // If that doesn't work, we'll try "to" address
-      wallet = addresses.from || addresses.to || undefined;
+      // Try userAddress from logs first (most likely to be the actual user)
+      // Then try "from" address, then "to" address
+      wallet = addresses.userAddress || addresses.from || addresses.to || undefined;
     }
 
     // Query Relay API by wallet address
@@ -321,14 +412,17 @@ export async function fetchRelayTransaction(
     if (!matchingTx) {
       console.log(`Transaction ${txHash} not found in wallet ${wallet}'s Relay transactions`);
       
-      // If we used "from" address and there's a "to" address, try querying by "to" address
-      // This handles cases where the deposit transaction's "to" is the user's address on destination chain
-      if (!walletAddress) {
-        const addresses = await getWalletFromTransaction(txHash, chainIdToUse);
-        if (addresses.to && addresses.to !== wallet) {
-          console.log(`Trying alternative address: ${addresses.to}`);
+      // Try alternative addresses if the first one didn't work
+      if (!walletAddress && addresses) {
+        const addressesToTry: string[] = [];
+        if (addresses.userAddress && addresses.userAddress !== wallet) addressesToTry.push(addresses.userAddress);
+        if (addresses.from && addresses.from !== wallet) addressesToTry.push(addresses.from);
+        if (addresses.to && addresses.to !== wallet) addressesToTry.push(addresses.to);
+        
+        for (const altAddress of addressesToTry) {
+          console.log(`Trying alternative address: ${altAddress}`);
           const altResponse = await fetch(
-            `https://api.relay.link/v1/addresses/${addresses.to}/transactions`,
+            `https://api.relay.link/v1/addresses/${altAddress}/transactions`,
             {
               method: "GET",
               headers: {
@@ -357,7 +451,7 @@ export async function fetchRelayTransaction(
             );
             
             if (altMatchingTx) {
-              console.log(`Found matching transaction using alternative address!`);
+              console.log(`Found matching transaction using alternative address ${altAddress}!`);
               const tx = altMatchingTx;
               const relayTxHash = tx.txHash || tx.transactionHash || tx.relayTxHash || txHash;
               

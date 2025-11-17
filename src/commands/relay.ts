@@ -40,7 +40,7 @@ export async function handleRelayCommand(
 
     if (!transaction) {
       await interaction.editReply({
-        content: `❌ Transaction \`${txHash}\` not found on Relay.link API.\n\n**Possible reasons:**\n• The transaction may not be a Relay cross-chain transaction\n• The wallet address could not be extracted from the transaction\n• The transaction may not be indexed yet\n\n**Note:** Relay API requires querying by wallet address, not transaction hash. If the transaction is very recent, it may take a few minutes to appear.`,
+        content: `❌ Transaction \`${txHash}\` not found on Relay.link API.\n\n**Possible reasons:**\n• The transaction may not be a Relay cross-chain transaction\n• The wallet address could not be extracted from the transaction\n• The transaction may not be indexed yet\n• The transaction might be too old or not tracked by Relay\n\n**Note:** Relay API requires querying by wallet address, not transaction hash. Check the logs for detailed debugging information about which addresses were tried.`,
       });
       return;
     }
