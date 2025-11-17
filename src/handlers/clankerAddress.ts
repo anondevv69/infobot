@@ -292,9 +292,29 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
       ]);
 
       if (baseTokenData) {
-        // Only fetch creator from Basescan if it's a Base token that's NOT Zora/Clanker
-        // This saves API calls since Zora/Clanker already have creator info
-        const contractCreation = await getContractCreation(address).catch(() => null);
+        // Fetch creator address and detect factory for Base tokens
+        const [contractCreation, creationTx] = await Promise.all([
+          getContractCreation(address).catch(() => null),
+          getContractCreationTx(address, "base", env.basescanApiKey).catch(() => null),
+        ]);
+
+        // Detect factory: if creationTx.to exists, that's the factory address
+        let detectedFactoryName: string | null = null;
+        if (creationTx?.to) {
+          // Check if it's a known factory
+          const { getFactoryByAddress } = await import("../services/baseFactories");
+          const knownFactory = getFactoryByAddress(creationTx.to);
+          if (knownFactory) {
+            detectedFactoryName = knownFactory.name;
+          } else {
+            // Show factory address if not in known list
+            detectedFactoryName = `Factory: ${creationTx.to.slice(0, 10)}...${creationTx.to.slice(-8)}`;
+          }
+        }
+
+        // Add creator and factory to token data
+        baseTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
+        baseTokenData.factoryName = detectedFactoryName ?? factory?.name ?? null;
 
         const { embed, components } = await buildBaseTokenEmbed(
           address,
@@ -305,9 +325,9 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           contractCreation?.contractCreator ?? null,
         );
 
-        const factoryName = factory ? ` (${factory.name})` : "";
+        const factoryDisplayName = factory ? ` (${factory.name})` : "";
         await message.reply({
-          content: `Base token detected${factoryName} for \`${address}\`.`,
+          content: `Base token detected${factoryDisplayName} for \`${address}\`.`,
           embeds: [embed],
           components,
         });
