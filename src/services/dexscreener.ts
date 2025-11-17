@@ -62,6 +62,8 @@ export interface TokenMetrics {
   pairAddress?: string | null;
   tokenName?: string | null;
   tokenSymbol?: string | null;
+  creatorAddress?: string | null;
+  factoryName?: string | null;
 }
 
 export interface MultiChainTokenData extends TokenMetrics {
@@ -69,6 +71,8 @@ export interface MultiChainTokenData extends TokenMetrics {
   chainName: string;
   tokenName?: string | null;
   tokenSymbol?: string | null;
+  creatorAddress?: string | null;
+  factoryName?: string | null;
 }
 
 /**

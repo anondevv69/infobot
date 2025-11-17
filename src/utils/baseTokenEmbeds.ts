@@ -112,11 +112,12 @@ export async function buildBaseTokenEmbed(
     });
   }
 
-  // Creator Address (if available)
-  if (creatorAddress) {
+  // Creator Address (always show if available)
+  const finalCreatorAddress = creatorAddress ?? metrics?.creatorAddress ?? null;
+  if (finalCreatorAddress) {
     embed.addFields({
       name: "Creator",
-      value: `\`\`\`\n${creatorAddress}\n\`\`\``,
+      value: `\`\`\`\n${finalCreatorAddress}\n\`\`\``,
       inline: false,
     });
   }

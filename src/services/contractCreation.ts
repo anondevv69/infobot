@@ -1,0 +1,208 @@
+/**
+ * Multi-chain contract creation service
+ * Supports Base, BSC, Ethereum, Polygon, Arbitrum, Optimism, Avalanche, Fantom
+ */
+
+interface ContractCreation {
+  contractAddress: string;
+  contractCreator: string;
+  txHash: string;
+  chainId: string;
+}
+
+// Cache creator addresses (they never change once a contract is deployed)
+const creatorCache = new Map<string, ContractCreation>();
+
+/**
+ * Get the API base URL for a given chain
+ */
+function getExplorerApiBase(chainId: string): string | null {
+  const apiMap: Record<string, string> = {
+    "1": "https://api.etherscan.io/api",
+    "eth": "https://api.etherscan.io/api",
+    "ethereum": "https://api.etherscan.io/api",
+    "56": "https://api.bscscan.com/api",
+    "bsc": "https://api.bscscan.com/api",
+    "137": "https://api.polygonscan.com/api",
+    "polygon": "https://api.polygonscan.com/api",
+    "42161": "https://api.arbiscan.io/api",
+    "arbitrum": "https://api.arbiscan.io/api",
+    "10": "https://api-optimistic.etherscan.io/api",
+    "optimism": "https://api-optimistic.etherscan.io/api",
+    "8453": "https://api.basescan.org/api",
+    "base": "https://api.basescan.org/api",
+    "43114": "https://api.snowtrace.io/api",
+    "avalanche": "https://api.snowtrace.io/api",
+    "250": "https://api.ftmscan.com/api",
+    "fantom": "https://api.ftmscan.com/api",
+  };
+  return apiMap[chainId.toLowerCase()] ?? null;
+}
+
+/**
+ * Get contract creation information for any EVM chain
+ */
+export async function getContractCreation(
+  contractAddress: string,
+  chainId: string,
+  apiKey?: string | null,
+): Promise<ContractCreation | null> {
+  try {
+    const normalizedAddress = contractAddress.toLowerCase();
+    const cacheKey = `${chainId}:${normalizedAddress}`;
+    
+    // Check cache first (creator addresses never change)
+    const cached = creatorCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const apiBase = getExplorerApiBase(chainId);
+    if (!apiBase) {
+      console.warn(`No explorer API available for chain: ${chainId}`);
+      return null;
+    }
+
+    // Build API key parameter (optional, but improves rate limits)
+    const apiKeyParam = apiKey ? `&apikey=${apiKey}` : "";
+
+    // Method 1: Try to get the contract creation transaction
+    // Get the first transaction for this contract (which should be the creation transaction)
+    const txListUrl = `${apiBase}?module=account&action=txlist&address=${contractAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc${apiKeyParam}`;
+    
+    const txResponse = await fetch(txListUrl, {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (txResponse.ok) {
+      const txData = (await txResponse.json()) as {
+        status?: string;
+        message?: string;
+        result?: Array<{
+          hash: string;
+          from: string;
+          to: string;
+          contractAddress?: string;
+        }>;
+      };
+
+      if (txData.status === "1" && txData.result && txData.result.length > 0) {
+        const firstTx = txData.result[0];
+        // If the "to" field is empty, it's a contract creation transaction
+        // Also check if contractAddress matches (for contracts created via factory)
+        const isContractCreation = 
+          !firstTx.to || 
+          firstTx.to === "" || 
+          firstTx.contractAddress?.toLowerCase() === normalizedAddress ||
+          firstTx.to.toLowerCase() === normalizedAddress;
+        
+        if (isContractCreation) {
+          const result: ContractCreation = {
+            contractAddress: contractAddress,
+            contractCreator: firstTx.from,
+            txHash: firstTx.hash,
+            chainId: chainId,
+          };
+          // Cache the result
+          creatorCache.set(cacheKey, result);
+          return result;
+        }
+      }
+    }
+
+    // Method 2: Try the contract creation endpoint (may be deprecated but worth trying)
+    const url = `${apiBase}?module=contract&action=getcontractcreation&contractaddresses=${contractAddress}${apiKeyParam}`;
+    
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (response.ok) {
+      const data = (await response.json()) as {
+        status?: string;
+        message?: string;
+        result?: Array<{
+          contractAddress: string;
+          contractCreator: string;
+          txHash: string;
+        }>;
+      };
+
+      if (data.status === "1" && data.result && data.result.length > 0) {
+        const apiResult = data.result[0];
+        const result: ContractCreation = {
+          contractAddress: apiResult.contractAddress,
+          contractCreator: apiResult.contractCreator,
+          txHash: apiResult.txHash,
+          chainId: chainId,
+        };
+        // Cache the result
+        creatorCache.set(cacheKey, result);
+        return result;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error(`Failed to fetch contract creation for chain ${chainId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Get contract creation transaction to detect factory
+ * Returns the transaction that created the contract
+ */
+export async function getContractCreationTx(
+  contractAddress: string,
+  chainId: string,
+  apiKey?: string | null,
+): Promise<{ from: string; to: string | null; hash: string } | null> {
+  try {
+    const apiBase = getExplorerApiBase(chainId);
+    if (!apiBase) {
+      return null;
+    }
+
+    const apiKeyParam = apiKey ? `&apikey=${apiKey}` : "";
+    const url = `${apiBase}?module=account&action=txlist&address=${contractAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc${apiKeyParam}`;
+    
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (response.ok) {
+      const data = (await response.json()) as {
+        status?: string;
+        result?: Array<{
+          hash: string;
+          from: string;
+          to: string;
+        }>;
+      };
+
+      if (data.status === "1" && data.result && data.result.length > 0) {
+        const firstTx = data.result[0];
+        // If "to" is empty, it's a direct contract creation
+        // Otherwise, "to" is the factory address
+        return {
+          from: firstTx.from,
+          to: firstTx.to || null,
+          hash: firstTx.hash,
+        };
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error(`Failed to fetch contract creation tx for chain ${chainId}:`, error);
+    return null;
+  }
+}
+

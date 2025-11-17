@@ -32,6 +32,8 @@ import { detectTokenFactory } from "../services/baseFactories";
 import { buildBaseTokenEmbed } from "../utils/baseTokenEmbeds";
 import { fetchBaseTokenData, fetchMultiChainTokenData } from "../services/dexscreener";
 import { getContractCreation } from "../services/basescan";
+import { getContractCreation as getMultiChainContractCreation, getContractCreationTx } from "../services/contractCreation";
+import { env } from "../config";
 import { buildMultiChainTokenEmbed } from "../utils/multiChainTokenEmbeds";
 import { splitEmbedIntoPages, buildPaginationButtons } from "../utils/pagination";
 import { storeEmbedForPagination } from "../handlers/pagination";
@@ -318,6 +320,24 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
       if (multiChainTokenData) {
         // Only show if it's NOT on Base (we already checked Base above)
         if (multiChainTokenData.chainId.toLowerCase() !== "base" && multiChainTokenData.chainId !== "8453") {
+          // Fetch creator address and detect factory for this chain
+          const { getContractCreation, getContractCreationTx } = await import("../services/contractCreation");
+          const [contractCreation, creationTx] = await Promise.all([
+            getContractCreation(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
+            getContractCreationTx(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
+          ]);
+
+          // Detect factory: if creationTx.to exists, that's the factory address
+          let factoryName: string | null = null;
+          if (creationTx?.to) {
+            // Check if it's a known factory (we can expand this later)
+            // For now, we'll just show the factory address
+            factoryName = `Factory: ${creationTx.to.slice(0, 10)}...${creationTx.to.slice(-8)}`;
+          }
+
+          multiChainTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
+          multiChainTokenData.factoryName = factoryName;
+
           const { embed, components } = buildMultiChainTokenEmbed(address, multiChainTokenData);
           await message.reply({
             content: `${multiChainTokenData.chainName} token detected for \`${address}\`.`,

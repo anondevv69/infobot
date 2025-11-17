@@ -145,6 +145,24 @@ export function buildMultiChainTokenEmbed(
     }
   }
 
+  // Creator Address (if available)
+  if (tokenData.creatorAddress) {
+    embed.addFields({
+      name: "Creator",
+      value: `\`\`\`\n${tokenData.creatorAddress}\n\`\`\``,
+      inline: false,
+    });
+  }
+
+  // Factory Information (if available)
+  if (tokenData.factoryName) {
+    embed.addFields({
+      name: "Factory",
+      value: `🏭 ${tokenData.factoryName}`,
+      inline: false,
+    });
+  }
+
   // Contract Address
   embed.addFields({
     name: "Contract",

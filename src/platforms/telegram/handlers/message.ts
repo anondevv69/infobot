@@ -127,10 +127,32 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         ]);
 
         if (baseTokenData) {
-          // Only fetch creator from Basescan if it's a Base token that's NOT Zora/Clanker
-          // This saves API calls since Zora/Clanker already have creator info
+          // Fetch creator address and detect factory for Base tokens
           const { getContractCreation } = await import("../../../services/basescan");
-          const contractCreation = await getContractCreation(address).catch(() => null);
+          const { getContractCreationTx } = await import("../../../services/contractCreation");
+          const { env } = await import("../../../config");
+          
+          const [contractCreation, creationTx] = await Promise.all([
+            getContractCreation(address).catch(() => null),
+            getContractCreationTx(address, "base", env.basescanApiKey).catch(() => null),
+          ]);
+
+          // Detect factory: if creationTx.to exists, that's the factory address
+          let detectedFactoryName: string | null = null;
+          if (creationTx?.to) {
+            // Check if it's a known factory
+            const { getFactoryByAddress } = await import("../../../services/baseFactories");
+            const knownFactory = getFactoryByAddress(creationTx.to);
+            if (knownFactory) {
+              detectedFactoryName = knownFactory.name;
+            } else {
+              detectedFactoryName = `Factory: ${creationTx.to.slice(0, 10)}...${creationTx.to.slice(-8)}`;
+            }
+          }
+
+          // Add creator and factory to token data
+          baseTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
+          baseTokenData.factoryName = detectedFactoryName ?? factory?.name ?? null;
 
           const { embed } = await buildBaseTokenEmbed(
             address,
@@ -141,9 +163,9 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             contractCreation?.contractCreator ?? null,
           );
 
-          const factoryName = factory ? ` (${factory.name})` : "";
+          const factoryDisplayName = factory ? ` (${factory.name})` : "";
           const messages = embedsToTelegram([embed]);
-          await bot.sendMessage(chatId, `Base token detected${factoryName} for <code>${address}</code>.`, {
+          await bot.sendMessage(chatId, `Base token detected${factoryDisplayName} for <code>${address}</code>.`, {
             parse_mode: "HTML",
             disable_web_page_preview: true,
           });
@@ -160,6 +182,23 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         if (multiChainTokenData) {
           // Only show if it's NOT on Base (we already checked Base above)
           if (multiChainTokenData.chainId.toLowerCase() !== "base" && multiChainTokenData.chainId !== "8453") {
+            // Fetch creator address and detect factory for this chain
+            const { getContractCreation, getContractCreationTx } = await import("../../../services/contractCreation");
+            const { env } = await import("../../../config");
+            const [contractCreation, creationTx] = await Promise.all([
+              getContractCreation(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
+              getContractCreationTx(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
+            ]);
+
+            // Detect factory: if creationTx.to exists, that's the factory address
+            let factoryName: string | null = null;
+            if (creationTx?.to) {
+              factoryName = `Factory: ${creationTx.to.slice(0, 10)}...${creationTx.to.slice(-8)}`;
+            }
+
+            multiChainTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
+            multiChainTokenData.factoryName = factoryName;
+
             const { embed } = buildMultiChainTokenEmbed(address, multiChainTokenData);
             const messages = embedsToTelegram([embed]);
             await bot.sendMessage(chatId, `${multiChainTokenData.chainName} token detected for <code>${address}</code>.`, {
