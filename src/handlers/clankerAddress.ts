@@ -392,6 +392,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           finalFactory, // Pass factory object so checkmark can be shown
           contractCreation?.contractCreator ?? null,
           contractCreation?.createdAt ?? null, // Creation timestamp
+          contractCreation?.txHash ?? null, // Creation transaction hash
         );
 
         const factoryDisplayName = finalFactory ? ` (${finalFactory.name})` : "";

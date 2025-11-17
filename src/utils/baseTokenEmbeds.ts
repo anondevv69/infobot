@@ -43,6 +43,7 @@ export async function buildBaseTokenEmbed(
   factory?: BaseFactory | null,
   creatorAddress?: string | null,
   createdAt?: number | null,
+  creationTxHash?: string | null,
 ): Promise<{
   embed: EmbedBuilder;
   components: ActionRowBuilder<ButtonBuilder>[];
@@ -223,6 +224,12 @@ export async function buildBaseTokenEmbed(
   // Add creator info to token info section (full address in code block)
   if (finalCreatorAddress) {
     tokenInfo.push(`👤 Creator:\n\`\`\`\n${finalCreatorAddress}\n\`\`\``);
+  }
+
+  // Add creation transaction link if we have the txHash
+  if (creationTxHash) {
+    const txLink = `https://basescan.org/tx/${creationTxHash}`;
+    tokenInfo.push(`🔗 [Creation Transaction](${txLink})`);
   }
 
   if (tokenInfo.length > 0) {

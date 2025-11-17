@@ -38,7 +38,61 @@ export async function getContractCreation(
 
     const apiKeyParam = env.basescanApiKey ? `&apikey=${env.basescanApiKey}` : "";
 
-    // STEP 1: Try the getcontractcreation endpoint (this still works even though other V1 endpoints are deprecated)
+    // STEP 1: Try Basescan API V2 endpoint first (if available)
+    try {
+      const v2Url = `https://api.basescan.org/api/v2/contracts/${contractAddress}/creation${apiKeyParam ? `?apikey=${env.basescanApiKey}` : ""}`;
+      const v2Response = await fetch(v2Url, {
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      if (v2Response.ok) {
+        const v2Data = (await v2Response.json()) as {
+          status?: string;
+          message?: string;
+          result?: {
+            contractAddress: string;
+            creatorAddress: string;
+            transactionHash: string;
+            blockNumber: string;
+          };
+        };
+
+        if (v2Data.status === "1" && v2Data.result) {
+          // Get timestamp from block
+          let createdAt: number | null = null;
+          try {
+            const blockUrl = `${BASESCAN_API_BASE}?module=proxy&action=eth_getBlockByNumber&tag=${v2Data.result.blockNumber}&boolean=true${apiKeyParam}`;
+            const blockResponse = await fetch(blockUrl, { headers: { Accept: "application/json" } });
+            if (blockResponse.ok) {
+              const blockData = (await blockResponse.json()) as { result?: { timestamp?: string } };
+              if (blockData.result?.timestamp) {
+                createdAt = parseInt(blockData.result.timestamp, 16);
+              }
+            }
+          } catch (error) {
+            // Ignore timestamp errors
+          }
+
+          const result = {
+            contractAddress: v2Data.result.contractAddress,
+            contractCreator: v2Data.result.creatorAddress,
+            txHash: v2Data.result.transactionHash,
+            createdAt,
+          };
+          creatorCache.set(normalizedAddress, result);
+          console.log(`[Basescan] Found creator via V2 API for ${contractAddress}: ${result.contractCreator}`);
+          return result;
+        }
+      } else if (v2Response.status === 404) {
+        console.log(`[Basescan] V2 API endpoint not available (404), trying V1 fallback`);
+      }
+    } catch (error) {
+      console.warn(`[Basescan] V2 API failed for ${contractAddress}, trying V1 fallback:`, error);
+    }
+
+    // STEP 2: Try the getcontractcreation endpoint (this still works even though other V1 endpoints are deprecated)
     try {
       const createUrl = `${BASESCAN_API_BASE}?module=contract&action=getcontractcreation&contractaddresses=${contractAddress}${apiKeyParam}`;
       const createResponse = await fetch(createUrl, {
@@ -62,7 +116,7 @@ export async function getContractCreation(
 
         // Check if it's a deprecated message
         if (typeof createData.result === "string" && createData.result.includes("deprecated")) {
-          console.warn(`[Basescan] Contract creation endpoint deprecated for ${contractAddress}`);
+          console.warn(`[Basescan] Contract creation endpoint deprecated for ${contractAddress}, trying fallback`);
         } else if (createData.status === "1" && Array.isArray(createData.result) && createData.result.length > 0) {
           const creation = createData.result[0];
           let createdAt: number | null = null;
@@ -100,71 +154,113 @@ export async function getContractCreation(
       console.warn(`[Basescan] Contract creation endpoint failed for ${contractAddress}, trying fallback:`, error);
     }
 
-    // STEP 2: Fallback → Use logs to find creation transaction
+    // STEP 3: Use Base public RPC to find contract creation
+    // Since Basescan API endpoints are deprecated, we'll use Base RPC directly
     try {
-      const logsUrl = `${BASESCAN_API_BASE}?module=logs&action=getLogs&address=${contractAddress}&fromBlock=1&toBlock=latest&page=1&offset=1${apiKeyParam}`;
-      const logsResponse = await fetch(logsUrl, {
+      // Use Base public RPC endpoint
+      const BASE_RPC_URL = "https://mainnet.base.org";
+      
+      // Method: Use debug_traceBlockByNumber to find when contract was created
+      // First, we need to find the block where the contract first appeared
+      // We'll use a binary search approach on recent blocks
+      
+      // Alternative simpler approach: Use the contract's transaction count
+      // If transactionCount is 0, it's a new contract - but we still need the creation tx
+      
+      // Actually, the most reliable way: Use Basescan's website data
+      // But since API is deprecated, let's try using the Basescan website's internal API
+      // Or use a third-party service
+      
+      // For now, let's try using the Basescan website HTML parsing as a last resort
+      // But first, let's see if we can get the data from the website's internal API
+      
+      console.log(`[Basescan] Attempting to fetch creation data from Basescan website for ${contractAddress}`);
+      
+      // Try fetching the Basescan contract page and parsing it
+      const basescanPageUrl = `https://basescan.org/address/${contractAddress}`;
+      const pageResponse = await fetch(basescanPageUrl, {
         headers: {
-          Accept: "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         },
       });
-
-      if (logsResponse.ok) {
-        const logsData = (await logsResponse.json()) as {
-          status?: string;
-          result?: Array<{
-            transactionHash: string;
-            blockNumber: string;
-            timeStamp?: string;
-            topics?: string[];
-            address?: string;
-          }>;
-        };
-
-        if (logsData.status === "1" && Array.isArray(logsData.result) && logsData.result.length > 0) {
-          const firstLog = logsData.result[0];
-          const txHash = firstLog.transactionHash;
-          const createdAt = firstLog.timeStamp ? parseInt(firstLog.timeStamp, 10) : null;
-
-          // Get the transaction receipt to find the creator
-          const receiptUrl = `${BASESCAN_API_BASE}?module=proxy&action=eth_getTransactionReceipt&txhash=${txHash}${apiKeyParam}`;
-          const receiptResponse = await fetch(receiptUrl, { headers: { Accept: "application/json" } });
-
-          if (receiptResponse.ok) {
-            const receiptData = (await receiptResponse.json()) as { result?: { from?: string; blockNumber?: string } };
-            if (receiptData.result?.from) {
-              // Get timestamp from block if we don't have it
-              let finalCreatedAt = createdAt;
-              if (!finalCreatedAt && receiptData.result.blockNumber) {
-                try {
-                  const blockUrl = `${BASESCAN_API_BASE}?module=proxy&action=eth_getBlockByNumber&tag=${receiptData.result.blockNumber}&boolean=true${apiKeyParam}`;
-                  const blockResponse = await fetch(blockUrl, { headers: { Accept: "application/json" } });
+      
+      if (pageResponse.ok) {
+        const pageHtml = await pageResponse.text();
+        
+        // Look for contract creator pattern in the HTML
+        // Basescan shows: "Contract Creator: 0x..." or "Creator: 0x..."
+        const creatorMatch = pageHtml.match(/Contract Creator[^>]*>([^<]*<a[^>]*>)?(0x[a-fA-F0-9]{40})/i);
+        const txHashMatch = pageHtml.match(/Creation Transaction[^>]*>([^<]*<a[^>]*href="[^"]*tx\/(0x[a-fA-F0-9]{64})[^"]*"[^>]*>)?(0x[a-fA-F0-9]{64})/i);
+        
+        if (creatorMatch && creatorMatch[2]) {
+          const creator = creatorMatch[2];
+          let txHash: string | null = null;
+          
+          if (txHashMatch) {
+            txHash = txHashMatch[2] || txHashMatch[3] || null;
+          }
+          
+          if (creator && txHash) {
+            // Get timestamp from the transaction
+            let createdAt: number | null = null;
+            try {
+              // Use Base RPC to get transaction details
+              const rpcResponse = await fetch(BASE_RPC_URL, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  jsonrpc: "2.0",
+                  method: "eth_getTransactionByHash",
+                  params: [txHash],
+                  id: 1,
+                }),
+              });
+              
+              if (rpcResponse.ok) {
+                const rpcData = (await rpcResponse.json()) as { result?: { blockNumber?: string } };
+                if (rpcData.result?.blockNumber) {
+                  // Get block timestamp
+                  const blockResponse = await fetch(BASE_RPC_URL, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      jsonrpc: "2.0",
+                      method: "eth_getBlockByNumber",
+                      params: [rpcData.result.blockNumber, false],
+                      id: 1,
+                    }),
+                  });
+                  
                   if (blockResponse.ok) {
                     const blockData = (await blockResponse.json()) as { result?: { timestamp?: string } };
                     if (blockData.result?.timestamp) {
-                      finalCreatedAt = parseInt(blockData.result.timestamp, 16);
+                      createdAt = parseInt(blockData.result.timestamp, 16);
                     }
                   }
-                } catch (error) {
-                  // Ignore
                 }
               }
-
-              const result = {
-                contractAddress: contractAddress,
-                contractCreator: receiptData.result.from,
-                txHash: txHash,
-                createdAt: finalCreatedAt,
-              };
-              creatorCache.set(normalizedAddress, result);
-              console.log(`[Basescan] Found creator via logs for ${contractAddress}: ${result.contractCreator}`);
-              return result;
+            } catch (error) {
+              // Ignore timestamp errors
             }
+            
+            const result = {
+              contractAddress: contractAddress,
+              contractCreator: creator,
+              txHash: txHash,
+              createdAt,
+            };
+            creatorCache.set(normalizedAddress, result);
+            console.log(`[Basescan] Found creator via website parsing for ${contractAddress}: ${result.contractCreator}`);
+            return result;
           }
         }
       }
     } catch (error) {
-      console.error(`[Basescan] Logs method failed for ${contractAddress}:`, error);
+      console.error(`[Basescan] Website parsing failed for ${contractAddress}:`, error);
     }
 
     // STEP 3: Fallback → Use RPC proxy to get transaction by hash

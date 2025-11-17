@@ -177,6 +177,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             factory,
             contractCreation?.contractCreator ?? null,
             contractCreation?.createdAt ?? null, // Creation timestamp
+            contractCreation?.txHash ?? null, // Creation transaction hash
           );
 
           const factoryDisplayName = factory ? ` (${factory.name})` : "";
@@ -584,11 +585,13 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
 
             const { embed } = await buildBaseTokenEmbed(
               address,
-              null, // Token name
-              null, // Token symbol
+              baseTokenData?.tokenName ?? null, // Token name
+              baseTokenData?.tokenSymbol ?? null, // Token symbol
               baseTokenData,
               factory,
               contractCreation?.contractCreator ?? null,
+              contractCreation?.createdAt ?? null, // Creation timestamp
+              contractCreation?.txHash ?? null, // Creation transaction hash
             );
 
             const factoryName = factory ? ` (${factory.name})` : "";
