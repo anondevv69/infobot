@@ -431,6 +431,7 @@ export async function fetchRelayTransaction(
           const errorText = await response.text().catch(() => "");
           console.error(`Id query also failed: ${response.status} ${response.statusText} - ${errorText}`);
           console.log(`Transaction ${txHash} not found on Relay API (tried both hash and id)`);
+          console.log(`Note: Relay transaction IDs from relay.link URLs may not be directly queryable via the API. Try using the source or destination transaction hash instead.`);
           return null;
         }
       } else {
