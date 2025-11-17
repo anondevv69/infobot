@@ -130,9 +130,9 @@ Just send:
             let errorMessage = `❌ Transaction <code>${txHash}</code> not found on Relay.link API.\n\n<b>Possible reasons:</b>\n• The transaction may not be a Relay cross-chain transaction\n• The transaction may not be indexed yet\n• The transaction might be too old or not tracked by Relay`;
             
             if (isRelayTxId) {
-              errorMessage += `\n\n<b>Note:</b> Relay transaction IDs from <code>relay.link/transaction/</code> URLs may not be directly queryable via the API. Try using the <b>source or destination transaction hash</b> from the transaction page instead (the actual blockchain transaction hash, not Relay's internal ID).`;
+              errorMessage += `\n\n<b>Note:</b> Relay transaction IDs from <code>relay.link/transaction/</code> URLs are <b>not supported</b> by the Relay API. The API only supports querying by actual blockchain transaction hashes.\n\n<b>Solution:</b> Open the Relay transaction page and look for the <b>source</b> or <b>destination</b> transaction hash (the actual blockchain transaction, not Relay's internal ID). Use that hash instead.`;
             } else if (isSolanaTx) {
-              errorMessage += `\n\n<b>Note:</b> Solana transaction signatures may not be directly queryable. If this is a Relay cross-chain transaction, try using the source or destination transaction hash from the Relay transaction page.`;
+              errorMessage += `\n\n<b>Note:</b> Solana transaction signatures are <b>not supported</b> by the Relay API. The API only supports EVM-compatible transaction hashes (0x...).\n\n<b>Solution:</b> If this is a Relay cross-chain transaction, open the Relay transaction page and use the <b>destination transaction hash</b> (the EVM chain transaction hash, not the Solana signature).`;
             } else {
               errorMessage += `\n\n<b>Note:</b> If the transaction is very recent, it may take a few minutes to appear in Relay's system.`;
             }

@@ -47,9 +47,9 @@ export async function handleRelayCommand(
       let errorMessage = `❌ Transaction \`${txHash}\` not found on Relay.link API.\n\n**Possible reasons:**\n• The transaction may not be a Relay cross-chain transaction\n• The transaction may not be indexed yet\n• The transaction might be too old or not tracked by Relay`;
       
       if (isRelayTxId) {
-        errorMessage += `\n\n**Note:** Relay transaction IDs from \`relay.link/transaction/\` URLs may not be directly queryable via the API. Try using the **source or destination transaction hash** from the transaction page instead (the actual blockchain transaction hash, not Relay's internal ID).`;
+        errorMessage += `\n\n**Note:** Relay transaction IDs from \`relay.link/transaction/\` URLs are **not supported** by the Relay API. The API only supports querying by actual blockchain transaction hashes.\n\n**Solution:** Open the Relay transaction page and look for the **source** or **destination** transaction hash (the actual blockchain transaction, not Relay's internal ID). Use that hash instead.`;
       } else if (isSolanaTx) {
-        errorMessage += `\n\n**Note:** Solana transaction signatures may not be directly queryable. If this is a Relay cross-chain transaction, try using the source or destination transaction hash from the Relay transaction page.`;
+        errorMessage += `\n\n**Note:** Solana transaction signatures are **not supported** by the Relay API. The API only supports EVM-compatible transaction hashes (0x...).\n\n**Solution:** If this is a Relay cross-chain transaction, open the Relay transaction page and use the **destination transaction hash** (the EVM chain transaction hash, not the Solana signature).`;
       } else {
         errorMessage += `\n\n**Note:** If the transaction is very recent, it may take a few minutes to appear in Relay's system.`;
       }
