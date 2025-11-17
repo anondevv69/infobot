@@ -122,6 +122,19 @@ export function extractTransactionHash(input: string): string | null {
     }
   }
 
+  // Extract from Relay.link transaction URLs (these use Relay's transaction IDs)
+  const relayPatterns = [
+    /relay\.link\/transaction\/(0x[a-fA-F0-9]{64})/i,
+    /relay\.link\/transaction\/([1-9A-HJ-NP-Za-km-z]{87,88})/i,
+  ];
+
+  for (const pattern of relayPatterns) {
+    const match = input.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+
   return null;
 }
 
@@ -409,6 +422,13 @@ export async function fetchRelayTransaction(
 
     if (requests.length === 0) {
       console.log(`No requests found for transaction hash ${txHash}`);
+      
+      // If this is a Solana transaction, suggest using the Relay transaction ID instead
+      // Solana transactions might not be directly queryable by their signature
+      if (!txHash.startsWith("0x") && txHash.length >= 87) {
+        console.log(`Note: Solana transaction signatures may not be directly queryable. Try using the Relay transaction ID from the Relay transaction page instead.`);
+      }
+      
       return null;
     }
 

@@ -122,7 +122,18 @@ Just send:
           const transaction = await fetchRelayTransaction(txHash, sourceChainId || undefined);
 
           if (!transaction) {
-            await bot.sendMessage(chatId, `❌ Transaction <code>${txHash}</code> not found on Relay.link API.\n\n<b>Possible reasons:</b>\n• The transaction may not be a Relay cross-chain transaction\n• The transaction may not be indexed yet\n• The transaction might be too old or not tracked by Relay\n\n<b>Note:</b> If the transaction is very recent, it may take a few minutes to appear in Relay's system.`, { parse_mode: "HTML" });
+            // Check if this is a Solana transaction (base58, 87-88 chars, not starting with 0x)
+            const isSolanaTx = !txHash.startsWith("0x") && txHash.length >= 87 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(txHash);
+            
+            let errorMessage = `❌ Transaction <code>${txHash}</code> not found on Relay.link API.\n\n<b>Possible reasons:</b>\n• The transaction may not be a Relay cross-chain transaction\n• The transaction may not be indexed yet\n• The transaction might be too old or not tracked by Relay`;
+            
+            if (isSolanaTx) {
+              errorMessage += `\n\n<b>Note:</b> Solana transaction signatures may not be directly queryable. If this is a Relay cross-chain transaction, try using the Relay transaction ID from the Relay transaction page (e.g., <code>https://relay.link/transaction/0x...</code>).`;
+            } else {
+              errorMessage += `\n\n<b>Note:</b> If the transaction is very recent, it may take a few minutes to appear in Relay's system.`;
+            }
+            
+            await bot.sendMessage(chatId, errorMessage, { parse_mode: "HTML" });
             return;
           }
 

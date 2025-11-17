@@ -39,8 +39,19 @@ export async function handleRelayCommand(
     const transaction = await fetchRelayTransaction(txHash, sourceChainId || undefined);
 
     if (!transaction) {
+      // Check if this is a Solana transaction (base58, 87-88 chars, not starting with 0x)
+      const isSolanaTx = !txHash.startsWith("0x") && txHash.length >= 87 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(txHash);
+      
+      let errorMessage = `❌ Transaction \`${txHash}\` not found on Relay.link API.\n\n**Possible reasons:**\n• The transaction may not be a Relay cross-chain transaction\n• The transaction may not be indexed yet\n• The transaction might be too old or not tracked by Relay`;
+      
+      if (isSolanaTx) {
+        errorMessage += `\n\n**Note:** Solana transaction signatures may not be directly queryable. If this is a Relay cross-chain transaction, try using the Relay transaction ID from the Relay transaction page (e.g., \`https://relay.link/transaction/0x...\`).`;
+      } else {
+        errorMessage += `\n\n**Note:** If the transaction is very recent, it may take a few minutes to appear in Relay's system.`;
+      }
+      
       await interaction.editReply({
-        content: `❌ Transaction \`${txHash}\` not found on Relay.link API.\n\n**Possible reasons:**\n• The transaction may not be a Relay cross-chain transaction\n• The transaction may not be indexed yet\n• The transaction might be too old or not tracked by Relay\n\n**Note:** If the transaction is very recent, it may take a few minutes to appear in Relay's system.`,
+        content: errorMessage,
       });
       return;
     }
