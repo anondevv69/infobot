@@ -28,7 +28,7 @@ import {
 } from "../utils/zoraAssociation";
 import { splitClankerTokens } from "../utils/clankerAssociation";
 import { buildZoraCoinResponse } from "../handlers/zoraAddress";
-import { detectTokenFactory } from "../services/baseFactories";
+import { detectTokenFactory, type BaseFactory } from "../services/baseFactories";
 import { buildBaseTokenEmbed } from "../utils/baseTokenEmbeds";
 import { fetchBaseTokenData, fetchMultiChainTokenData } from "../services/dexscreener";
 import { getContractCreation } from "../services/basescan";
@@ -350,12 +350,14 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           }
         }
         
-        // Check if it's a known factory
+        // Check if it's a known factory and get factory object
+        let detectedFactory: BaseFactory | null = null;
         if (detectedFactoryAddress) {
           try {
             const { getFactoryByAddress } = await import("../services/baseFactories");
             const knownFactory = getFactoryByAddress(detectedFactoryAddress);
             if (knownFactory) {
+              detectedFactory = knownFactory;
               detectedFactoryName = knownFactory.name;
             } else {
               // Show factory address if not in known list
@@ -376,19 +378,23 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           creatorAddress: baseTokenData.creatorAddress,
           createdAt: baseTokenData.createdAt,
           factoryName: baseTokenData.factoryName,
+          factoryObject: detectedFactory ?? factory,
         });
+
+        // Use detected factory if available, otherwise fall back to existing factory
+        const finalFactory = detectedFactory ?? factory;
 
         const { embed, components } = await buildBaseTokenEmbed(
           address,
           baseTokenData?.tokenName ?? null, // Token name from DexScreener
           baseTokenData?.tokenSymbol ?? null, // Token symbol from DexScreener
           baseTokenData,
-          factory,
+          finalFactory, // Pass factory object so checkmark can be shown
           contractCreation?.contractCreator ?? null,
           contractCreation?.createdAt ?? null, // Creation timestamp
         );
 
-        const factoryDisplayName = factory ? ` (${factory.name})` : "";
+        const factoryDisplayName = finalFactory ? ` (${finalFactory.name})` : "";
         await message.reply({
           content: `Base token detected${factoryDisplayName} for \`${address}\`.`,
           embeds: [embed],

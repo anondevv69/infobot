@@ -173,12 +173,62 @@ export async function buildBaseTokenEmbed(
     }
   }
 
+  // Pool/Token Info Section (like the example bot)
+  const poolInfo: string[] = [];
+  
   // Factory Information (check both factory parameter and metrics)
   const finalFactoryName = factory?.name ?? metrics?.factoryName ?? null;
+  const isKnownFactory = factory !== null; // If factory object exists, it's a known factory
+  
   if (finalFactoryName) {
+    // Add checkmark for known factories
+    const factoryDisplay = isKnownFactory 
+      ? `🏭 Factory: ${finalFactoryName} ✅`
+      : `🏭 Factory: ${finalFactoryName}`;
+    poolInfo.push(factoryDisplay);
+  }
+
+  // Add liquidity warning if very low (like the example)
+  if (metrics?.liquidity != null && metrics.liquidity < 1000) {
+    poolInfo.push(`🚱 VERY LOW LIQUIDITY 🚱`);
+  }
+
+  // Add DEX info if available
+  if (metrics?.dexName) {
+    // Format DEX name nicely (e.g., "uniswap" -> "UNISWAP V3")
+    const dexDisplay = metrics.dexName.toUpperCase().replace(/_/g, " ");
+    poolInfo.push(`🦄 DEX: ${dexDisplay}`);
+  }
+
+  // Add market cap and liquidity to pool info
+  if (metrics?.marketCap != null) {
+    poolInfo.push(`📊 Mcap: ${formatCurrency(metrics.marketCap)}`);
+  }
+  
+  if (metrics?.liquidity != null) {
+    poolInfo.push(`💧 Liq: ${formatCurrency(metrics.liquidity)}`);
+  }
+
+  if (poolInfo.length > 0) {
     embed.addFields({
-      name: "Factory",
-      value: `🏭 ${finalFactoryName}`,
+      name: "Pool Info",
+      value: poolInfo.join("\n"),
+      inline: false,
+    });
+  }
+
+  // Token Info Section (additional token details)
+  const tokenInfo: string[] = [];
+  
+  // Add creator info to token info section (full address in code block)
+  if (finalCreatorAddress) {
+    tokenInfo.push(`👤 Creator:\n\`\`\`\n${finalCreatorAddress}\n\`\`\``);
+  }
+
+  if (tokenInfo.length > 0) {
+    embed.addFields({
+      name: "Token Info",
+      value: tokenInfo.join("\n"),
       inline: false,
     });
   }

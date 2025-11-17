@@ -59,6 +59,7 @@ export interface TokenMetrics {
   fdv?: number | null;
   trades24h?: { buys?: number | null; sells?: number | null } | null;
   dexUrl?: string | null;
+  dexName?: string | null; // DEX name (e.g., "uniswap", "pancakeswap")
   pairAddress?: string | null;
   tokenName?: string | null;
   tokenSymbol?: string | null;
@@ -142,6 +143,7 @@ export async function fetchMultiChainTokenData(
       fdv,
       trades24h: bestPair.txns?.h24 ?? null,
       dexUrl: bestPair.url ?? null,
+      dexName: bestPair.dexId ?? null, // DEX identifier from DexScreener
       pairAddress: bestPair.pairAddress ?? null,
     };
   } catch (error) {
@@ -209,6 +211,7 @@ export async function fetchBaseTokenData(
       fdv,
       trades24h: bestPair.txns?.h24 ?? null,
       dexUrl: bestPair.url ?? null,
+      dexName: bestPair.dexId ?? null, // DEX identifier from DexScreener
       pairAddress: bestPair.pairAddress ?? null,
       tokenName,
       tokenSymbol,
