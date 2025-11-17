@@ -18,14 +18,12 @@ export interface ContractCreation {
 }
 
 /**
- * Get contract creation information using a reliable fallback pipeline
+ * Get contract creation information using Basescan V2 API
  * Returns the creator address and transaction hash
  * 
- * Flow:
- * 1. Try contract creation endpoint
- * 2. Fallback to first transaction in txlist
- * 3. Use internal transactions for factory deployments
- * 4. Use transaction origin (from field) as creator
+ * Uses the new V2 endpoints that replace deprecated V1 endpoints:
+ * - /api/v2/contracts/{address}/creation for creator info
+ * - /api/v2/accounts/{address}/transactions for transaction history
  */
 export async function getContractCreation(
   contractAddress: string,
@@ -39,43 +37,37 @@ export async function getContractCreation(
       return cached;
     }
 
-    const apiKeyParam = env.basescanApiKey ? `&apikey=${env.basescanApiKey}` : "";
+    const apiKeyParam = env.basescanApiKey ? `?apikey=${env.basescanApiKey}` : "";
 
-    // STEP 1: Try the normal BaseScan "contract creator" endpoint
+    // STEP 1: Use the new V2 contract creation endpoint
     try {
-      const createUrl = `${BASESCAN_API_BASE}?module=contract&action=getcontractcreation&contractaddresses=${contractAddress}${apiKeyParam}`;
-      const createResponse = await fetch(createUrl, {
+      const v2Url = `https://api.basescan.org/api/v2/contracts/${contractAddress}/creation${apiKeyParam}`;
+      const v2Response = await fetch(v2Url, {
         headers: {
           Accept: "application/json",
         },
       });
 
-      if (createResponse.ok) {
-        const createData = (await createResponse.json()) as {
-          status?: string;
-          message?: string;
-          result?: Array<{
-            contractAddress: string;
-            contractCreator: string;
-            txHash: string;
-            blockNumber?: string;
-            timestamp?: string;
-          }> | string;
+      if (v2Response.ok) {
+        const v2Data = (await v2Response.json()) as {
+          contractCreator?: string;
+          txHash?: string;
+          blockNumber?: string;
+          timestamp?: string | number;
         };
 
-        // Check if it's a deprecated message
-        if (typeof createData.result === "string" && createData.result.includes("deprecated")) {
-          console.warn(`[Basescan] Contract creation endpoint deprecated for ${contractAddress}`);
-        } else if (createData.status === "1" && Array.isArray(createData.result) && createData.result.length > 0) {
-          const creation = createData.result[0];
+        if (v2Data.contractCreator && v2Data.txHash) {
           let createdAt: number | null = null;
           
           // Get timestamp if available
-          if (creation.timestamp) {
-            createdAt = parseInt(creation.timestamp, 10);
-          } else if (creation.blockNumber) {
+          if (v2Data.timestamp) {
+            createdAt = typeof v2Data.timestamp === "string" 
+              ? parseInt(v2Data.timestamp, 10) 
+              : v2Data.timestamp;
+          } else if (v2Data.blockNumber) {
+            // Fallback: get timestamp from block number
             try {
-              const blockUrl = `${BASESCAN_API_BASE}?module=proxy&action=eth_getBlockByNumber&tag=${creation.blockNumber}&boolean=true${apiKeyParam}`;
+              const blockUrl = `${BASESCAN_API_BASE}?module=proxy&action=eth_getBlockByNumber&tag=${v2Data.blockNumber}&boolean=true${apiKeyParam.replace("?", "&")}`;
               const blockResponse = await fetch(blockUrl, { headers: { Accept: "application/json" } });
               if (blockResponse.ok) {
                 const blockData = (await blockResponse.json()) as { result?: { timestamp?: string } };
@@ -89,49 +81,48 @@ export async function getContractCreation(
           }
 
           const result = {
-            contractAddress: creation.contractAddress,
-            contractCreator: creation.contractCreator,
-            txHash: creation.txHash,
+            contractAddress: contractAddress,
+            contractCreator: v2Data.contractCreator,
+            txHash: v2Data.txHash,
             createdAt,
           };
           creatorCache.set(normalizedAddress, result);
-          console.log(`[Basescan] Found creator via contract creation endpoint for ${contractAddress}: ${result.contractCreator}`);
+          console.log(`[Basescan V2] Found creator for ${contractAddress}: ${result.contractCreator}`);
           return result;
         }
+      } else {
+        const errorText = await v2Response.text().catch(() => "");
+        console.warn(`[Basescan V2] HTTP ${v2Response.status} for ${contractAddress}: ${errorText}`);
       }
     } catch (error) {
-      console.warn(`[Basescan] Contract creation endpoint failed for ${contractAddress}, trying fallback:`, error);
+      console.warn(`[Basescan V2] Contract creation endpoint failed for ${contractAddress}, trying fallback:`, error);
     }
 
-    // STEP 2: Fallback → Get first transaction from txlist
-    // The first transaction is always the creation transaction unless deployed via factory
+    // STEP 2: Fallback → Get first transaction from V2 transactions endpoint
     try {
-      const txListUrl = `${BASESCAN_API_BASE}?module=account&action=txlist&address=${contractAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc${apiKeyParam}`;
-      const txListResponse = await fetch(txListUrl, {
+      const v2TxUrl = `https://api.basescan.org/api/v2/accounts/${contractAddress}/transactions?limit=1&startblock=0${apiKeyParam.replace("?", "&")}`;
+      const v2TxResponse = await fetch(v2TxUrl, {
         headers: {
           Accept: "application/json",
         },
       });
 
-      if (txListResponse.ok) {
-        const txListData = (await txListResponse.json()) as {
-          status?: string;
-          message?: string;
-          result?: Array<{
+      if (v2TxResponse.ok) {
+        const v2TxData = (await v2TxResponse.json()) as {
+          transactions?: Array<{
             hash: string;
             from: string;
-            to: string;
-            timeStamp?: string;
-            contractAddress?: string;
-          }> | string;
+            to: string | null;
+            timestamp?: string | number;
+            blockNumber?: string;
+          }>;
         };
 
-        // Check if endpoint is deprecated
-        if (typeof txListData.result === "string" && txListData.result.includes("deprecated")) {
-          console.warn(`[Basescan] Txlist endpoint deprecated for ${contractAddress}, trying next method`);
-        } else if (txListData.status === "1" && Array.isArray(txListData.result) && txListData.result.length > 0) {
-          const creationTx = txListData.result[0];
-          const createdAt = creationTx.timeStamp ? parseInt(creationTx.timeStamp, 10) : null;
+        if (v2TxData.transactions && v2TxData.transactions.length > 0) {
+          const creationTx = v2TxData.transactions[0];
+          const createdAt = creationTx.timestamp 
+            ? (typeof creationTx.timestamp === "string" ? parseInt(creationTx.timestamp, 10) : creationTx.timestamp)
+            : null;
 
           // If "to" is empty → direct EOA deployment
           if (!creationTx.to || creationTx.to === "") {
@@ -142,13 +133,11 @@ export async function getContractCreation(
               createdAt,
             };
             creatorCache.set(normalizedAddress, result);
-            console.log(`[Basescan] Found creator via first-tx-direct for ${contractAddress}: ${result.contractCreator}`);
+            console.log(`[Basescan V2] Found creator via first-tx-direct for ${contractAddress}: ${result.contractCreator}`);
             return result;
           }
 
-          // STEP 3 + 4: Factory deployment
-          // The "to" field is the factory contract
-          // The "from" field is the transaction origin (the one who paid gas) - this is the true creator
+          // Factory deployment: "to" is the factory, "from" is the creator (transaction origin)
           const result = {
             contractAddress: contractAddress,
             contractCreator: creationTx.from, // Origin wallet (the one who initiated the factory call)
@@ -156,66 +145,15 @@ export async function getContractCreation(
             createdAt,
           };
           creatorCache.set(normalizedAddress, result);
-          console.log(`[Basescan] Found creator via factory-deploy for ${contractAddress}: ${result.contractCreator} (factory: ${creationTx.to})`);
+          console.log(`[Basescan V2] Found creator via factory-deploy for ${contractAddress}: ${result.contractCreator} (factory: ${creationTx.to})`);
           return result;
         }
       }
     } catch (error) {
-      console.error(`[Basescan] Txlist method failed for ${contractAddress}:`, error);
+      console.error(`[Basescan V2] Transactions endpoint failed for ${contractAddress}:`, error);
     }
 
-    // STEP 3 (Alternative): Try internal transactions if txlist didn't work
-    // This can help for contracts that don't show up in regular txlist
-    try {
-      const internalTxUrl = `${BASESCAN_API_BASE}?module=account&action=txlistinternal&address=${contractAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc${apiKeyParam}`;
-      const internalTxResponse = await fetch(internalTxUrl, {
-        headers: {
-          Accept: "application/json",
-        },
-      });
-
-      if (internalTxResponse.ok) {
-        const internalTxData = (await internalTxResponse.json()) as {
-          status?: string;
-          result?: Array<{
-            hash: string;
-            from: string;
-            to: string;
-            timeStamp?: string;
-            type?: string;
-          }>;
-        };
-
-        if (internalTxData.status === "1" && Array.isArray(internalTxData.result) && internalTxData.result.length > 0) {
-          const firstInternalTx = internalTxData.result[0];
-          const createdAt = firstInternalTx.timeStamp ? parseInt(firstInternalTx.timeStamp, 10) : null;
-
-          // Get the actual transaction to find the origin (creator)
-          const txUrl = `${BASESCAN_API_BASE}?module=proxy&action=eth_getTransactionByHash&txhash=${firstInternalTx.hash}&tag=latest${apiKeyParam}`;
-          const txResponse = await fetch(txUrl, { headers: { Accept: "application/json" } });
-
-          if (txResponse.ok) {
-            const txData = (await txResponse.json()) as { result?: { from?: string; to?: string | null } };
-            // The 'from' in the transaction is the origin (creator), 'to' is the factory
-            const creator = txData.result?.from || firstInternalTx.from;
-
-            const result = {
-              contractAddress: contractAddress,
-              contractCreator: creator,
-              txHash: firstInternalTx.hash,
-              createdAt,
-            };
-            creatorCache.set(normalizedAddress, result);
-            console.log(`[Basescan] Found creator via internal transactions for ${contractAddress}: ${result.contractCreator}`);
-            return result;
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`[Basescan] Internal tx method failed for ${contractAddress}:`, error);
-    }
-
-    console.warn(`[Basescan] All methods failed to find creator for ${contractAddress}`);
+    console.warn(`[Basescan V2] All methods failed to find creator for ${contractAddress}`);
     return null;
   } catch (error) {
     console.error("Failed to fetch contract creation:", error);
