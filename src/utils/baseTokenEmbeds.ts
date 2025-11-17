@@ -160,27 +160,7 @@ export async function buildBaseTokenEmbed(
     }
   }
 
-  // Pool Info Section (DEX and warnings only - no duplicates)
-  const poolInfo: string[] = [];
-  
-  // Add DEX info if available
-  if (metrics?.dexName) {
-    const dexDisplay = metrics.dexName.toUpperCase().replace(/_/g, " ");
-    poolInfo.push(`🦄 DEX: ${dexDisplay}`);
-  }
-
-  // Add liquidity warning if very low
-  if (metrics?.liquidity != null && metrics.liquidity < 1000) {
-    poolInfo.push(`🚱 VERY LOW LIQUIDITY 🚱`);
-  }
-
-  if (poolInfo.length > 0) {
-    embed.addFields({
-      name: "Pool Info",
-      value: poolInfo.join("\n"),
-      inline: false,
-    });
-  }
+  // Removed Pool Info section as requested
 
   // Token Info Section (Creator and Creation Transaction only)
   const finalCreatorAddress = creatorAddress ?? metrics?.creatorAddress ?? null;
