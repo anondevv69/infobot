@@ -68,6 +68,8 @@ const CHAIN_ID_TO_NAME: Record<number, string> = {
   1101: "Polygon zkEVM",
   324: "zkSync Era",
   81457: "Blast",
+  999: "Zora Network",
+  7777777: "Zora Network",
 };
 
 function getChainName(chainId: number): string {
@@ -413,16 +415,27 @@ export async function fetchRelayTransaction(
     }
 
     console.log(`Found matching request!`);
+    console.log("Full request data:", JSON.stringify(matchingRequest, null, 2));
 
     const req = matchingRequest;
     const inTxs = req.data?.inTxs || [];
     const outTxs = req.data?.outTxs || [];
+    
+    console.log(`Request user: ${req.user}, recipient: ${req.recipient}`);
+    console.log(`InTxs count: ${inTxs.length}, OutTxs count: ${outTxs.length}`);
+    if (inTxs.length > 0) {
+      console.log(`First inTx:`, JSON.stringify(inTxs[0], null, 2));
+    }
+    if (outTxs.length > 0) {
+      console.log(`First outTx:`, JSON.stringify(outTxs[0], null, 2));
+    }
 
     // Find which transaction matches our hash
     const matchingInTx = inTxs.find((tx: any) => tx.hash?.toLowerCase() === searchHash);
     const matchingOutTx = outTxs.find((tx: any) => tx.hash?.toLowerCase() === searchHash);
 
     // Determine source and destination based on which transaction matches
+    // Use req.user and req.recipient as primary sources (they're more reliable)
     let sourceChain: { chainId: number; wallet: string } | null = null;
     let destinationChain: { chainId: number; wallet: string } | null = null;
     let amount: string | undefined;
@@ -434,42 +447,69 @@ export async function fetchRelayTransaction(
         chainId: matchingInTx.chainId || chainIdToUse,
         wallet: matchingInTx.data?.from || req.user || "",
       };
-      // Destination is from the first outTx
+      // Destination is from the first outTx, but prefer req.recipient for wallet
       if (outTxs.length > 0) {
         destinationChain = {
           chainId: outTxs[0].chainId || 0,
-          wallet: outTxs[0].data?.to || req.recipient || "",
+          wallet: req.recipient || outTxs[0].data?.to || "",
         };
         amount = outTxs[0].data?.value;
+      } else if (req.recipient) {
+        // If no outTxs but we have recipient, try to get chain from request data
+        const destChainId = req.data?.destinationChainId || req.destinationChainId || 0;
+        destinationChain = {
+          chainId: destChainId,
+          wallet: req.recipient,
+        };
       }
     } else if (matchingOutTx) {
       // The matching hash is an outgoing transaction (destination chain)
+      // This is a deposit - the hash is on the destination chain
       destinationChain = {
         chainId: matchingOutTx.chainId || 0,
-        wallet: matchingOutTx.data?.to || req.recipient || "",
+        wallet: req.recipient || matchingOutTx.data?.to || "",
       };
-      // Source is from the first inTx
+      // Source is from the first inTx, but prefer req.user for wallet
       if (inTxs.length > 0) {
         sourceChain = {
           chainId: inTxs[0].chainId || chainIdToUse,
-          wallet: inTxs[0].data?.from || req.user || "",
+          wallet: req.user || inTxs[0].data?.from || "",
+        };
+      } else if (req.user) {
+        // If no inTxs but we have user, try to get chain from request data
+        const srcChainId = req.data?.originChainId || req.originChainId || chainIdToUse;
+        sourceChain = {
+          chainId: srcChainId,
+          wallet: req.user,
         };
       }
       amount = matchingOutTx.data?.value;
     } else {
-      // Fallback: use first inTx and first outTx
+      // Fallback: use first inTx and first outTx, but prefer req.user/req.recipient
       if (inTxs.length > 0) {
         sourceChain = {
           chainId: inTxs[0].chainId || chainIdToUse,
-          wallet: inTxs[0].data?.from || req.user || "",
+          wallet: req.user || inTxs[0].data?.from || "",
+        };
+      } else if (req.user) {
+        const srcChainId = req.data?.originChainId || req.originChainId || chainIdToUse;
+        sourceChain = {
+          chainId: srcChainId,
+          wallet: req.user,
         };
       }
       if (outTxs.length > 0) {
         destinationChain = {
           chainId: outTxs[0].chainId || 0,
-          wallet: outTxs[0].data?.to || req.recipient || "",
+          wallet: req.recipient || outTxs[0].data?.to || "",
         };
         amount = outTxs[0].data?.value;
+      } else if (req.recipient) {
+        const destChainId = req.data?.destinationChainId || req.destinationChainId || 0;
+        destinationChain = {
+          chainId: destChainId,
+          wallet: req.recipient,
+        };
       }
     }
 
