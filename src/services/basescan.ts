@@ -116,6 +116,7 @@ export async function getContractCreation(
       if (txListResponse.ok) {
         const txListData = (await txListResponse.json()) as {
           status?: string;
+          message?: string;
           result?: Array<{
             hash: string;
             from: string;
@@ -125,7 +126,10 @@ export async function getContractCreation(
           }> | string;
         };
 
-        if (txListData.status === "1" && Array.isArray(txListData.result) && txListData.result.length > 0) {
+        // Check if endpoint is deprecated
+        if (typeof txListData.result === "string" && txListData.result.includes("deprecated")) {
+          console.warn(`[Basescan] Txlist endpoint deprecated for ${contractAddress}, trying next method`);
+        } else if (txListData.status === "1" && Array.isArray(txListData.result) && txListData.result.length > 0) {
           const creationTx = txListData.result[0];
           const createdAt = creationTx.timeStamp ? parseInt(creationTx.timeStamp, 10) : null;
 
