@@ -345,7 +345,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
               if (rpcData.result?.to) {
                 // The "to" field is the TOKEN factory address (Fey, AperStore, KLIK, etc.)
                 detectedFactoryAddress = rpcData.result.to.toLowerCase();
-                console.log(`[Base Token] Found token factory address from transaction: ${detectedFactoryAddress}`);
+                console.log(`[Base Token] Found token factory address from transaction 'to' field: ${detectedFactoryAddress}`);
                 
                 // Check if it's a known token factory
                 const { getTokenFactoryName, createTokenFactory } = await import("../services/baseFactories");
@@ -355,9 +355,48 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
                   detectedFactoryName = tokenFactoryName;
                   console.log(`[Base Token] Matched token factory: ${tokenFactoryName}`);
                 } else {
-                  // Unknown factory - show address
-                  detectedFactoryName = `Factory: ${detectedFactoryAddress.slice(0, 10)}...${detectedFactoryAddress.slice(-8)}`;
-                  console.log(`[Base Token] Unknown token factory: ${detectedFactoryAddress}`);
+                  // If not a known token factory, check transaction receipt logs for factory events
+                  console.log(`[Base Token] 'to' field (${detectedFactoryAddress}) is not a known token factory, checking logs...`);
+                  
+                  // Get transaction receipt to check logs
+                  const receiptResponse = await fetch(BASE_RPC_URL, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      jsonrpc: "2.0",
+                      method: "eth_getTransactionReceipt",
+                      params: [contractCreation.txHash],
+                      id: 1,
+                    }),
+                  });
+                  
+                  if (receiptResponse.ok) {
+                    const receiptData = (await receiptResponse.json()) as { result?: { logs?: Array<{ address?: string; topics?: string[] }> } };
+                    if (receiptData.result?.logs) {
+                      // Look for factory address in logs (factory contracts emit events)
+                      for (const log of receiptData.result.logs) {
+                        if (log.address && log.address.toLowerCase() !== address.toLowerCase()) {
+                          const logFactoryAddress = log.address.toLowerCase();
+                          const logFactoryName = getTokenFactoryName(logFactoryAddress);
+                          if (logFactoryName) {
+                            detectedFactoryAddress = logFactoryAddress;
+                            detectedFactory = createTokenFactory(logFactoryAddress);
+                            detectedFactoryName = logFactoryName;
+                            console.log(`[Base Token] Found token factory from logs: ${logFactoryName} (${logFactoryAddress})`);
+                            break;
+                          }
+                        }
+                      }
+                    }
+                  }
+                  
+                  // If still not found, show the 'to' address
+                  if (!detectedFactoryName) {
+                    detectedFactoryName = `${detectedFactoryAddress.slice(0, 10)}...${detectedFactoryAddress.slice(-8)}`;
+                    console.log(`[Base Token] Unknown token factory: ${detectedFactoryAddress}`);
+                  }
                 }
               }
             }
