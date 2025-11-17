@@ -320,9 +320,11 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
         // Detect factory: Get the transaction details to find the factory address
         // The factory is the "to" field in the creation transaction
         let detectedFactoryName: string | null = null;
+        let detectedFactoryAddress: string | null = null;
+        
         if (contractCreation?.txHash) {
           try {
-            // Get the transaction details to find the factory address
+            // Method 1: Get the transaction details to find the factory address
             const apiKeyParam = env.basescanApiKey ? `&apikey=${env.basescanApiKey}` : "";
             const txUrl = `https://api.basescan.org/api?module=proxy&action=eth_getTransactionByHash&txhash=${contractCreation.txHash}&tag=latest${apiKeyParam}`;
             const txResponse = await fetch(txUrl, { headers: { Accept: "application/json" } });
@@ -330,19 +332,37 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
               const txData = (await txResponse.json()) as { result?: { from?: string; to?: string | null } };
               if (txData.result?.to) {
                 // If "to" exists, that's the factory address
-                // The "from" is the creator (transaction origin)
-                const { getFactoryByAddress } = await import("../services/baseFactories");
-                const knownFactory = getFactoryByAddress(txData.result.to);
-                if (knownFactory) {
-                  detectedFactoryName = knownFactory.name;
-                } else {
-                  // Show factory address if not in known list
-                  detectedFactoryName = `Factory: ${txData.result.to.slice(0, 10)}...${txData.result.to.slice(-8)}`;
-                }
+                detectedFactoryAddress = txData.result.to;
               }
             }
           } catch (error) {
             console.error(`[Base Token] Failed to get transaction details for factory detection:`, error);
+          }
+        }
+        
+        // Method 2: If we don't have factory from transaction, try logs
+        if (!detectedFactoryAddress) {
+          try {
+            const { detectFactoryFromLogs } = await import("../services/basescan");
+            detectedFactoryAddress = await detectFactoryFromLogs(address);
+          } catch (error) {
+            console.error(`[Base Token] Failed to detect factory from logs:`, error);
+          }
+        }
+        
+        // Check if it's a known factory
+        if (detectedFactoryAddress) {
+          try {
+            const { getFactoryByAddress } = await import("../services/baseFactories");
+            const knownFactory = getFactoryByAddress(detectedFactoryAddress);
+            if (knownFactory) {
+              detectedFactoryName = knownFactory.name;
+            } else {
+              // Show factory address if not in known list
+              detectedFactoryName = `Factory: ${detectedFactoryAddress.slice(0, 10)}...${detectedFactoryAddress.slice(-8)}`;
+            }
+          } catch (error) {
+            console.error(`[Base Token] Failed to get factory name:`, error);
           }
         }
 
