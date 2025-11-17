@@ -34,9 +34,10 @@ export async function handleTelegramMessage(
       msg.entities?.some(e => e.type === "mention" && text.substring(e.offset, e.offset + e.length) === `@${botUsername}`)
     );
     
-    // Only process if it mentions the bot OR is clearly an address/username/X link
+    // Only process if it mentions the bot OR is clearly an address/username/X link/Farcaster link
     const hasXLink = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^\s<>()]+/gi.test(text);
-    if (!mentionsBot && !isEthAddress(text) && !text.startsWith("@") && !text.includes("zora.co") && !hasXLink) {
+    const hasFarcasterLink = /https?:\/\/(?:www\.)?farcaster\.xyz\/[^\s<>()]+/gi.test(text);
+    if (!mentionsBot && !isEthAddress(text) && !text.startsWith("@") && !text.includes("zora.co") && !hasXLink && !hasFarcasterLink) {
       return; // Ignore messages in groups that don't mention the bot
     }
     
@@ -183,6 +184,38 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         } catch (error) {
           // User not found, continue
         }
+      }
+    }
+
+    // Check for Farcaster profile URLs (https://farcaster.xyz/username)
+    const farcasterUrlMatch = text.match(/https?:\/\/(?:www\.)?farcaster\.xyz\/([a-z0-9][a-z0-9_.-]{0,31})/i);
+    if (farcasterUrlMatch) {
+      const username = farcasterUrlMatch[1].toLowerCase();
+      try {
+        const user = await findUserByUsername(username);
+        if (user) {
+          const [tokens, latestCast, zoraSummary] = await Promise.all([
+            safeFetchTokensByFid(user.fid),
+            safeFetchMostRecentCast(user.fid),
+            findBestZoraSummary(collectZoraIdentifiers(user)),
+          ]);
+          const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
+          
+          const result = await buildFarcasterPresentation(user, {
+            tokens,
+            zoraSummary: associatedSummary,
+            latestCast,
+            returnAllPages: true, // Get all pages for Telegram
+          });
+          const identifier = `farcaster_${user.fid}`;
+          const pageLabels = result.embeds.length > 1
+            ? ["Profile", "Clankers & Zora"]
+            : undefined;
+          await sendPaginatedTelegramMessage(bot, chatId, result.embeds, identifier, pageLabels);
+          return;
+        }
+      } catch (error) {
+        // User not found, continue
       }
     }
 
