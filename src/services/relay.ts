@@ -191,7 +191,38 @@ async function getWalletFromTransaction(
 
       const data = await response.json();
       if (data.result && data.result.from) {
-        return data.result.from;
+        console.log(`Extracted wallet address from transaction: ${data.result.from}`);
+        return data.result.from.toLowerCase();
+      }
+      
+      // If no result, log the error
+      if (data.error) {
+        console.error(`RPC error fetching transaction:`, data.error);
+      } else {
+        console.warn(`Transaction ${txHash} returned no result from RPC`);
+      }
+    }
+
+    // For Ethereum mainnet
+    if (chainId === 1) {
+      const ETH_RPC_URL = "https://eth.llamarpc.com";
+      const response = await fetch(ETH_RPC_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "eth_getTransactionByHash",
+          params: [txHash],
+          id: 1,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.result && data.result.from) {
+        console.log(`Extracted wallet address from transaction: ${data.result.from}`);
+        return data.result.from.toLowerCase();
       }
     }
 
@@ -228,6 +259,7 @@ export async function fetchRelayTransaction(
     }
 
     // Query Relay API by wallet address
+    console.log(`Querying Relay API for wallet: ${wallet}`);
     const response = await fetch(
       `https://api.relay.link/v1/addresses/${wallet}/transactions`,
       {
@@ -240,9 +272,11 @@ export async function fetchRelayTransaction(
 
     if (!response.ok) {
       if (response.status === 404) {
+        console.log(`No transactions found for wallet ${wallet} on Relay API`);
         return null;
       }
       const errorText = await response.text().catch(() => "");
+      console.error(`Relay API error: ${response.status} ${response.statusText} - ${errorText}`);
       throw new Error(`Relay API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
@@ -250,21 +284,34 @@ export async function fetchRelayTransaction(
 
     // Debug: log the response to understand the structure
     console.log("Relay API response:", JSON.stringify(data, null, 2));
+    console.log(`Found ${(data.transactions || data.data || []).length} transactions for wallet ${wallet}`);
 
     // Find the transaction that matches our hash
     const transactions = data.transactions || data.data || [];
+    console.log(`Searching ${transactions.length} transactions for hash ${txHash}`);
+    
     const matchingTx = transactions.find(
-      (t: any) =>
-        t.srcTxHash?.toLowerCase() === txHash.toLowerCase() ||
-        t.destTxHash?.toLowerCase() === txHash.toLowerCase() ||
-        t.sourceTxHash?.toLowerCase() === txHash.toLowerCase() ||
-        t.destinationTxHash?.toLowerCase() === txHash.toLowerCase(),
+      (t: any) => {
+        const srcHash = (t.srcTxHash || t.sourceTxHash || "").toLowerCase();
+        const destHash = (t.destTxHash || t.destinationTxHash || "").toLowerCase();
+        const searchHash = txHash.toLowerCase();
+        return srcHash === searchHash || destHash === searchHash;
+      }
     );
 
     if (!matchingTx) {
       console.log(`Transaction ${txHash} not found in wallet ${wallet}'s Relay transactions`);
+      // Log first few transaction hashes for debugging
+      if (transactions.length > 0) {
+        console.log(`Sample transaction hashes from wallet:`);
+        transactions.slice(0, 3).forEach((t: any, i: number) => {
+          console.log(`  ${i + 1}. srcTxHash: ${t.srcTxHash || t.sourceTxHash || 'N/A'}, destTxHash: ${t.destTxHash || t.destinationTxHash || 'N/A'}`);
+        });
+      }
       return null;
     }
+    
+    console.log(`Found matching transaction!`);
 
     const tx = matchingTx;
 
