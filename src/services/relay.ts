@@ -287,15 +287,28 @@ export async function fetchRelayTransaction(
     console.log(`Found ${(data.transactions || data.data || []).length} transactions for wallet ${wallet}`);
 
     // Find the transaction that matches our hash
+    // Note: The hash we're searching for might be the destination transaction hash on Base
+    // Relay API may store it as destTxHash, destinationTxHash, or in a nested structure
     const transactions = data.transactions || data.data || [];
     console.log(`Searching ${transactions.length} transactions for hash ${txHash}`);
     
+    const searchHash = txHash.toLowerCase();
     const matchingTx = transactions.find(
       (t: any) => {
-        const srcHash = (t.srcTxHash || t.sourceTxHash || "").toLowerCase();
-        const destHash = (t.destTxHash || t.destinationTxHash || "").toLowerCase();
-        const searchHash = txHash.toLowerCase();
-        return srcHash === searchHash || destHash === searchHash;
+        // Check all possible hash fields
+        const srcHash = (t.srcTxHash || t.sourceTxHash || t.sourceTransactionHash || "").toLowerCase();
+        const destHash = (t.destTxHash || t.destinationTxHash || t.destinationTransactionHash || "").toLowerCase();
+        const relayTxHash = (t.txHash || t.transactionHash || t.relayTxHash || "").toLowerCase();
+        
+        // Also check nested structures
+        const nestedSrcHash = (t.source?.txHash || t.source?.transactionHash || "").toLowerCase();
+        const nestedDestHash = (t.destination?.txHash || t.destination?.transactionHash || "").toLowerCase();
+        
+        return srcHash === searchHash || 
+               destHash === searchHash || 
+               relayTxHash === searchHash ||
+               nestedSrcHash === searchHash ||
+               nestedDestHash === searchHash;
       }
     );
 
@@ -303,10 +316,9 @@ export async function fetchRelayTransaction(
       console.log(`Transaction ${txHash} not found in wallet ${wallet}'s Relay transactions`);
       // Log first few transaction hashes for debugging
       if (transactions.length > 0) {
-        console.log(`Sample transaction hashes from wallet:`);
-        transactions.slice(0, 3).forEach((t: any, i: number) => {
-          console.log(`  ${i + 1}. srcTxHash: ${t.srcTxHash || t.sourceTxHash || 'N/A'}, destTxHash: ${t.destTxHash || t.destinationTxHash || 'N/A'}`);
-        });
+        console.log(`Sample transaction data from wallet (first transaction):`);
+        const firstTx = transactions[0];
+        console.log(JSON.stringify(firstTx, null, 2));
       }
       return null;
     }
@@ -317,19 +329,22 @@ export async function fetchRelayTransaction(
 
     // Parse the transaction from Relay API response
     // Relay API returns transactions with fields like: srcChainId, destChainId, srcAddress, destAddress, etc.
+    // Use the original hash we searched for, or Relay's transaction hash
+    const relayTxHash = tx.txHash || tx.transactionHash || tx.relayTxHash || txHash;
+    
     const transaction: RelayTransaction = {
-      txHash: tx.srcTxHash || tx.destTxHash || tx.sourceTxHash || tx.destinationTxHash || txHash,
+      txHash: relayTxHash,
       sourceChain: {
-        chainId: tx.srcChainId || tx.sourceChainId || tx.fromChainId || tx.originChainId || chainIdToUse,
-        chainName: getChainName(tx.srcChainId || tx.sourceChainId || tx.fromChainId || tx.originChainId || chainIdToUse),
-        wallet: tx.srcAddress || tx.sourceAddress || tx.fromAddress || tx.originAddress || wallet || "",
+        chainId: tx.srcChainId || tx.sourceChainId || tx.fromChainId || tx.originChainId || tx.source?.chainId || chainIdToUse,
+        chainName: getChainName(tx.srcChainId || tx.sourceChainId || tx.fromChainId || tx.originChainId || tx.source?.chainId || chainIdToUse),
+        wallet: tx.srcAddress || tx.sourceAddress || tx.fromAddress || tx.originAddress || tx.source?.address || wallet || "",
       },
       destinationChain: {
-        chainId: tx.destChainId || tx.destinationChainId || tx.toChainId || tx.targetChainId || 0,
-        chainName: getChainName(tx.destChainId || tx.destinationChainId || tx.toChainId || tx.targetChainId || 0),
-        wallet: tx.destAddress || tx.destinationAddress || tx.toAddress || tx.targetAddress || "",
+        chainId: tx.destChainId || tx.destinationChainId || tx.toChainId || tx.targetChainId || tx.destination?.chainId || 0,
+        chainName: getChainName(tx.destChainId || tx.destinationChainId || tx.toChainId || tx.targetChainId || tx.destination?.chainId || 0),
+        wallet: tx.destAddress || tx.destinationAddress || tx.toAddress || tx.targetAddress || tx.destination?.address || "",
       },
-      amount: tx.amountOut || tx.amount || tx.value || tx.transferAmount,
+      amount: tx.amountOut || tx.amount || tx.value || tx.transferAmount || tx.amountReceived,
       token: tx.tokenOut
         ? {
             symbol: tx.tokenOut.symbol || tx.tokenOutSymbol || "",
@@ -340,9 +355,14 @@ export async function fetchRelayTransaction(
             symbol: tx.tokenSymbol,
             address: tx.tokenAddress || "",
           }
+        : tx.destinationToken
+        ? {
+            symbol: tx.destinationToken.symbol || "",
+            address: tx.destinationToken.address || "",
+          }
         : undefined,
-      status: tx.status || tx.transactionStatus || "unknown",
-      timestamp: tx.timestamp || tx.blockTimestamp || tx.time || tx.createdAt,
+      status: tx.status || tx.transactionStatus || tx.state || "unknown",
+      timestamp: tx.timestamp || tx.blockTimestamp || tx.time || tx.createdAt || tx.date,
     };
 
     // Validate that we have at least source and destination info
