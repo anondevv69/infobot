@@ -165,23 +165,71 @@ export async function indexRelayTransaction(
 }
 
 /**
- * Fetch transaction details from Relay.link
+ * Fetch transaction details from a blockchain transaction to get the wallet address
+ * This is needed because Relay API requires wallet address, not transaction hash
+ */
+async function getWalletFromTransaction(
+  txHash: string,
+  chainId: number,
+): Promise<string | null> {
+  try {
+    // For Base chain, use Base RPC
+    if (chainId === 8453) {
+      const BASE_RPC_URL = "https://mainnet.base.org";
+      const response = await fetch(BASE_RPC_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "eth_getTransactionByHash",
+          params: [txHash],
+          id: 1,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.result && data.result.from) {
+        return data.result.from;
+      }
+    }
+
+    // For other chains, you could add similar RPC calls here
+    // For now, return null if we can't fetch it
+    return null;
+  } catch (error) {
+    console.error(`Error fetching transaction ${txHash} from chain ${chainId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Fetch transaction details from Relay.link by wallet address
+ * Relay API only supports querying by address, not by transaction hash
  */
 export async function fetchRelayTransaction(
   txHash: string,
   sourceChainId?: number,
+  walletAddress?: string,
 ): Promise<RelayTransaction | null> {
   try {
-    // Always try to index first - this is critical for Relay to process the transaction
     const chainIdToUse = sourceChainId || 8453; // Default to Base
-    await indexRelayTransaction(txHash, chainIdToUse);
-    
-    // Wait for indexing to complete - Relay needs time to process
-    await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    // Try the main transactions endpoint
-    let response = await fetch(
-      `https://api.relay.link/transactions/${txHash}`,
+    // If wallet address not provided, try to fetch it from the transaction
+    let wallet: string | undefined = walletAddress;
+    if (!wallet) {
+      const fetchedWallet = await getWalletFromTransaction(txHash, chainIdToUse);
+      if (!fetchedWallet) {
+        console.warn(`Could not extract wallet address from transaction ${txHash}`);
+        return null;
+      }
+      wallet = fetchedWallet;
+    }
+
+    // Query Relay API by wallet address
+    const response = await fetch(
+      `https://api.relay.link/v1/addresses/${wallet}/transactions`,
       {
         method: "GET",
         headers: {
@@ -190,41 +238,8 @@ export async function fetchRelayTransaction(
       },
     );
 
-    // If 404, wait longer and try again (indexing might still be in progress)
-    if (!response.ok && response.status === 404) {
-      console.log(`Transaction ${txHash} not found, waiting longer for indexing...`);
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-      
-      response = await fetch(
-        `https://api.relay.link/transactions/${txHash}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        },
-      );
-    }
-
-    // Try alternative endpoint format
-    if (!response.ok && response.status === 404) {
-      console.log(`Trying alternative endpoint format...`);
-      response = await fetch(
-        `https://api.relay.link/v1/transactions/${txHash}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        },
-      );
-    }
-
     if (!response.ok) {
       if (response.status === 404) {
-        // Log the response body for debugging
-        const errorText = await response.text().catch(() => "");
-        console.log(`Relay API 404 response: ${errorText}`);
         return null;
       }
       const errorText = await response.text().catch(() => "");
@@ -236,46 +251,57 @@ export async function fetchRelayTransaction(
     // Debug: log the response to understand the structure
     console.log("Relay API response:", JSON.stringify(data, null, 2));
 
-    // Parse the response based on Relay.link API structure
-    // Try multiple possible response formats
+    // Find the transaction that matches our hash
+    const transactions = data.transactions || data.data || [];
+    const matchingTx = transactions.find(
+      (t: any) =>
+        t.srcTxHash?.toLowerCase() === txHash.toLowerCase() ||
+        t.destTxHash?.toLowerCase() === txHash.toLowerCase() ||
+        t.sourceTxHash?.toLowerCase() === txHash.toLowerCase() ||
+        t.destinationTxHash?.toLowerCase() === txHash.toLowerCase(),
+    );
+
+    if (!matchingTx) {
+      console.log(`Transaction ${txHash} not found in wallet ${wallet}'s Relay transactions`);
+      return null;
+    }
+
+    const tx = matchingTx;
+
+    // Parse the transaction from Relay API response
+    // Relay API returns transactions with fields like: srcChainId, destChainId, srcAddress, destAddress, etc.
     const transaction: RelayTransaction = {
-      txHash: data.txHash || data.hash || data.transactionHash || txHash,
+      txHash: tx.srcTxHash || tx.destTxHash || tx.sourceTxHash || tx.destinationTxHash || txHash,
       sourceChain: {
-        chainId: data.sourceChainId || data.sourceChain?.chainId || data.fromChainId || data.originChainId || sourceChainId || 0,
-        chainName: getChainName(data.sourceChainId || data.sourceChain?.chainId || data.fromChainId || data.originChainId || sourceChainId || 0),
-        wallet: data.sourceWallet || data.from || data.sourceAddress || data.originAddress || data.sender || "",
+        chainId: tx.srcChainId || tx.sourceChainId || tx.fromChainId || tx.originChainId || chainIdToUse,
+        chainName: getChainName(tx.srcChainId || tx.sourceChainId || tx.fromChainId || tx.originChainId || chainIdToUse),
+        wallet: tx.srcAddress || tx.sourceAddress || tx.fromAddress || tx.originAddress || wallet || "",
       },
       destinationChain: {
-        chainId: data.destinationChainId || data.destinationChain?.chainId || data.toChainId || data.targetChainId || 0,
-        chainName: getChainName(data.destinationChainId || data.destinationChain?.chainId || data.toChainId || data.targetChainId || 0),
-        wallet: data.destinationWallet || data.to || data.destinationAddress || data.targetAddress || data.recipient || "",
+        chainId: tx.destChainId || tx.destinationChainId || tx.toChainId || tx.targetChainId || 0,
+        chainName: getChainName(tx.destChainId || tx.destinationChainId || tx.toChainId || tx.targetChainId || 0),
+        wallet: tx.destAddress || tx.destinationAddress || tx.toAddress || tx.targetAddress || "",
       },
-      amount: data.amount || data.value || data.transferAmount,
-      token: data.token
+      amount: tx.amountOut || tx.amount || tx.value || tx.transferAmount,
+      token: tx.tokenOut
         ? {
-            symbol: data.token.symbol || data.tokenSymbol || "",
-            address: data.token.address || data.tokenAddress || "",
+            symbol: tx.tokenOut.symbol || tx.tokenOutSymbol || "",
+            address: tx.tokenOut.address || tx.tokenOutAddress || "",
           }
-        : data.tokenSymbol
+        : tx.tokenSymbol
         ? {
-            symbol: data.tokenSymbol,
-            address: data.tokenAddress || "",
+            symbol: tx.tokenSymbol,
+            address: tx.tokenAddress || "",
           }
         : undefined,
-      status: data.status || data.transactionStatus || "unknown",
-      timestamp: data.timestamp || data.blockTimestamp || data.time || data.createdAt,
+      status: tx.status || tx.transactionStatus || "unknown",
+      timestamp: tx.timestamp || tx.blockTimestamp || tx.time || tx.createdAt,
     };
 
     // Validate that we have at least source and destination info
     if (!transaction.sourceChain.wallet || !transaction.destinationChain.wallet) {
       console.warn("Incomplete transaction data:", transaction);
-      // Try alternative parsing if main fields are missing
-      if (data.transactions && Array.isArray(data.transactions) && data.transactions.length > 0) {
-        const firstTx = data.transactions[0];
-        transaction.sourceChain.wallet = firstTx.from || transaction.sourceChain.wallet;
-        transaction.destinationChain.wallet = firstTx.to || transaction.destinationChain.wallet;
-        transaction.sourceChain.chainId = firstTx.chainId || transaction.sourceChain.chainId;
-      }
+      return null;
     }
 
     return transaction;

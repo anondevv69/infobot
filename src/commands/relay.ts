@@ -19,7 +19,8 @@ export async function handleRelayCommand(
     return;
   }
 
-  await interaction.deferReply();
+  // Show eye emoji immediately
+  await interaction.reply("👁️ Processing...");
 
   try {
     // Extract transaction hash from input
@@ -39,7 +40,7 @@ export async function handleRelayCommand(
 
     if (!transaction) {
       await interaction.editReply({
-        content: `❌ Transaction \`${txHash}\` not found on Relay.link API.\n\n**Possible reasons:**\n• The transaction may not be indexed yet (can take several minutes)\n• The transaction might be a deposit TO this chain (source chain transaction hash may be different)\n• The API may require additional time to process the transaction\n\n**Note:** Even if Basescan shows "Via Relay", the Relay API may need more time to index cross-chain transaction details. Try again in a few minutes.`,
+        content: `❌ Transaction \`${txHash}\` not found on Relay.link API.\n\n**Possible reasons:**\n• The transaction may not be a Relay cross-chain transaction\n• The wallet address could not be extracted from the transaction\n• The transaction may not be indexed yet\n\n**Note:** Relay API requires querying by wallet address, not transaction hash. If the transaction is very recent, it may take a few minutes to appear.`,
       });
       return;
     }
