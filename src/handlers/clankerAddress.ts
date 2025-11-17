@@ -294,9 +294,28 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
       if (baseTokenData) {
         // Fetch creator address and detect factory for Base tokens
         const [contractCreation, creationTx] = await Promise.all([
-          getContractCreation(address).catch(() => null),
-          getContractCreationTx(address, "base", env.basescanApiKey).catch(() => null),
+          getContractCreation(address).catch((error) => {
+            console.error(`[Base Token] Failed to get contract creation for ${address}:`, error);
+            return null;
+          }),
+          getContractCreationTx(address, "base", env.basescanApiKey).catch((error) => {
+            console.error(`[Base Token] Failed to get creation transaction for ${address}:`, error);
+            return null;
+          }),
         ]);
+        
+        // Debug logging
+        if (!contractCreation) {
+          console.warn(`[Base Token] No contract creation data found for ${address}`);
+        } else {
+          console.log(`[Base Token] Found creator for ${address}: ${contractCreation.contractCreator}`);
+        }
+        
+        if (!creationTx) {
+          console.warn(`[Base Token] No creation transaction found for ${address}`);
+        } else {
+          console.log(`[Base Token] Found creation tx for ${address}: to=${creationTx.to}, from=${creationTx.from}`);
+        }
 
         // Detect factory: if creationTx.to exists, that's the factory address
         let detectedFactoryName: string | null = null;

@@ -57,10 +57,14 @@ export async function getContractCreation(
           to: string;
           contractAddress?: string;
           timeStamp?: string;
-        }>;
+        }> | string;
       };
 
-      if (txData.status === "1" && txData.result && txData.result.length > 0) {
+      // Check for API errors
+      if (txData.status === "0" || (typeof txData.result === "string" && txData.result.includes("deprecated"))) {
+        console.warn(`[Basescan] API error for ${contractAddress}: ${txData.message || txData.result}`);
+        // Continue to fallback method
+      } else if (txData.status === "1" && Array.isArray(txData.result) && txData.result.length > 0) {
         const firstTx = txData.result[0];
         // If the "to" field is empty, it's a contract creation transaction
         // Also check if contractAddress matches (for contracts created via factory)
@@ -102,10 +106,16 @@ export async function getContractCreation(
           contractAddress: string;
           contractCreator: string;
           txHash: string;
-        }>;
+        }> | string;
       };
 
-      if (data.status === "1" && data.result && data.result.length > 0) {
+      // Check for API errors
+      if (data.status === "0" || (typeof data.result === "string" && data.result.includes("deprecated"))) {
+        console.warn(`[Basescan] Contract creation endpoint error for ${contractAddress}: ${data.message || data.result}`);
+        return null;
+      }
+      
+      if (data.status === "1" && Array.isArray(data.result) && data.result.length > 0) {
         const apiResult = data.result[0];
         // Try to get timestamp from transaction
         const txUrl = `${BASESCAN_API_BASE}?module=proxy&action=eth_getTransactionByHash&txhash=${apiResult.txHash}&tag=latest${apiKeyParam}`;
