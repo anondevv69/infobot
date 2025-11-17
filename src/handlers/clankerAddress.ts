@@ -317,17 +317,30 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           console.log(`[Base Token] Found creation tx for ${address}: to=${creationTx.to}, from=${creationTx.from}`);
         }
 
-        // Detect factory: if creationTx.to exists, that's the factory address
+        // Detect factory: Get the transaction details to find the factory address
         let detectedFactoryName: string | null = null;
-        if (creationTx?.to) {
-          // Check if it's a known factory
-          const { getFactoryByAddress } = await import("../services/baseFactories");
-          const knownFactory = getFactoryByAddress(creationTx.to);
-          if (knownFactory) {
-            detectedFactoryName = knownFactory.name;
-          } else {
-            // Show factory address if not in known list
-            detectedFactoryName = `Factory: ${creationTx.to.slice(0, 10)}...${creationTx.to.slice(-8)}`;
+        if (contractCreation?.txHash) {
+          try {
+            // Get the transaction details to find the factory address
+            const apiKeyParam = env.basescanApiKey ? `&apikey=${env.basescanApiKey}` : "";
+            const txUrl = `https://api.basescan.org/api?module=proxy&action=eth_getTransactionByHash&txhash=${contractCreation.txHash}&tag=latest${apiKeyParam}`;
+            const txResponse = await fetch(txUrl, { headers: { Accept: "application/json" } });
+            if (txResponse.ok) {
+              const txData = (await txResponse.json()) as { result?: { from?: string; to?: string | null } };
+              if (txData.result?.to) {
+                // If "to" exists, that's the factory address
+                const { getFactoryByAddress } = await import("../services/baseFactories");
+                const knownFactory = getFactoryByAddress(txData.result.to);
+                if (knownFactory) {
+                  detectedFactoryName = knownFactory.name;
+                } else {
+                  // Show factory address if not in known list
+                  detectedFactoryName = `Factory: ${txData.result.to.slice(0, 10)}...${txData.result.to.slice(-8)}`;
+                }
+              }
+            }
+          } catch (error) {
+            console.error(`[Base Token] Failed to get transaction details for factory detection:`, error);
           }
         }
 

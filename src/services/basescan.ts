@@ -18,9 +18,9 @@ export interface ContractCreation {
 }
 
 /**
- * Get contract creation information from Basescan API
+ * Get contract creation information from Basescan API V2
  * Returns the creator address and transaction hash
- * Uses the transaction list to find the contract creation transaction
+ * Uses the new V2 API endpoint which works for factory-deployed contracts
  */
 export async function getContractCreation(
   contractAddress: string,
@@ -34,63 +34,9 @@ export async function getContractCreation(
       return cached;
     }
 
-    // Build API key parameter (optional, but improves rate limits)
-    const apiKeyParam = env.basescanApiKey ? `&apikey=${env.basescanApiKey}` : "";
-
-    // Method 1: Try to get the contract creation transaction
-    // Get the first transaction for this contract (which should be the creation transaction)
-    const txListUrl = `${BASESCAN_API_BASE}?module=account&action=txlist&address=${contractAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc${apiKeyParam}`;
-    
-    const txResponse = await fetch(txListUrl, {
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    if (txResponse.ok) {
-      const txData = (await txResponse.json()) as {
-        status?: string;
-        message?: string;
-        result?: Array<{
-          hash: string;
-          from: string;
-          to: string;
-          contractAddress?: string;
-          timeStamp?: string;
-        }> | string;
-      };
-
-      // Check for API errors
-      if (txData.status === "0" || (typeof txData.result === "string" && txData.result.includes("deprecated"))) {
-        console.warn(`[Basescan] API error for ${contractAddress}: ${txData.message || txData.result}`);
-        // Continue to fallback method
-      } else if (txData.status === "1" && Array.isArray(txData.result) && txData.result.length > 0) {
-        const firstTx = txData.result[0];
-        // If the "to" field is empty, it's a contract creation transaction
-        // Also check if contractAddress matches (for contracts created via factory)
-        const isContractCreation = 
-          !firstTx.to || 
-          firstTx.to === "" || 
-          firstTx.contractAddress?.toLowerCase() === normalizedAddress ||
-          firstTx.to.toLowerCase() === normalizedAddress;
-        
-        if (isContractCreation) {
-          const createdAt = firstTx.timeStamp ? parseInt(firstTx.timeStamp, 10) : null;
-          const result = {
-            contractAddress: contractAddress,
-            contractCreator: firstTx.from,
-            txHash: firstTx.hash,
-            createdAt,
-          };
-          // Cache the result
-          creatorCache.set(normalizedAddress, result);
-          return result;
-        }
-      }
-    }
-
-    // Method 2: Try the contract creation endpoint (may be deprecated but worth trying)
-    const url = `${BASESCAN_API_BASE}?module=contract&action=getcontractcreation&contractaddresses=${contractAddress}${apiKeyParam}`;
+    // Use the new V2 API endpoint
+    const apiKeyParam = env.basescanApiKey ? `?apikey=${env.basescanApiKey}` : "";
+    const url = `https://api.basescan.org/api/v2/contracts/${contractAddress}/creation${apiKeyParam}`;
     
     const response = await fetch(url, {
       headers: {
@@ -102,46 +48,34 @@ export async function getContractCreation(
       const data = (await response.json()) as {
         status?: string;
         message?: string;
-        result?: Array<{
+        result?: {
           contractAddress: string;
-          contractCreator: string;
-          txHash: string;
-        }> | string;
+          creatorAddress: string;
+          transactionHash: string;
+          blockNumber: string;
+        };
       };
 
-      // Check for API errors
-      if (data.status === "0" || (typeof data.result === "string" && data.result.includes("deprecated"))) {
-        console.warn(`[Basescan] Contract creation endpoint error for ${contractAddress}: ${data.message || data.result}`);
-        return null;
-      }
-      
-      if (data.status === "1" && Array.isArray(data.result) && data.result.length > 0) {
-        const apiResult = data.result[0];
-        // Try to get timestamp from transaction
-        const txUrl = `${BASESCAN_API_BASE}?module=proxy&action=eth_getTransactionByHash&txhash=${apiResult.txHash}&tag=latest${apiKeyParam}`;
+      if (data.status === "1" && data.result) {
+        // Get timestamp from block number
         let createdAt: number | null = null;
         try {
-          const txResponse = await fetch(txUrl, { headers: { Accept: "application/json" } });
-          if (txResponse.ok) {
-            const txData = (await txResponse.json()) as { result?: { blockNumber?: string } };
-            if (txData.result?.blockNumber) {
-              const blockUrl = `${BASESCAN_API_BASE}?module=proxy&action=eth_getBlockByNumber&tag=${txData.result.blockNumber}&boolean=true${apiKeyParam}`;
-              const blockResponse = await fetch(blockUrl, { headers: { Accept: "application/json" } });
-              if (blockResponse.ok) {
-                const blockData = (await blockResponse.json()) as { result?: { timestamp?: string } };
-                if (blockData.result?.timestamp) {
-                  createdAt = parseInt(blockData.result.timestamp, 16);
-                }
-              }
+          const blockUrl = `${BASESCAN_API_BASE}?module=proxy&action=eth_getBlockByNumber&tag=${data.result.blockNumber}&boolean=true${apiKeyParam.replace("?", "&")}`;
+          const blockResponse = await fetch(blockUrl, { headers: { Accept: "application/json" } });
+          if (blockResponse.ok) {
+            const blockData = (await blockResponse.json()) as { result?: { timestamp?: string } };
+            if (blockData.result?.timestamp) {
+              createdAt = parseInt(blockData.result.timestamp, 16);
             }
           }
         } catch (error) {
           // Ignore timestamp fetch errors
         }
+
         const result = {
-          contractAddress: apiResult.contractAddress,
-          contractCreator: apiResult.contractCreator,
-          txHash: apiResult.txHash,
+          contractAddress: data.result.contractAddress,
+          contractCreator: data.result.creatorAddress,
+          txHash: data.result.transactionHash,
           createdAt,
         };
         // Cache the result
@@ -152,7 +86,7 @@ export async function getContractCreation(
 
     return null;
   } catch (error) {
-    console.error("Failed to fetch contract creation from Basescan:", error);
+    console.error("Failed to fetch contract creation from Basescan V2:", error);
     return null;
   }
 }

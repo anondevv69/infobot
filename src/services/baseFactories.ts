@@ -11,34 +11,48 @@ export interface BaseFactory {
 }
 
 export const BASE_FACTORIES: Record<string, BaseFactory> = {
-  // Rainbow Factory (example - needs actual address)
-  RAINBOW: {
-    name: "Rainbow",
-    address: "0x0000000000000000000000000000000000000000", // TODO: Replace with actual address
-    explorerUrl: "https://basescan.org/address/",
+  // Uniswap V3 Factory
+  "0x33128a8dc178e51cc32f0ea8d2b06dfc2febb8ce": {
+    name: "Uniswap V3",
+    address: "0x33128a8dc178e51cc32f0ea8d2b06dfc2febb8ce",
+    explorerUrl: "https://basescan.org/address/0x33128a8dc178e51cc32f0ea8d2b06dfc2febb8ce",
     swapUrl: "https://app.uniswap.org/#/swap?chain=base&outputCurrency=",
   },
-  // ApeStore Factory (example - needs actual address)
-  APESTORE: {
-    name: "ApeStore",
-    address: "0x0000000000000000000000000000000000000000", // TODO: Replace with actual address
-    explorerUrl: "https://basescan.org/address/",
-    swapUrl: "https://app.uniswap.org/#/swap?chain=base&outputCurrency=",
-  },
-  // Fey Factory (example - needs actual address)
-  FEY: {
-    name: "Fey",
-    address: "0x0000000000000000000000000000000000000000", // TODO: Replace with actual address
-    explorerUrl: "https://basescan.org/address/",
-    swapUrl: "https://app.uniswap.org/#/swap?chain=base&outputCurrency=",
-  },
-  // Zora Factory (known)
-  ZORA: {
-    name: "Zora",
-    address: "0x0000000000000000000000000000000000000000", // TODO: Replace with actual Zora factory address
-    explorerUrl: "https://basescan.org/address/",
-    swapUrl: "https://zora.co/",
-  },
+  // Rainbow Factory (partial address provided - need full address)
+  // "0xd2ce...939": {
+  //   name: "Rainbow",
+  //   address: "0x...", // TODO: Get full address
+  //   explorerUrl: "https://basescan.org/address/",
+  //   swapUrl: "https://app.uniswap.org/#/swap?chain=base&outputCurrency=",
+  // },
+  // ApeStore (partial address provided - need full address)
+  // "0xc017...d93": {
+  //   name: "ApeStore",
+  //   address: "0x...", // TODO: Get full address
+  //   explorerUrl: "https://basescan.org/address/",
+  //   swapUrl: "https://app.uniswap.org/#/swap?chain=base&outputCurrency=",
+  // },
+  // Fey Factory (partial address provided - need full address)
+  // "0x7cee...bce": {
+  //   name: "Fey",
+  //   address: "0x...", // TODO: Get full address
+  //   explorerUrl: "https://basescan.org/address/",
+  //   swapUrl: "https://app.uniswap.org/#/swap?chain=base&outputCurrency=",
+  // },
+  // Virtuals (partial address provided - need full address)
+  // "0x9e0d...7ca": {
+  //   name: "Virtuals",
+  //   address: "0x...", // TODO: Get full address
+  //   explorerUrl: "https://basescan.org/address/",
+  //   swapUrl: "https://app.uniswap.org/#/swap?chain=base&outputCurrency=",
+  // },
+  // Zora Factory (need actual address)
+  // ZORA: {
+  //   name: "Zora",
+  //   address: "0x...", // TODO: Replace with actual Zora factory address
+  //   explorerUrl: "https://basescan.org/address/",
+  //   swapUrl: "https://zora.co/",
+  // },
 };
 
 /**
@@ -72,6 +86,11 @@ export async function detectTokenFactory(
  */
 export function getFactoryByAddress(address: string): BaseFactory | null {
   const normalized = address.toLowerCase();
+  // Check if address is a key in BASE_FACTORIES
+  if (BASE_FACTORIES[normalized]) {
+    return BASE_FACTORIES[normalized];
+  }
+  // Also check by address property (for backwards compatibility)
   for (const factory of Object.values(BASE_FACTORIES)) {
     if (factory.address.toLowerCase() === normalized) {
       return factory;

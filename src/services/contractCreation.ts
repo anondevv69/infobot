@@ -58,6 +58,60 @@ export async function getContractCreation(
       return cached;
     }
 
+    // For Base network, use the new V2 API endpoint
+    if (chainId.toLowerCase() === "base" || chainId === "8453") {
+      const apiKeyParam = apiKey ? `?apikey=${apiKey}` : "";
+      const url = `https://api.basescan.org/api/v2/contracts/${contractAddress}/creation${apiKeyParam}`;
+      
+      const response = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      if (response.ok) {
+        const data = (await response.json()) as {
+          status?: string;
+          message?: string;
+          result?: {
+            contractAddress: string;
+            creatorAddress: string;
+            transactionHash: string;
+            blockNumber: string;
+          };
+        };
+
+        if (data.status === "1" && data.result) {
+          // Get timestamp from block number
+          let createdAt: number | null = null;
+          try {
+            const blockUrl = `https://api.basescan.org/api?module=proxy&action=eth_getBlockByNumber&tag=${data.result.blockNumber}&boolean=true${apiKey ? `&apikey=${apiKey}` : ""}`;
+            const blockResponse = await fetch(blockUrl, { headers: { Accept: "application/json" } });
+            if (blockResponse.ok) {
+              const blockData = (await blockResponse.json()) as { result?: { timestamp?: string } };
+              if (blockData.result?.timestamp) {
+                createdAt = parseInt(blockData.result.timestamp, 16);
+              }
+            }
+          } catch (error) {
+            // Ignore timestamp fetch errors
+          }
+
+          const result: ContractCreation = {
+            contractAddress: data.result.contractAddress,
+            contractCreator: data.result.creatorAddress,
+            txHash: data.result.transactionHash,
+            chainId: chainId,
+            createdAt,
+          };
+          // Cache the result
+          creatorCache.set(cacheKey, result);
+          return result;
+        }
+      }
+      // If V2 fails, continue to fallback methods below
+    }
+
     const apiBase = getExplorerApiBase(chainId);
     if (!apiBase) {
       console.warn(`No explorer API available for chain: ${chainId}`);
@@ -69,6 +123,7 @@ export async function getContractCreation(
 
     // Method 1: Try to get the contract creation transaction
     // Get the first transaction for this contract (which should be the creation transaction)
+    // NOTE: This doesn't work for factory-deployed contracts on Base, but works for other chains
     const txListUrl = `${apiBase}?module=account&action=txlist&address=${contractAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc${apiKeyParam}`;
     
     const txResponse = await fetch(txListUrl, {
@@ -120,7 +175,7 @@ export async function getContractCreation(
       }
     }
 
-    // Method 2: Try the contract creation endpoint (may be deprecated but worth trying)
+    // Method 2: Try the contract creation endpoint (may be deprecated but worth trying for non-Base chains)
     const url = `${apiBase}?module=contract&action=getcontractcreation&contractaddresses=${contractAddress}${apiKeyParam}`;
     
     const response = await fetch(url, {
