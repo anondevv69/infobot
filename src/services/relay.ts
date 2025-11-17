@@ -68,7 +68,7 @@ const CHAIN_ID_TO_NAME: Record<number, string> = {
   1101: "Polygon zkEVM",
   324: "zkSync Era",
   81457: "Blast",
-  999: "Zora Network",
+  999: "Hyperliquid",
   7777777: "Zora Network",
 };
 
@@ -453,7 +453,7 @@ export async function fetchRelayTransaction(
           chainId: outTxs[0].chainId || 0,
           wallet: req.recipient || outTxs[0].data?.to || "",
         };
-        amount = outTxs[0].data?.value;
+        // Don't set amount from raw transaction value - wait for outputCurrency
       } else if (req.recipient) {
         // If no outTxs but we have recipient, try to get chain from request data
         const destChainId = req.data?.destinationChainId || req.destinationChainId || 0;
@@ -483,7 +483,7 @@ export async function fetchRelayTransaction(
           wallet: req.user,
         };
       }
-      amount = matchingOutTx.data?.value;
+      // Don't set amount from raw transaction value - wait for outputCurrency
     } else {
       // Fallback: use first inTx and first outTx, but prefer req.user/req.recipient
       if (inTxs.length > 0) {
@@ -503,7 +503,7 @@ export async function fetchRelayTransaction(
           chainId: outTxs[0].chainId || 0,
           wallet: req.recipient || outTxs[0].data?.to || "",
         };
-        amount = outTxs[0].data?.value;
+        // Don't set amount from raw transaction value - wait for outputCurrency
       } else if (req.recipient) {
         const destChainId = req.data?.destinationChainId || req.destinationChainId || 0;
         destinationChain = {
@@ -514,6 +514,7 @@ export async function fetchRelayTransaction(
     }
 
     // Extract token information from outputCurrency if available
+    // Only use amount from outputCurrency as it's the most reliable source
     if (req.data?.outputCurrency) {
       const currency = req.data.outputCurrency.currency;
       if (currency) {
@@ -522,12 +523,28 @@ export async function fetchRelayTransaction(
           address: currency.address || "",
         };
         // Use amountFormatted if available, otherwise use amount
+        // Only set amount if we have a valid formatted value (not "0" or empty)
         if (req.data.outputCurrency.amountFormatted) {
-          amount = req.data.outputCurrency.amountFormatted;
+          const formattedAmount = req.data.outputCurrency.amountFormatted;
+          if (formattedAmount && formattedAmount !== "0" && formattedAmount !== "0.0" && formattedAmount !== "0.00") {
+            amount = formattedAmount;
+          }
         } else if (req.data.outputCurrency.amount) {
-          amount = req.data.outputCurrency.amount;
+          const rawAmount = req.data.outputCurrency.amount;
+          // Only use raw amount if it's not zero
+          if (rawAmount && rawAmount !== "0" && rawAmount !== "0x0") {
+            amount = rawAmount;
+          }
         }
       }
+    } else {
+      // If no outputCurrency, don't show amount (it's likely raw wei value)
+      amount = undefined;
+    }
+    
+    // Also clear amount if it was set from transaction value but is zero
+    if (amount === "0" || amount === "0x0" || amount === "0.0" || amount === "0.00") {
+      amount = undefined;
     }
 
     // Fallback to user/recipient if wallet addresses are missing
