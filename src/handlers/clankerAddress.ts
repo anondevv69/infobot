@@ -306,9 +306,9 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
         
         // Debug logging
         if (!contractCreation) {
-          console.warn(`[Base Token] No contract creation data found for ${address}`);
+          console.warn(`[Base Token] No contract creation data found for ${address} - all methods failed`);
         } else {
-          console.log(`[Base Token] Found creator for ${address}: ${contractCreation.contractCreator}`);
+          console.log(`[Base Token] ✅ Found creator for ${address}: ${contractCreation.contractCreator}, txHash: ${contractCreation.txHash}, createdAt: ${contractCreation.createdAt}`);
         }
         
         if (!creationTx) {
@@ -350,6 +350,13 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
         baseTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
         baseTokenData.factoryName = detectedFactoryName ?? factory?.name ?? null;
         baseTokenData.createdAt = contractCreation?.createdAt ?? null;
+        
+        // Log what we're passing to the embed
+        console.log(`[Base Token] Embed params for ${address}:`, {
+          creatorAddress: baseTokenData.creatorAddress,
+          createdAt: baseTokenData.createdAt,
+          factoryName: baseTokenData.factoryName,
+        });
 
         const { embed, components } = await buildBaseTokenEmbed(
           address,
