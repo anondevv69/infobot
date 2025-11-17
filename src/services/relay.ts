@@ -172,19 +172,14 @@ export async function fetchRelayTransaction(
   sourceChainId?: number,
 ): Promise<RelayTransaction | null> {
   try {
-    // Always try to index first if we know the source chain
-    // This helps ensure the transaction is indexed before querying
-    if (sourceChainId) {
-      await indexRelayTransaction(txHash, sourceChainId);
-      // Wait longer for indexing to complete
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    } else {
-      // If we don't know the chain, try Base (8453) as default since most transactions are on Base
-      await indexRelayTransaction(txHash, 8453);
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    }
+    // Always try to index first - this is critical for Relay to process the transaction
+    const chainIdToUse = sourceChainId || 8453; // Default to Base
+    await indexRelayTransaction(txHash, chainIdToUse);
+    
+    // Wait for indexing to complete - Relay needs time to process
+    await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    // Try multiple endpoints - the transaction might be under a different endpoint
+    // Try the main transactions endpoint
     let response = await fetch(
       `https://api.relay.link/transactions/${txHash}`,
       {
@@ -195,12 +190,11 @@ export async function fetchRelayTransaction(
       },
     );
 
-    // If that fails, try querying by address instead
+    // If 404, wait longer and try again (indexing might still be in progress)
     if (!response.ok && response.status === 404) {
-      // Try the address-based endpoint if transaction endpoint doesn't work
-      // First, we'd need to get the address from the transaction, but for now let's try the transaction endpoint again
-      // with a longer wait
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      console.log(`Transaction ${txHash} not found, waiting longer for indexing...`);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      
       response = await fetch(
         `https://api.relay.link/transactions/${txHash}`,
         {
@@ -212,11 +206,29 @@ export async function fetchRelayTransaction(
       );
     }
 
+    // Try alternative endpoint format
+    if (!response.ok && response.status === 404) {
+      console.log(`Trying alternative endpoint format...`);
+      response = await fetch(
+        `https://api.relay.link/v1/transactions/${txHash}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
+    }
+
     if (!response.ok) {
       if (response.status === 404) {
+        // Log the response body for debugging
+        const errorText = await response.text().catch(() => "");
+        console.log(`Relay API 404 response: ${errorText}`);
         return null;
       }
-      throw new Error(`Relay API error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text().catch(() => "");
+      throw new Error(`Relay API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();

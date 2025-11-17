@@ -39,7 +39,7 @@ export async function handleRelayCommand(
 
     if (!transaction) {
       await interaction.editReply({
-        content: `❌ Transaction \`${txHash}\` not found on Relay.link. This transaction may not be a cross-chain bridge transaction, or it may not have been indexed yet.`,
+        content: `❌ Transaction \`${txHash}\` not found on Relay.link API.\n\n**Possible reasons:**\n• The transaction may not be indexed yet (can take several minutes)\n• The transaction might be a deposit TO this chain (source chain transaction hash may be different)\n• The API may require additional time to process the transaction\n\n**Note:** Even if Basescan shows "Via Relay", the Relay API may need more time to index cross-chain transaction details. Try again in a few minutes.`,
       });
       return;
     }
