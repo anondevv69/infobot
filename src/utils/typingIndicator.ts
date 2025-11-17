@@ -59,15 +59,17 @@ export async function showTelegramTypingIndicator(
 
 /**
  * Show eye emoji message for Telegram (alternative to typing indicator)
- * Sends a temporary message with eye emoji, then deletes it after processing
+ * Replies to the original message with eye emoji, then deletes it after processing
  */
 export async function showTelegramEyeIndicator(
   bot: TelegramBot,
   chatId: number,
+  replyToMessageId?: number,
 ): Promise<number | null> {
   try {
-    // Send eye emoji message
+    // Reply to the original message with eye emoji
     const sentMessage = await bot.sendMessage(chatId, "👁️", {
+      reply_to_message_id: replyToMessageId,
       parse_mode: "HTML",
     });
     return sentMessage.message_id;
