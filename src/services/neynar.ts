@@ -80,79 +80,42 @@ export async function findUserByXHandle(handle: string): Promise<User | null> {
   if (!normalized) {
     return null;
   }
-  
-  // Use the Neynar API endpoint directly - it searches X accounts against Farcaster profiles
-  const url = new URL(
-    "https://api.neynar.com/v2/farcaster/user/by_x_username/",
-  );
-  url.searchParams.set("x_username", normalized);
 
   try {
+    const url = `https://api.neynar.com/v2/farcaster/user/by_x_username/?x_username=${normalized}`;
     const apiKey = requireEnv(env.neynarApiKey, "NEYNAR_API_KEY");
-    const headers: Record<string, string> = {
-      accept: "application/json",
-      "api-key": apiKey,
-      "x-neynar-experimental": "true", // Always enable experimental for X handle lookups
-    };
 
-    console.log(`[X Handle Lookup] Calling API for: ${normalized}`);
-    console.log(`[X Handle Lookup] URL: ${url.toString()}`);
-
-    const response = await fetch(url, { headers });
-
-    console.log(`[X Handle Lookup] Response status: ${response.status}`);
-
-    if (response.status === 404) {
-      console.log(`[X Handle Lookup] 404 - No user found for ${normalized}`);
-      return null;
-    }
-
-    if (response.status === 401) {
-      console.warn(
-        "[X Handle Lookup] 401 - Failed to lookup user by X handle due to unauthorized response. Check API plan and key.",
-      );
-      return null;
-    }
-
-    if (response.status === 402) {
-      // 402 Payment Required - this endpoint requires Enterprise tier or micropayments
-      // Log this so we know it's happening, but still return null for fallback
-      console.warn(
-        `[X Handle Lookup] 402 - X handle lookup requires Enterprise tier for ${normalized}. Falling back to username lookup.`,
-      );
-      return null;
-    }
+    const response = await fetch(url, {
+      headers: {
+        "x-api-key": apiKey,
+        "x-neynar-experimental": "true",
+      },
+    });
 
     if (!response.ok) {
-      const body = await response.text().catch(() => "failed to read body");
-      console.warn(
-        `[X Handle Lookup] Error ${response.status} for ${normalized}: ${body}`,
+      const errorText = await response.text().catch(() => "failed to read body");
+      console.error(
+        `[X Handle Lookup] Neynar lookup error for ${normalized}: ${response.status} ${errorText}`,
       );
       return null;
     }
 
-    const payload = (await response.json()) as { users?: User[] };
-    const users = payload.users ?? [];
-    
-    console.log(`[X Handle Lookup] Found ${users.length} user(s) for ${normalized}`);
-    
-    if (users.length === 0) {
-      console.log(`[X Handle Lookup] No users in response for ${normalized}`);
+    const data = (await response.json()) as { users?: User[] };
+
+    if (!data?.users?.length) {
+      console.log(`[X Handle Lookup] No users found for ${normalized}`);
       return null;
     }
 
-    // Return the first user (the API should return users with matching X accounts)
-    // The API endpoint is authoritative - if it returns a user, that user has the X account
-    const [user] = users;
-    
-    console.log(`[X Handle Lookup] Returning user: ${user.username} (fid: ${user.fid})`);
-    console.log(`[X Handle Lookup] Verified accounts:`, JSON.stringify(user.verified_accounts, null, 2));
-    
-    // Trust the API response - if it returns a user for this X handle, use it
-    // The API endpoint specifically searches by X username, so it's authoritative
+    // Just return the first user. No score filtering. No verification checks.
+    // The API endpoint is authoritative - if it returns a user, that's the match.
+    const user = data.users[0];
+    console.log(
+      `[X Handle Lookup] Found user: ${user.username} (fid: ${user.fid}) for ${normalized}`,
+    );
     return user;
   } catch (error) {
-    console.error(`[X Handle Lookup] Exception for ${normalized}:`, error);
+    console.error(`[X Handle Lookup] Lookup failed for ${normalized}:`, error);
     return null;
   }
 }
