@@ -10,25 +10,34 @@ export interface BaseFactory {
   swapUrl?: string;
 }
 
+/**
+ * Token Factory Map - Maps token factory addresses to their names
+ * These are the factories that CREATE tokens (not DEX factories that create pools)
+ */
+export const TOKEN_FACTORY_MAP: Record<string, string> = {
+  // AperStore
+  "0x7777777778f3b8b3d85f95a08d6e225a8f1ccfc6": "AperStore",
+  // KLIK Finance
+  "0x4a0a35e7b9b4a29565b0f77ec0957dd64bb337d0": "KLIK Finance",
+  // FEY (multiple factory addresses)
+  "0xc1d0e984d87c32f2b0d45fb8f50aa2be6e9eb687": "Fey",
+  "0x94c2ec832c8f885b34b8ffa2724e6e8a9f4a63bb": "Fey",
+  "0xbc13a34e6fed856e66a153a1ef8e2903e8963924": "Fey", // Found from token lookup
+  // Clanker
+  "0xb07b3c97a7658c520267dbb5aeb41199fe6b2c6a": "Clanker",
+  // Zora
+  "0xabefbc9fd2f806065b4f3c237d4b59d9a97bcac7": "Zora",
+  // Virtuals
+  "0x42f4f5a3389ca0bed694de339f4d432acddb1ea9": "Virtuals",
+};
+
 export const BASE_FACTORIES: Record<string, BaseFactory> = {
-  // Uniswap V3 Factory
+  // Uniswap V3 Factory (DEX factory - for reference, but we use TOKEN_FACTORY_MAP for token factories)
   "0x33128a8dc178e51cc32f0ea8d2b06dfc2febb8ce": {
     name: "Uniswap V3",
     address: "0x33128a8dc178e51cc32f0ea8d2b06dfc2febb8ce",
     explorerUrl: "https://basescan.org/address/0x33128a8dc178e51cc32f0ea8d2b06dfc2febb8ce",
     swapUrl: "https://app.uniswap.org/#/swap?chain=base&outputCurrency=",
-  },
-  // Virtuals Factory (found from token 0xFAC77f01957ed1B3DD1cbEa992199B8f85B6E886)
-  "0x42f4f5a3389ca0bed694de339f4d432acddb1ea9": {
-    name: "Virtuals",
-    address: "0x42f4f5a3389ca0bed694de339f4d432acddb1ea9",
-    explorerUrl: "https://basescan.org/address/0x42f4f5a3389ca0bed694de339f4d432acddb1ea9",
-  },
-  // Fey Factory (found from token 0xD09cf0982A32DD6856e12d6BF2F08A822eA5D91D)
-  "0xbc13a34e6fed856e66a153a1ef8e2903e8963924": {
-    name: "Fey",
-    address: "0xbc13a34e6fed856e66a153a1ef8e2903e8963924",
-    explorerUrl: "https://basescan.org/address/0xbc13a34e6fed856e66a153a1ef8e2903e8963924",
   },
   // ApeStore Factory (TODO: Need to find the correct address)
   // "0x...": {
@@ -106,7 +115,15 @@ export async function detectTokenFactory(
 }
 
 /**
- * Get factory info by address
+ * Get token factory name by address (from TOKEN_FACTORY_MAP)
+ */
+export function getTokenFactoryName(address: string): string | null {
+  const normalized = address.toLowerCase();
+  return TOKEN_FACTORY_MAP[normalized] ?? null;
+}
+
+/**
+ * Get factory info by address (for DEX factories)
  */
 export function getFactoryByAddress(address: string): BaseFactory | null {
   const normalized = address.toLowerCase();
@@ -121,6 +138,21 @@ export function getFactoryByAddress(address: string): BaseFactory | null {
     }
   }
   return null;
+}
+
+/**
+ * Create a BaseFactory object from a token factory address
+ */
+export function createTokenFactory(address: string): BaseFactory | null {
+  const factoryName = getTokenFactoryName(address);
+  if (!factoryName) {
+    return null;
+  }
+  return {
+    name: factoryName,
+    address: address.toLowerCase(),
+    explorerUrl: `https://basescan.org/address/${address}`,
+  };
 }
 
 /**

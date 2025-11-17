@@ -137,25 +137,40 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             getContractCreationTx(address, "base", env.basescanApiKey).catch(() => null),
           ]);
 
-          // Detect factory: Get the transaction details to find the factory address
+          // Detect TOKEN factory: Get the transaction details to find the token factory address
+          // The TOKEN factory is the "to" field in the creation transaction (NOT the pool/DEX factory)
           let detectedFactoryName: string | null = null;
+          let detectedFactory: any = null;
+          
           if (contractCreation?.txHash) {
             try {
-              // Get the transaction details to find the factory address
-              const apiKeyParam = env.basescanApiKey ? `&apikey=${env.basescanApiKey}` : "";
-              const txUrl = `https://api.basescan.org/api?module=proxy&action=eth_getTransactionByHash&txhash=${contractCreation.txHash}&tag=latest${apiKeyParam}`;
-              const txResponse = await fetch(txUrl, { headers: { Accept: "application/json" } });
-              if (txResponse.ok) {
-                const txData = (await txResponse.json()) as { result?: { from?: string; to?: string | null } };
-                if (txData.result?.to) {
-                  // If "to" exists, that's the factory address
-                  const { getFactoryByAddress } = await import("../../../services/baseFactories");
-                  const knownFactory = getFactoryByAddress(txData.result.to);
-                  if (knownFactory) {
-                    detectedFactoryName = knownFactory.name;
+              // Use Base RPC directly to get transaction details (more reliable than deprecated Basescan API)
+              const BASE_RPC_URL = "https://mainnet.base.org";
+              const rpcResponse = await fetch(BASE_RPC_URL, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  jsonrpc: "2.0",
+                  method: "eth_getTransactionByHash",
+                  params: [contractCreation.txHash],
+                  id: 1,
+                }),
+              });
+              
+              if (rpcResponse.ok) {
+                const rpcData = (await rpcResponse.json()) as { result?: { from?: string; to?: string | null } };
+                if (rpcData.result?.to) {
+                  // The "to" field is the TOKEN factory address (Fey, AperStore, KLIK, etc.)
+                  const tokenFactoryAddress = rpcData.result.to.toLowerCase();
+                  const { getTokenFactoryName, createTokenFactory } = await import("../../../services/baseFactories");
+                  const tokenFactoryName = getTokenFactoryName(tokenFactoryAddress);
+                  if (tokenFactoryName) {
+                    detectedFactory = createTokenFactory(tokenFactoryAddress);
+                    detectedFactoryName = tokenFactoryName;
                   } else {
-                    // Show factory address if not in known list
-                    detectedFactoryName = `Factory: ${txData.result.to.slice(0, 10)}...${txData.result.to.slice(-8)}`;
+                    detectedFactoryName = `Factory: ${tokenFactoryAddress.slice(0, 10)}...${tokenFactoryAddress.slice(-8)}`;
                   }
                 }
               }
@@ -166,7 +181,8 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
 
           // Add creator, factory, and creation date to token data
           baseTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
-          baseTokenData.factoryName = detectedFactoryName ?? factory?.name ?? null;
+          // Use detected token factory name (not DEX factory)
+          baseTokenData.factoryName = detectedFactoryName ?? null;
           baseTokenData.createdAt = contractCreation?.createdAt ?? null;
 
           const { embed } = await buildBaseTokenEmbed(
@@ -174,7 +190,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             baseTokenData?.tokenName ?? null, // Token name from DexScreener
             baseTokenData?.tokenSymbol ?? null, // Token symbol from DexScreener
             baseTokenData,
-            factory,
+            detectedFactory, // Use detected token factory (not DEX factory)
             contractCreation?.contractCreator ?? null,
             contractCreation?.createdAt ?? null, // Creation timestamp
             contractCreation?.txHash ?? null, // Creation transaction hash
@@ -583,18 +599,57 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             const { getContractCreation } = await import("../../../services/basescan");
             const contractCreation = await getContractCreation(address).catch(() => null);
 
+            // Detect TOKEN factory from creation transaction
+            let detectedFactoryName: string | null = null;
+            let detectedFactory: any = null;
+            
+            if (contractCreation?.txHash) {
+              try {
+                const BASE_RPC_URL = "https://mainnet.base.org";
+                const rpcResponse = await fetch(BASE_RPC_URL, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    method: "eth_getTransactionByHash",
+                    params: [contractCreation.txHash],
+                    id: 1,
+                  }),
+                });
+                
+                if (rpcResponse.ok) {
+                  const rpcData = (await rpcResponse.json()) as { result?: { from?: string; to?: string | null } };
+                  if (rpcData.result?.to) {
+                    const tokenFactoryAddress = rpcData.result.to.toLowerCase();
+                    const { getTokenFactoryName, createTokenFactory } = await import("../../../services/baseFactories");
+                    const tokenFactoryName = getTokenFactoryName(tokenFactoryAddress);
+                    if (tokenFactoryName) {
+                      detectedFactory = createTokenFactory(tokenFactoryAddress);
+                      detectedFactoryName = tokenFactoryName;
+                    } else {
+                      detectedFactoryName = `Factory: ${tokenFactoryAddress.slice(0, 10)}...${tokenFactoryAddress.slice(-8)}`;
+                    }
+                  }
+                }
+              } catch (error) {
+                console.error(`[Base Token] Failed to get transaction details for factory detection:`, error);
+              }
+            }
+
             const { embed } = await buildBaseTokenEmbed(
               address,
               baseTokenData?.tokenName ?? null, // Token name
               baseTokenData?.tokenSymbol ?? null, // Token symbol
               baseTokenData,
-              factory,
+              detectedFactory, // Use detected token factory (not DEX factory)
               contractCreation?.contractCreator ?? null,
               contractCreation?.createdAt ?? null, // Creation timestamp
               contractCreation?.txHash ?? null, // Creation transaction hash
             );
 
-            const factoryName = factory ? ` (${factory.name})` : "";
+            const factoryName = detectedFactory ? ` (${detectedFactory.name})` : "";
             const messages = embedsToTelegram([embed]);
             await bot.sendMessage(chatId, `Base token detected${factoryName} for <code>${address}</code>.`, {
               parse_mode: "HTML",

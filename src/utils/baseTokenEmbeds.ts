@@ -183,14 +183,22 @@ export async function buildBaseTokenEmbed(
   const isKnownFactory = factory !== null; // If factory object exists, it's a known factory
   
   if (finalFactoryName) {
+    // Remove "Factory:" prefix if it already exists in the name
+    const cleanFactoryName = finalFactoryName.startsWith("Factory: ") 
+      ? finalFactoryName.replace(/^Factory: /, "")
+      : finalFactoryName;
+    
     // Add checkmark for known factories
     const factoryDisplay = isKnownFactory 
-      ? `🏭 Factory: ${finalFactoryName} ✅`
-      : `🏭 Factory: ${finalFactoryName}`;
+      ? `🏭 Factory: ${cleanFactoryName} ✅`
+      : `🏭 Factory: ${cleanFactoryName}`;
     poolInfo.push(factoryDisplay);
   } else if (factory === null && metrics?.factoryName) {
     // If we have factoryName in metrics but no factory object, still show it
-    poolInfo.push(`🏭 Factory: ${metrics.factoryName}`);
+    const cleanFactoryName = metrics.factoryName.startsWith("Factory: ")
+      ? metrics.factoryName.replace(/^Factory: /, "")
+      : metrics.factoryName;
+    poolInfo.push(`🏭 Factory: ${cleanFactoryName}`);
   }
 
   // Add liquidity warning if very low (like the example)

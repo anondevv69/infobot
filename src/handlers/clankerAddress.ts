@@ -317,10 +317,11 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           console.log(`[Base Token] Found creation tx for ${address}: to=${creationTx.to}, from=${creationTx.from}`);
         }
 
-        // Detect factory: Get the transaction details to find the factory address
-        // The factory is the "to" field in the creation transaction
+        // Detect TOKEN factory: Get the transaction details to find the token factory address
+        // The TOKEN factory is the "to" field in the creation transaction (NOT the pool/DEX factory)
         let detectedFactoryName: string | null = null;
         let detectedFactoryAddress: string | null = null;
+        let detectedFactory: BaseFactory | null = null;
         
         if (contractCreation?.txHash) {
           try {
@@ -342,9 +343,22 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
             if (rpcResponse.ok) {
               const rpcData = (await rpcResponse.json()) as { result?: { from?: string; to?: string | null } };
               if (rpcData.result?.to) {
-                // If "to" exists, that's the factory address
-                detectedFactoryAddress = rpcData.result.to;
-                console.log(`[Base Token] Found factory address from transaction: ${detectedFactoryAddress}`);
+                // The "to" field is the TOKEN factory address (Fey, AperStore, KLIK, etc.)
+                detectedFactoryAddress = rpcData.result.to.toLowerCase();
+                console.log(`[Base Token] Found token factory address from transaction: ${detectedFactoryAddress}`);
+                
+                // Check if it's a known token factory
+                const { getTokenFactoryName, createTokenFactory } = await import("../services/baseFactories");
+                const tokenFactoryName = getTokenFactoryName(detectedFactoryAddress);
+                if (tokenFactoryName) {
+                  detectedFactory = createTokenFactory(detectedFactoryAddress);
+                  detectedFactoryName = tokenFactoryName;
+                  console.log(`[Base Token] Matched token factory: ${tokenFactoryName}`);
+                } else {
+                  // Unknown factory - show address
+                  detectedFactoryName = `Factory: ${detectedFactoryAddress.slice(0, 10)}...${detectedFactoryAddress.slice(-8)}`;
+                  console.log(`[Base Token] Unknown token factory: ${detectedFactoryAddress}`);
+                }
               }
             }
           } catch (error) {
@@ -357,8 +371,18 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
               if (txResponse.ok) {
                 const txData = (await txResponse.json()) as { result?: { from?: string; to?: string | null } };
                 if (txData.result?.to) {
-                  detectedFactoryAddress = txData.result.to;
-                  console.log(`[Base Token] Found factory address from Basescan API: ${detectedFactoryAddress}`);
+                  detectedFactoryAddress = txData.result.to.toLowerCase();
+                  console.log(`[Base Token] Found token factory address from Basescan API: ${detectedFactoryAddress}`);
+                  
+                  // Check if it's a known token factory
+                  const { getTokenFactoryName, createTokenFactory } = await import("../services/baseFactories");
+                  const tokenFactoryName = getTokenFactoryName(detectedFactoryAddress);
+                  if (tokenFactoryName) {
+                    detectedFactory = createTokenFactory(detectedFactoryAddress);
+                    detectedFactoryName = tokenFactoryName;
+                  } else {
+                    detectedFactoryName = `Factory: ${detectedFactoryAddress.slice(0, 10)}...${detectedFactoryAddress.slice(-8)}`;
+                  }
                 }
               }
             } catch (fallbackError) {
@@ -367,37 +391,31 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           }
         }
         
-        // Method 2: If we don't have factory from transaction, try logs
+        // Method 2: If we don't have factory from transaction, try logs (last resort)
         if (!detectedFactoryAddress) {
           try {
             const { detectFactoryFromLogs } = await import("../services/basescan");
-            detectedFactoryAddress = await detectFactoryFromLogs(address);
-          } catch (error) {
-            console.error(`[Base Token] Failed to detect factory from logs:`, error);
-          }
-        }
-        
-        // Check if it's a known factory and get factory object
-        let detectedFactory: BaseFactory | null = null;
-        if (detectedFactoryAddress) {
-          try {
-            const { getFactoryByAddress } = await import("../services/baseFactories");
-            const knownFactory = getFactoryByAddress(detectedFactoryAddress);
-            if (knownFactory) {
-              detectedFactory = knownFactory;
-              detectedFactoryName = knownFactory.name;
-            } else {
-              // Show factory address if not in known list
-              detectedFactoryName = `Factory: ${detectedFactoryAddress.slice(0, 10)}...${detectedFactoryAddress.slice(-8)}`;
+            const logFactoryAddress = await detectFactoryFromLogs(address);
+            if (logFactoryAddress) {
+              detectedFactoryAddress = logFactoryAddress.toLowerCase();
+              const { getTokenFactoryName, createTokenFactory } = await import("../services/baseFactories");
+              const tokenFactoryName = getTokenFactoryName(detectedFactoryAddress);
+              if (tokenFactoryName) {
+                detectedFactory = createTokenFactory(detectedFactoryAddress);
+                detectedFactoryName = tokenFactoryName;
+              } else {
+                detectedFactoryName = `Factory: ${detectedFactoryAddress.slice(0, 10)}...${detectedFactoryAddress.slice(-8)}`;
+              }
             }
           } catch (error) {
-            console.error(`[Base Token] Failed to get factory name:`, error);
+            console.error(`[Base Token] Failed to detect factory from logs:`, error);
           }
         }
 
         // Add creator, factory, and creation date to token data
         baseTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
-        baseTokenData.factoryName = detectedFactoryName ?? factory?.name ?? null;
+        // Use detected token factory name (not DEX factory)
+        baseTokenData.factoryName = detectedFactoryName ?? null;
         baseTokenData.createdAt = contractCreation?.createdAt ?? null;
         
         // Log what we're passing to the embed
@@ -405,11 +423,12 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           creatorAddress: baseTokenData.creatorAddress,
           createdAt: baseTokenData.createdAt,
           factoryName: baseTokenData.factoryName,
-          factoryObject: detectedFactory ?? factory,
+          factoryAddress: detectedFactoryAddress,
+          factoryObject: detectedFactory,
         });
 
-        // Use detected factory if available, otherwise fall back to existing factory
-        const finalFactory = detectedFactory ?? factory;
+        // Use detected token factory (not DEX factory)
+        const finalFactory = detectedFactory;
 
         const { embed, components } = await buildBaseTokenEmbed(
           address,
