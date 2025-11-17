@@ -8,6 +8,8 @@ import { TokenMetrics } from "../services/dexscreener";
 import { BaseFactory } from "../services/baseFactories";
 import { applyBranding } from "./branding";
 import { getContractCreation } from "../services/basescan";
+import { findUserByWallet } from "../services/neynar";
+import { findBestZoraSummary } from "../services/zora";
 
 function formatCurrency(value?: number | null): string {
   if (value == null) return "N/A";
@@ -141,12 +143,43 @@ export async function buildBaseTokenEmbed(
 
   // Removed Pool Info section as requested
 
-  // Token Info Section (Creator and Creation Transaction only)
+  // Token Info Section (Creator, Farcaster, Zora, and Creation Transaction)
   const finalCreatorAddress = creatorAddress ?? metrics?.creatorAddress ?? null;
   const tokenInfo: string[] = [];
   
   if (finalCreatorAddress) {
     tokenInfo.push(`👤 Creator: \`${finalCreatorAddress}\``);
+    
+    // Check for Farcaster and Zora accounts
+    try {
+      const [farcasterUser, zoraSummary] = await Promise.all([
+        findUserByWallet(finalCreatorAddress).catch(() => null),
+        findBestZoraSummary([finalCreatorAddress.toLowerCase()]).catch(() => null),
+      ]);
+      
+      // Farcaster account
+      if (farcasterUser) {
+        const farcasterUrl = `https://farcaster.xyz/${farcasterUser.username}?ref=2ORGMS`;
+        tokenInfo.push(`📱 Farcaster: [@${farcasterUser.username}](${farcasterUrl})`);
+      } else {
+        tokenInfo.push(`📱 Farcaster: None`);
+      }
+      
+      // Zora account
+      if (zoraSummary && (zoraSummary.latestCoin?.coin || (zoraSummary.createdCoins ?? []).length > 0)) {
+        const zoraHandle = zoraSummary.profile.handle || zoraSummary.profile.farcasterHandle || "Profile";
+        const zoraUrl = zoraSummary.profile.handle 
+          ? `https://zora.co/${zoraSummary.profile.handle}`
+          : `https://zora.co/profile/${finalCreatorAddress}`;
+        tokenInfo.push(`🎨 Zora: [${zoraHandle}](${zoraUrl})`);
+      } else {
+        tokenInfo.push(`🎨 Zora: None`);
+      }
+    } catch (error) {
+      console.error(`[Base Token] Failed to check Farcaster/Zora for creator ${finalCreatorAddress}:`, error);
+      tokenInfo.push(`📱 Farcaster: None`);
+      tokenInfo.push(`🎨 Zora: None`);
+    }
   }
 
   if (creationTxHash && creationTxHash.trim() !== "") {
