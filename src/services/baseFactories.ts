@@ -15,9 +15,9 @@ export interface BaseFactory {
  * These are the factories that CREATE tokens (not DEX factories that create pools)
  */
 export const TOKEN_FACTORY_MAP: Record<string, string> = {
-  // AperStore (multiple factory addresses)
-  "0x7777777778f3b8b3d85f95a08d6e225a8f1ccfc6": "AperStore",
-  // AperStore deployment contract (from token 0x05a5b4e217004eb84c6787e0ecbe7a46cfd94cdd)
+  // ApeStore (multiple factory addresses)
+  "0x7777777778f3b8b3d85f95a08d6e225a8f1ccfc6": "ApeStore",
+  // ApeStore deployment contract (from token 0x05a5b4e217004eb84c6787e0ecbe7a46cfd94cdd)
   // Pattern: 0xb3bea12a...0261dabf - need to check logs for full address
   // KLIK Finance
   "0x4a0a35e7b9b4a29565b0f77ec0957dd64bb337d0": "KLIK Finance",
@@ -164,6 +164,7 @@ export function createTokenFactory(address: string): BaseFactory | null {
 export function getKnownFactoryNames(): string[] {
   return Object.values(BASE_FACTORIES).map((f) => f.name);
 }
+
 
 
 

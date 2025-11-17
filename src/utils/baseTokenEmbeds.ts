@@ -58,9 +58,9 @@ export async function buildBaseTokenEmbed(
     ? `${finalTokenSymbol} • ${finalTokenName}`
     : finalTokenName ?? finalTokenSymbol ?? "Base Token";
 
-  // Add caution symbol for AperStore and Fey tokens
+  // Add caution symbol for ApeStore and Fey tokens
   const factoryName = factory?.name ?? metrics?.factoryName ?? null;
-  const needsCaution = factoryName === "AperStore" || factoryName === "Fey";
+  const needsCaution = factoryName === "ApeStore" || factoryName === "Fey";
   const titlePrefix = needsCaution ? "⚠️ 🪙" : "🪙";
 
   // Use DexScreener URL if available, otherwise fallback to Basescan
@@ -71,9 +71,9 @@ export async function buildBaseTokenEmbed(
     .setTitle(`${titlePrefix} ${title}`)
     .setURL(embedUrl);
 
-  // Add warning description for AperStore tokens
-  if (factoryName === "AperStore") {
-    embed.setDescription("⚠️ **We do not recommend AperStore coins.**");
+  // Add warning description for ApeStore tokens
+  if (factoryName === "ApeStore") {
+    embed.setDescription("⚠️ **We do not recommend ApeStore coins.**");
   }
 
   // Factory Information (moved to top section)
@@ -125,7 +125,7 @@ export async function buildBaseTokenEmbed(
 
   // Token Metrics section removed - market cap is shown in Token Details section
 
-  // Trading Activity
+  // Trading Activity (compact - all in one row)
   if (metrics?.trades24h) {
     const trades = metrics.trades24h;
     const buys = trades.buys ?? 0;
@@ -135,7 +135,7 @@ export async function buildBaseTokenEmbed(
     if (total > 0) {
       embed.addFields({
         name: "24H Activity",
-        value: `🟢 Buys: ${buys.toLocaleString()}\n🔴 Sells: ${sells.toLocaleString()}\n📊 Total: ${total.toLocaleString()}`,
+        value: `🟢 Buys: ${buys.toLocaleString()} • 🔴 Sells: ${sells.toLocaleString()} • 📊 Total: ${total.toLocaleString()}`,
         inline: false,
       });
     }
@@ -143,12 +143,18 @@ export async function buildBaseTokenEmbed(
 
   // Removed Pool Info section as requested
 
-  // Token Info Section (Creator, Farcaster, Zora, and Creation Transaction)
+  // Token Info Section (Creator, Creation Transaction, Farcaster, Zora)
   const finalCreatorAddress = creatorAddress ?? metrics?.creatorAddress ?? null;
   const tokenInfo: string[] = [];
   
   if (finalCreatorAddress) {
     tokenInfo.push(`👤 Creator: \`${finalCreatorAddress}\``);
+    
+    // Creation Transaction (moved right after creator)
+    if (creationTxHash && creationTxHash.trim() !== "") {
+      const txLink = `https://basescan.org/tx/${creationTxHash}`;
+      tokenInfo.push(`🔗 [Creation Transaction](${txLink})`);
+    }
     
     // Check for Farcaster and Zora accounts
     try {
@@ -180,11 +186,6 @@ export async function buildBaseTokenEmbed(
       tokenInfo.push(`📱 Farcaster: None`);
       tokenInfo.push(`🎨 Zora: None`);
     }
-  }
-
-  if (creationTxHash && creationTxHash.trim() !== "") {
-    const txLink = `https://basescan.org/tx/${creationTxHash}`;
-    tokenInfo.push(`🔗 [Creation Transaction](${txLink})`);
   }
 
   if (tokenInfo.length > 0) {
