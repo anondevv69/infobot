@@ -69,96 +69,77 @@ export async function buildBaseTokenEmbed(
     .setTitle(`${titlePrefix} ${title}`)
     .setURL(embedUrl);
 
-  // Chain Information
-  embed.addFields({
-    name: "🔗 Chain",
-    value: "Base",
-    inline: false,
-  });
+  // Factory Information (moved to top section)
+  const finalFactoryName = factory?.name ?? metrics?.factoryName ?? null;
+  const isKnownFactory = factory !== null;
+  let factoryDisplay = "";
+  if (finalFactoryName) {
+    const cleanFactoryName = finalFactoryName.startsWith("Factory: ") 
+      ? finalFactoryName.replace(/^Factory: /, "")
+      : finalFactoryName;
+    factoryDisplay = isKnownFactory 
+      ? `🏭 Factory: ${cleanFactoryName} ✅`
+      : `🏭 Factory: ${cleanFactoryName}`;
+  }
 
-  // Token Name
+  // Top Section: Chain, Name, Symbol, Address, Factory, Created At
+  const topSection: string[] = [];
+  topSection.push("🔗 Chain: Base");
+  
   if (finalTokenName) {
-    embed.addFields({
-      name: "🏠 Name",
-      value: finalTokenName,
-      inline: false,
-    });
+    topSection.push(`🏠 Name: ${finalTokenName}`);
   }
-
-  // Token Symbol
+  
   if (finalTokenSymbol) {
-    embed.addFields({
-      name: "🔖 Symbol",
-      value: finalTokenSymbol,
-      inline: false,
-    });
+    topSection.push(`🔖 Symbol: ${finalTokenSymbol}`);
   }
-
-  // Contract Address
-  embed.addFields({
-    name: "🔑 Address",
-    value: `\`\`\`\n${contractAddress}\n\`\`\``,
-    inline: false,
-  });
-
-  // Created At
+  
+  topSection.push(`🔑 Address: \`${contractAddress}\``);
+  
+  if (factoryDisplay) {
+    topSection.push(factoryDisplay);
+  }
+  
   const finalCreatedAt = createdAt ?? metrics?.createdAt ?? null;
   if (finalCreatedAt) {
-    embed.addFields({
-      name: "Created at",
-      value: formatDate(finalCreatedAt),
-      inline: false,
-    });
+    topSection.push(`Created at: ${formatDate(finalCreatedAt)}`);
   }
 
-  // Developer/Creator Address
-  const finalCreatorAddress = creatorAddress ?? metrics?.creatorAddress ?? null;
-  if (finalCreatorAddress) {
-    embed.addFields({
-      name: "🛠️ Dev",
-      value: `\`\`\`\n${finalCreatorAddress}\n\`\`\``,
-      inline: false,
-    });
-  }
+  embed.addFields({
+    name: "Token Details",
+    value: topSection.join("\n"),
+    inline: false,
+  });
 
-  // Market Cap
-  if (metrics?.marketCap != null) {
-    embed.addFields({
-      name: "💸 MarketCap",
-      value: formatCurrency(metrics.marketCap),
-      inline: false,
-    });
-  }
-
-  // Additional Token Metrics (if available)
-  const additionalMetrics: string[] = [];
+  // Token Metrics (compact - no duplicates)
+  const tokenMetrics: string[] = [];
   
   if (metrics?.priceUsd != null) {
-    additionalMetrics.push(`💰 Price: ${formatCurrency(metrics.priceUsd)}`);
+    tokenMetrics.push(`💰 Price: ${formatCurrency(metrics.priceUsd)}`);
   }
   
-  if (metrics?.fdv != null && metrics.fdv !== metrics.marketCap) {
-    additionalMetrics.push(`💎 FDV: ${formatCurrency(metrics.fdv)}`);
+  if (metrics?.marketCap != null) {
+    tokenMetrics.push(`💎 MC: ${formatCurrency(metrics.marketCap)}`);
   }
   
   if (metrics?.liquidity != null) {
-    additionalMetrics.push(`💧 Liq: ${formatCurrency(metrics.liquidity)}`);
+    tokenMetrics.push(`💧 Liq: ${formatCurrency(metrics.liquidity)}`);
   }
   
   if (metrics?.volume24h != null) {
-    additionalMetrics.push(`📊 Vol 24H: ${formatCurrency(metrics.volume24h)}`);
+    tokenMetrics.push(`📊 Vol 24H: ${formatCurrency(metrics.volume24h)}`);
   }
   
   if (metrics?.priceChange24h != null) {
     const change = metrics.priceChange24h;
     const emoji = change >= 0 ? "📈" : "📉";
-    additionalMetrics.push(`${emoji} 24H: ${formatPercentage(change)}`);
+    tokenMetrics.push(`${emoji} 24H: ${formatPercentage(change)}`);
   }
 
-  if (additionalMetrics.length > 0) {
+  if (tokenMetrics.length > 0) {
     embed.addFields({
       name: "Token Metrics",
-      value: additionalMetrics.join("\n"),
+      value: tokenMetrics.join("\n"),
       inline: false,
     });
   }
@@ -179,52 +160,18 @@ export async function buildBaseTokenEmbed(
     }
   }
 
-  // Pool/Token Info Section (like the example bot)
+  // Pool Info Section (DEX and warnings only - no duplicates)
   const poolInfo: string[] = [];
   
-  // Factory Information (check both factory parameter and metrics)
-  // Prioritize factory object (known factory) over metrics.factoryName
-  const finalFactoryName = factory?.name ?? metrics?.factoryName ?? null;
-  const isKnownFactory = factory !== null; // If factory object exists, it's a known factory
-  
-  if (finalFactoryName) {
-    // Remove "Factory:" prefix if it already exists in the name
-    const cleanFactoryName = finalFactoryName.startsWith("Factory: ") 
-      ? finalFactoryName.replace(/^Factory: /, "")
-      : finalFactoryName;
-    
-    // Add checkmark for known factories
-    const factoryDisplay = isKnownFactory 
-      ? `🏭 Factory: ${cleanFactoryName} ✅`
-      : `🏭 Factory: ${cleanFactoryName}`;
-    poolInfo.push(factoryDisplay);
-  } else if (factory === null && metrics?.factoryName) {
-    // If we have factoryName in metrics but no factory object, still show it
-    const cleanFactoryName = metrics.factoryName.startsWith("Factory: ")
-      ? metrics.factoryName.replace(/^Factory: /, "")
-      : metrics.factoryName;
-    poolInfo.push(`🏭 Factory: ${cleanFactoryName}`);
-  }
-
-  // Add liquidity warning if very low (like the example)
-  if (metrics?.liquidity != null && metrics.liquidity < 1000) {
-    poolInfo.push(`🚱 VERY LOW LIQUIDITY 🚱`);
-  }
-
   // Add DEX info if available
   if (metrics?.dexName) {
-    // Format DEX name nicely (e.g., "uniswap" -> "UNISWAP V3")
     const dexDisplay = metrics.dexName.toUpperCase().replace(/_/g, " ");
     poolInfo.push(`🦄 DEX: ${dexDisplay}`);
   }
 
-  // Add market cap and liquidity to pool info
-  if (metrics?.marketCap != null) {
-    poolInfo.push(`📊 Mcap: ${formatCurrency(metrics.marketCap)}`);
-  }
-  
-  if (metrics?.liquidity != null) {
-    poolInfo.push(`💧 Liq: ${formatCurrency(metrics.liquidity)}`);
+  // Add liquidity warning if very low
+  if (metrics?.liquidity != null && metrics.liquidity < 1000) {
+    poolInfo.push(`🚱 VERY LOW LIQUIDITY 🚱`);
   }
 
   if (poolInfo.length > 0) {
@@ -235,15 +182,14 @@ export async function buildBaseTokenEmbed(
     });
   }
 
-  // Token Info Section (additional token details)
+  // Token Info Section (Creator and Creation Transaction only)
+  const finalCreatorAddress = creatorAddress ?? metrics?.creatorAddress ?? null;
   const tokenInfo: string[] = [];
   
-  // Add creator info to token info section (full address in code block)
   if (finalCreatorAddress) {
-    tokenInfo.push(`👤 Creator:\n\`\`\`\n${finalCreatorAddress}\n\`\`\``);
+    tokenInfo.push(`👤 Creator: \`${finalCreatorAddress}\``);
   }
 
-  // Add creation transaction link if we have the txHash
   if (creationTxHash && creationTxHash.trim() !== "") {
     const txLink = `https://basescan.org/tx/${creationTxHash}`;
     tokenInfo.push(`🔗 [Creation Transaction](${txLink})`);

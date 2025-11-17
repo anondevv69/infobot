@@ -392,10 +392,19 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
                     }
                   }
                   
-                  // If still not found, show the 'to' address and log for manual addition
+                  // If still not found, check if it matches known patterns
                   if (!detectedFactoryName) {
-                    detectedFactoryName = `${detectedFactoryAddress.slice(0, 10)}...${detectedFactoryAddress.slice(-8)}`;
-                    console.log(`[Base Token] ⚠️ UNKNOWN TOKEN FACTORY - Please add to TOKEN_FACTORY_MAP: "${detectedFactoryAddress}": "FactoryName",`);
+                    // Check for AperStore pattern: starts with 0xb3bea12a and ends with 0261dabf
+                    // Full address would be 0xb3bea12a + 24 chars + 0261dabf = 42 chars total
+                    if (detectedFactoryAddress.startsWith("0xb3bea12a") && detectedFactoryAddress.length === 42 && detectedFactoryAddress.slice(-8) === "0261dabf") {
+                      detectedFactoryName = "AperStore";
+                      const { createTokenFactory } = await import("../services/baseFactories");
+                      detectedFactory = createTokenFactory(detectedFactoryAddress);
+                      console.log(`[Base Token] Matched AperStore factory by pattern: ${detectedFactoryAddress}`);
+                    } else {
+                      detectedFactoryName = `${detectedFactoryAddress.slice(0, 10)}...${detectedFactoryAddress.slice(-8)}`;
+                      console.log(`[Base Token] ⚠️ UNKNOWN TOKEN FACTORY - Please add to TOKEN_FACTORY_MAP: "${detectedFactoryAddress}": "FactoryName",`);
+                    }
                   }
                 }
               }
