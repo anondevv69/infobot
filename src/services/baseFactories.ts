@@ -23,6 +23,7 @@ export const TOKEN_FACTORY_MAP: Record<string, string> = {
   "0xc1d0e984d87c32f2b0d45fb8f50aa2be6e9eb687": "Fey",
   "0x94c2ec832c8f885b34b8ffa2724e6e8a9f4a63bb": "Fey",
   "0xbc13a34e6fed856e66a153a1ef8e2903e8963924": "Fey", // Found from token lookup
+  "0x8eef0dc80adf57908bb1be0236c2a72a7e379c2d": "Fey", // Fey deployment contract
   // Clanker
   "0xb07b3c97a7658c520267dbb5aeb41199fe6b2c6a": "Clanker",
   // Zora
