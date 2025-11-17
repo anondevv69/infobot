@@ -171,7 +171,7 @@ export async function indexRelayTransaction(
 async function getWalletFromTransaction(
   txHash: string,
   chainId: number,
-): Promise<string | null> {
+): Promise<{ from: string | null; to: string | null }> {
   try {
     // For Base chain, use Base RPC
     if (chainId === 8453) {
@@ -190,9 +190,11 @@ async function getWalletFromTransaction(
       });
 
       const data = await response.json();
-      if (data.result && data.result.from) {
-        console.log(`Extracted wallet address from transaction: ${data.result.from}`);
-        return data.result.from.toLowerCase();
+      if (data.result) {
+        const from = data.result.from ? data.result.from.toLowerCase() : null;
+        const to = data.result.to ? data.result.to.toLowerCase() : null;
+        console.log(`Extracted addresses from transaction - from: ${from}, to: ${to}`);
+        return { from, to };
       }
       
       // If no result, log the error
@@ -220,18 +222,20 @@ async function getWalletFromTransaction(
       });
 
       const data = await response.json();
-      if (data.result && data.result.from) {
-        console.log(`Extracted wallet address from transaction: ${data.result.from}`);
-        return data.result.from.toLowerCase();
+      if (data.result) {
+        const from = data.result.from ? data.result.from.toLowerCase() : null;
+        const to = data.result.to ? data.result.to.toLowerCase() : null;
+        console.log(`Extracted addresses from transaction - from: ${from}, to: ${to}`);
+        return { from, to };
       }
     }
 
     // For other chains, you could add similar RPC calls here
     // For now, return null if we can't fetch it
-    return null;
+    return { from: null, to: null };
   } catch (error) {
     console.error(`Error fetching transaction ${txHash} from chain ${chainId}:`, error);
-    return null;
+    return { from: null, to: null };
   }
 }
 
@@ -250,12 +254,14 @@ export async function fetchRelayTransaction(
     // If wallet address not provided, try to fetch it from the transaction
     let wallet: string | undefined = walletAddress;
     if (!wallet) {
-      const fetchedWallet = await getWalletFromTransaction(txHash, chainIdToUse);
-      if (!fetchedWallet) {
+      const addresses = await getWalletFromTransaction(txHash, chainIdToUse);
+      if (!addresses.from && !addresses.to) {
         console.warn(`Could not extract wallet address from transaction ${txHash}`);
         return null;
       }
-      wallet = fetchedWallet;
+      // For deposits, try "from" address first (the user's address on source chain)
+      // If that doesn't work, we'll try "to" address
+      wallet = addresses.from || addresses.to || undefined;
     }
 
     // Query Relay API by wallet address
@@ -314,6 +320,91 @@ export async function fetchRelayTransaction(
 
     if (!matchingTx) {
       console.log(`Transaction ${txHash} not found in wallet ${wallet}'s Relay transactions`);
+      
+      // If we used "from" address and there's a "to" address, try querying by "to" address
+      // This handles cases where the deposit transaction's "to" is the user's address on destination chain
+      if (!walletAddress) {
+        const addresses = await getWalletFromTransaction(txHash, chainIdToUse);
+        if (addresses.to && addresses.to !== wallet) {
+          console.log(`Trying alternative address: ${addresses.to}`);
+          const altResponse = await fetch(
+            `https://api.relay.link/v1/addresses/${addresses.to}/transactions`,
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+              },
+            },
+          );
+          
+          if (altResponse.ok) {
+            const altData = await altResponse.json();
+            const altTransactions = altData.transactions || altData.data || [];
+            const searchHash = txHash.toLowerCase();
+            const altMatchingTx = altTransactions.find(
+              (t: any) => {
+                const srcHash = (t.srcTxHash || t.sourceTxHash || t.sourceTransactionHash || "").toLowerCase();
+                const destHash = (t.destTxHash || t.destinationTxHash || t.destinationTransactionHash || "").toLowerCase();
+                const relayTxHash = (t.txHash || t.transactionHash || t.relayTxHash || "").toLowerCase();
+                const nestedSrcHash = (t.source?.txHash || t.source?.transactionHash || "").toLowerCase();
+                const nestedDestHash = (t.destination?.txHash || t.destination?.transactionHash || "").toLowerCase();
+                return srcHash === searchHash || 
+                       destHash === searchHash || 
+                       relayTxHash === searchHash ||
+                       nestedSrcHash === searchHash ||
+                       nestedDestHash === searchHash;
+              }
+            );
+            
+            if (altMatchingTx) {
+              console.log(`Found matching transaction using alternative address!`);
+              const tx = altMatchingTx;
+              const relayTxHash = tx.txHash || tx.transactionHash || tx.relayTxHash || txHash;
+              
+              const transaction: RelayTransaction = {
+                txHash: relayTxHash,
+                sourceChain: {
+                  chainId: tx.srcChainId || tx.sourceChainId || tx.fromChainId || tx.originChainId || tx.source?.chainId || chainIdToUse,
+                  chainName: getChainName(tx.srcChainId || tx.sourceChainId || tx.fromChainId || tx.originChainId || tx.source?.chainId || chainIdToUse),
+                  wallet: tx.srcAddress || tx.sourceAddress || tx.fromAddress || tx.originAddress || tx.source?.address || addresses.from || "",
+                },
+                destinationChain: {
+                  chainId: tx.destChainId || tx.destinationChainId || tx.toChainId || tx.targetChainId || tx.destination?.chainId || 0,
+                  chainName: getChainName(tx.destChainId || tx.destinationChainId || tx.toChainId || tx.targetChainId || tx.destination?.chainId || 0),
+                  wallet: tx.destAddress || tx.destinationAddress || tx.toAddress || tx.targetAddress || tx.destination?.address || addresses.to || "",
+                },
+                amount: tx.amountOut || tx.amount || tx.value || tx.transferAmount || tx.amountReceived,
+                token: tx.tokenOut
+                  ? {
+                      symbol: tx.tokenOut.symbol || tx.tokenOutSymbol || "",
+                      address: tx.tokenOut.address || tx.tokenOutAddress || "",
+                    }
+                  : tx.tokenSymbol
+                  ? {
+                      symbol: tx.tokenSymbol,
+                      address: tx.tokenAddress || "",
+                    }
+                  : tx.destinationToken
+                  ? {
+                      symbol: tx.destinationToken.symbol || "",
+                      address: tx.destinationToken.address || "",
+                    }
+                  : undefined,
+                status: tx.status || tx.transactionStatus || tx.state || "unknown",
+                timestamp: tx.timestamp || tx.blockTimestamp || tx.time || tx.createdAt || tx.date,
+              };
+
+              if (!transaction.sourceChain.wallet || !transaction.destinationChain.wallet) {
+                console.warn("Incomplete transaction data:", transaction);
+                return null;
+              }
+
+              return transaction;
+            }
+          }
+        }
+      }
+      
       // Log first few transaction hashes for debugging
       if (transactions.length > 0) {
         console.log(`Sample transaction data from wallet (first transaction):`);
