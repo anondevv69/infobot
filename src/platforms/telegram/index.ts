@@ -2,6 +2,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { env } from "../../config";
 import { handleTelegramMessage } from "./handlers/message";
 import { handleTelegramCommand } from "./handlers/command";
+import { showTelegramTypingIndicator } from "../../utils/typingIndicator";
 
 export async function startTelegramBot(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -29,20 +30,33 @@ export async function startTelegramBot(): Promise<void> {
     // Commands (starting with /) are handled by onText handlers below
     // Commands work in groups without mentioning the bot
     if (msg.text && !msg.text.startsWith("/")) {
+      // Show typing indicator for auto-detected messages
+      if (msg.chat.id) {
+        await showTelegramTypingIndicator(bot, msg.chat.id);
+      }
       await handleTelegramMessage(bot, msg);
     }
   });
 
   bot.onText(/\/start/, async (msg) => {
+    if (msg.chat.id) {
+      await showTelegramTypingIndicator(bot, msg.chat.id);
+    }
     await handleTelegramCommand(bot, msg, "start");
   });
 
   bot.onText(/\/help/, async (msg) => {
+    if (msg.chat.id) {
+      await showTelegramTypingIndicator(bot, msg.chat.id);
+    }
     await handleTelegramCommand(bot, msg, "help");
   });
 
   // Commands with parameters
   bot.onText(/\/search (.+)/, async (msg, match) => {
+    if (msg.chat.id) {
+      await showTelegramTypingIndicator(bot, msg.chat.id);
+    }
     const query = match?.[1];
     if (query) {
       await handleTelegramCommand(bot, msg, "search", query);
@@ -50,6 +64,9 @@ export async function startTelegramBot(): Promise<void> {
   });
 
   bot.onText(/\/zora (.+)/, async (msg, match) => {
+    if (msg.chat.id) {
+      await showTelegramTypingIndicator(bot, msg.chat.id);
+    }
     const query = match?.[1];
     if (query) {
       await handleTelegramCommand(bot, msg, "zora", query);
@@ -57,6 +74,9 @@ export async function startTelegramBot(): Promise<void> {
   });
 
   bot.onText(/\/clanker (.+)/, async (msg, match) => {
+    if (msg.chat.id) {
+      await showTelegramTypingIndicator(bot, msg.chat.id);
+    }
     const query = match?.[1];
     if (query) {
       await handleTelegramCommand(bot, msg, "clanker", query);
@@ -64,6 +84,9 @@ export async function startTelegramBot(): Promise<void> {
   });
 
   bot.onText(/\/casts (.+)/, async (msg, match) => {
+    if (msg.chat.id) {
+      await showTelegramTypingIndicator(bot, msg.chat.id);
+    }
     const keyword = match?.[1];
     if (keyword) {
       await handleTelegramCommand(bot, msg, "casts", keyword);
@@ -72,18 +95,30 @@ export async function startTelegramBot(): Promise<void> {
 
   // Commands without parameters (show usage)
   bot.onText(/\/search$/, async (msg) => {
+    if (msg.chat.id) {
+      await showTelegramTypingIndicator(bot, msg.chat.id);
+    }
     await handleTelegramCommand(bot, msg, "search");
   });
 
   bot.onText(/\/zora$/, async (msg) => {
+    if (msg.chat.id) {
+      await showTelegramTypingIndicator(bot, msg.chat.id);
+    }
     await handleTelegramCommand(bot, msg, "zora");
   });
 
   bot.onText(/\/clanker$/, async (msg) => {
+    if (msg.chat.id) {
+      await showTelegramTypingIndicator(bot, msg.chat.id);
+    }
     await handleTelegramCommand(bot, msg, "clanker");
   });
 
   bot.onText(/\/casts$/, async (msg) => {
+    if (msg.chat.id) {
+      await showTelegramTypingIndicator(bot, msg.chat.id);
+    }
     await handleTelegramCommand(bot, msg, "casts");
   });
 

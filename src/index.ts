@@ -29,6 +29,7 @@ import { handleCopyValueButton } from "./handlers/copyValueButton";
 import { handleClankerCommand, handleClankerPagination } from "./commands/clanker";
 import { parsePaginationButton } from "./utils/pagination";
 import { handleGeneralPagination } from "./handlers/pagination";
+import { showDiscordTypingIndicator, showDiscordCommandTyping } from "./utils/typingIndicator";
 
 async function main(): Promise<void> {
   validateRequiredEnv();
@@ -59,6 +60,30 @@ async function main(): Promise<void> {
 
   client.on(Events.InteractionCreate, handleInteraction);
   client.on(Events.MessageCreate, async (message) => {
+    // Skip bot messages and DMs (only respond in guilds)
+    if (message.author.bot || !message.guild) {
+      return;
+    }
+
+    // Show typing indicator (eye emoji reaction) for auto-detected messages
+    // We'll add it early, but only if the message might trigger a response
+    const text = message.content?.toLowerCase() || "";
+    const mightTriggerResponse = 
+      text.includes("0x") || // Address
+      text.includes("cast") || // Cast keyword
+      text.includes("far ") || // Far search
+      text.includes("zora ") || // Zora search
+      text.includes("wallet ") || // Wallet search
+      text.startsWith("@") || // Username
+      text.includes("x.com") || text.includes("twitter.com") || // X links
+      text.includes("farcaster.xyz") || // Farcaster links
+      text.includes("zora.co") || // Zora links
+      text.includes("clanker.world"); // Clanker links
+
+    if (mightTriggerResponse) {
+      await showDiscordTypingIndicator(message);
+    }
+
     await handleUsernameMessage(message);
     if (await handleXAccountMessage(message)) {
       return;
@@ -107,6 +132,9 @@ async function handleInteraction(interaction: Interaction): Promise<void> {
 async function handleChatCommand(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
+  // Show typing indicator for slash commands
+  await showDiscordCommandTyping(interaction);
+
   switch (interaction.commandName) {
     case "search":
       await handleSearchCommand(interaction);
