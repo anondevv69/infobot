@@ -134,8 +134,8 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
 
           const { embed } = await buildBaseTokenEmbed(
             address,
-            null, // Token name
-            null, // Token symbol
+            baseTokenData?.tokenName ?? null, // Token name from DexScreener
+            baseTokenData?.tokenSymbol ?? null, // Token symbol from DexScreener
             baseTokenData,
             factory,
             contractCreation?.contractCreator ?? null,

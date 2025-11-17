@@ -296,8 +296,8 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
 
         const { embed, components } = await buildBaseTokenEmbed(
           address,
-          null, // Token name - could be fetched from ERC20 contract
-          null, // Token symbol - could be fetched from ERC20 contract
+          baseTokenData?.tokenName ?? null, // Token name from DexScreener
+          baseTokenData?.tokenSymbol ?? null, // Token symbol from DexScreener
           baseTokenData,
           factory,
           contractCreation?.contractCreator ?? null,

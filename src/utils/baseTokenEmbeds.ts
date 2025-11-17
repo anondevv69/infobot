@@ -34,14 +34,21 @@ export async function buildBaseTokenEmbed(
   embed: EmbedBuilder;
   components: ActionRowBuilder<ButtonBuilder>[];
 }> {
-  const title = tokenSymbol && tokenName
-    ? `${tokenSymbol} • ${tokenName}`
-    : tokenName ?? tokenSymbol ?? "Base Token";
+  // Use token name/symbol from metrics if not provided, fallback to provided values
+  const finalTokenName = tokenName ?? metrics?.tokenName ?? null;
+  const finalTokenSymbol = tokenSymbol ?? metrics?.tokenSymbol ?? null;
+  
+  const title = finalTokenSymbol && finalTokenName
+    ? `${finalTokenSymbol} • ${finalTokenName}`
+    : finalTokenName ?? finalTokenSymbol ?? "Base Token";
+
+  // Use DexScreener URL if available, otherwise fallback to Basescan
+  const embedUrl = metrics?.dexUrl ?? `https://basescan.org/address/${contractAddress}`;
 
   const embed = new EmbedBuilder()
     .setColor(0x0052ff) // Base blue
     .setTitle(`🪙 ${title}`)
-    .setURL(`https://basescan.org/address/${contractAddress}`);
+    .setURL(embedUrl);
 
   // Token Metrics
   const metricsLines: string[] = [];

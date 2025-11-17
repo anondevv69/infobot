@@ -60,6 +60,8 @@ export interface TokenMetrics {
   trades24h?: { buys?: number | null; sells?: number | null } | null;
   dexUrl?: string | null;
   pairAddress?: string | null;
+  tokenName?: string | null;
+  tokenSymbol?: string | null;
 }
 
 export interface MultiChainTokenData extends TokenMetrics {
@@ -189,6 +191,8 @@ export async function fetchBaseTokenData(
     const liquidity = bestPair.liquidity?.usd ?? null;
     const fdv = bestPair.fdv ?? null;
     const marketCap = fdv ?? liquidity; // Use FDV if available, otherwise liquidity
+    const tokenName = bestPair.baseToken?.name ?? null;
+    const tokenSymbol = bestPair.baseToken?.symbol ?? null;
 
     return {
       priceUsd,
@@ -200,6 +204,8 @@ export async function fetchBaseTokenData(
       trades24h: bestPair.txns?.h24 ?? null,
       dexUrl: bestPair.url ?? null,
       pairAddress: bestPair.pairAddress ?? null,
+      tokenName,
+      tokenSymbol,
     };
   } catch (error) {
     console.error("Failed to fetch DexScreener data:", error);
