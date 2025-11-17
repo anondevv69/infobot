@@ -82,7 +82,7 @@ export async function buildBaseTokenEmbed(
       : `🏭 Factory: ${cleanFactoryName}`;
   }
 
-  // Top Section: Chain, Name, Symbol, Address, Factory, Created At
+  // Top Section: Chain, Name, Symbol, Address, Factory, Created At, Market Cap
   const topSection: string[] = [];
   topSection.push("🔗 Chain: Base");
   
@@ -104,6 +104,11 @@ export async function buildBaseTokenEmbed(
   if (finalCreatedAt) {
     topSection.push(`Created at: ${formatDate(finalCreatedAt)}`);
   }
+  
+  // Add Market Cap to top section
+  if (metrics?.marketCap != null) {
+    topSection.push(`💸 MarketCap: ${formatCurrency(metrics.marketCap)}`);
+  }
 
   embed.addFields({
     name: "Token Details",
@@ -111,38 +116,7 @@ export async function buildBaseTokenEmbed(
     inline: false,
   });
 
-  // Token Metrics (compact - no duplicates)
-  const tokenMetrics: string[] = [];
-  
-  if (metrics?.priceUsd != null) {
-    tokenMetrics.push(`💰 Price: ${formatCurrency(metrics.priceUsd)}`);
-  }
-  
-  if (metrics?.marketCap != null) {
-    tokenMetrics.push(`💎 MC: ${formatCurrency(metrics.marketCap)}`);
-  }
-  
-  if (metrics?.liquidity != null) {
-    tokenMetrics.push(`💧 Liq: ${formatCurrency(metrics.liquidity)}`);
-  }
-  
-  if (metrics?.volume24h != null) {
-    tokenMetrics.push(`📊 Vol 24H: ${formatCurrency(metrics.volume24h)}`);
-  }
-  
-  if (metrics?.priceChange24h != null) {
-    const change = metrics.priceChange24h;
-    const emoji = change >= 0 ? "📈" : "📉";
-    tokenMetrics.push(`${emoji} 24H: ${formatPercentage(change)}`);
-  }
-
-  if (tokenMetrics.length > 0) {
-    embed.addFields({
-      name: "Token Metrics",
-      value: tokenMetrics.join("\n"),
-      inline: false,
-    });
-  }
+  // Token Metrics section removed - market cap is shown in Token Details section
 
   // Trading Activity
   if (metrics?.trades24h) {
