@@ -114,9 +114,10 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
 
         // NOW check for Base network tokens (only if NOT Zora/Clanker)
         // Only use Basescan API here since we've confirmed it's NOT Zora/Clanker
-        const { fetchBaseTokenData } = await import("../../../services/dexscreener");
+        const { fetchBaseTokenData, fetchMultiChainTokenData } = await import("../../../services/dexscreener");
         const { detectTokenFactory } = await import("../../../services/baseFactories");
         const { buildBaseTokenEmbed } = await import("../../../utils/baseTokenEmbeds");
+        const { buildMultiChainTokenEmbed } = await import("../../../utils/multiChainTokenEmbeds");
         const { embedsToTelegram } = await import("../adapters/telegramAdapter");
         
         // First check if it's a Base token (DexScreener - no rate limits)
@@ -151,6 +152,26 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             disable_web_page_preview: true,
           });
           return;
+        }
+
+        // Check for tokens on OTHER EVM chains (BSC, Ethereum, Polygon, etc.)
+        // BEFORE treating it as a wallet to avoid showing wrong information
+        const multiChainTokenData = await fetchMultiChainTokenData(address);
+        if (multiChainTokenData) {
+          // Only show if it's NOT on Base (we already checked Base above)
+          if (multiChainTokenData.chainId.toLowerCase() !== "base" && multiChainTokenData.chainId !== "8453") {
+            const { embed } = buildMultiChainTokenEmbed(address, multiChainTokenData);
+            const messages = embedsToTelegram([embed]);
+            await bot.sendMessage(chatId, `${multiChainTokenData.chainName} token detected for <code>${address}</code>.`, {
+              parse_mode: "HTML",
+              disable_web_page_preview: true,
+            });
+            await bot.sendMessage(chatId, messages[0], {
+              parse_mode: "HTML",
+              disable_web_page_preview: true,
+            });
+            return;
+          }
         }
 
         // Try wallet (need to find user first)

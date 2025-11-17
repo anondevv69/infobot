@@ -30,8 +30,9 @@ import { splitClankerTokens } from "../utils/clankerAssociation";
 import { buildZoraCoinResponse } from "../handlers/zoraAddress";
 import { detectTokenFactory } from "../services/baseFactories";
 import { buildBaseTokenEmbed } from "../utils/baseTokenEmbeds";
-import { fetchBaseTokenData } from "../services/dexscreener";
+import { fetchBaseTokenData, fetchMultiChainTokenData } from "../services/dexscreener";
 import { getContractCreation } from "../services/basescan";
+import { buildMultiChainTokenEmbed } from "../utils/multiChainTokenEmbeds";
 import { splitEmbedIntoPages, buildPaginationButtons } from "../utils/pagination";
 import { storeEmbedForPagination } from "../handlers/pagination";
 import { addProfileSection, appendWalletFields, formatRecentCastSummary, getClankerDisplayEntries, formatClankerTokenDetails } from "../utils/clankerEmbeds";
@@ -309,6 +310,22 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           components,
         });
         return true;
+      }
+
+      // Check for tokens on OTHER EVM chains (BSC, Ethereum, Polygon, etc.)
+      // BEFORE treating it as a wallet to avoid showing wrong information
+      const multiChainTokenData = await fetchMultiChainTokenData(address);
+      if (multiChainTokenData) {
+        // Only show if it's NOT on Base (we already checked Base above)
+        if (multiChainTokenData.chainId.toLowerCase() !== "base" && multiChainTokenData.chainId !== "8453") {
+          const { embed, components } = buildMultiChainTokenEmbed(address, multiChainTokenData);
+          await message.reply({
+            content: `${multiChainTokenData.chainName} token detected for \`${address}\`.`,
+            embeds: [embed],
+            components,
+          });
+          return true;
+        }
       }
     }
   }
