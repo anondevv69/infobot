@@ -20,17 +20,41 @@ export async function handleXAccountMessage(message: Message): Promise<boolean> 
 
     const byXHandle = await findUserByXHandle(handle);
     let byUsername: User | null = null;
+    let byEnsName: User | null = null;
+    
     if (!byXHandle) {
+      // Try username lookup first
       try {
         byUsername = await findUserByUsername(handle);
       } catch (error) {
         console.warn(`Failed Neynar username lookup for ${handle}:`, error);
       }
+      
+      // If username lookup failed, try ENS name variations (e.g., jessepollak -> jessepollak.eth, jessepollak.base.eth)
+      if (!byUsername) {
+        const ensVariations = [
+          `${handle}.eth`,
+          `${handle}.base.eth`,
+        ];
+        
+        for (const ensName of ensVariations) {
+          try {
+            const user = await findUserByUsername(ensName);
+            if (user && userHasMatchingXAccount(user, handle)) {
+              byEnsName = user;
+              break;
+            }
+          } catch (error) {
+            // Continue to next variation
+          }
+        }
+      }
     }
 
     // If findUserByXHandle returned a user, trust it (the endpoint specifically looks up by X handle)
     // Otherwise, check if the username lookup found a user with matching X account
-    const farcasterUser = byXHandle ?? (byUsername && userHasMatchingXAccount(byUsername, handle) ? byUsername : null);
+    // Or check if ENS name lookup found a user with matching X account
+    const farcasterUser = byXHandle ?? byEnsName ?? (byUsername && userHasMatchingXAccount(byUsername, handle) ? byUsername : null);
     if (farcasterUser) {
       const [tokens, latestCast] = await Promise.all([
         safeFetchTokensByFid(farcasterUser.fid),
