@@ -78,21 +78,44 @@ function getChainName(chainId: number): string {
 
 /**
  * Extract transaction hash from various transaction link formats
+ * Supports both Ethereum-style (0x...) and Solana (base58) transaction signatures
  */
 export function extractTransactionHash(input: string): string | null {
-  // Direct hash
-  if (/^0x[a-fA-F0-9]{64}$/i.test(input.trim())) {
-    return input.trim();
+  const trimmed = input.trim();
+  
+  // Direct Ethereum-style hash (0x followed by 64 hex chars)
+  if (/^0x[a-fA-F0-9]{64}$/i.test(trimmed)) {
+    return trimmed;
   }
 
-  // Extract from various explorer URLs
-  const patterns = [
+  // Direct Solana transaction signature (base58, typically 87-88 characters)
+  // Solana signatures are base58 encoded and usually 87-88 chars long
+  if (/^[1-9A-HJ-NP-Za-km-z]{87,88}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Extract from various explorer URLs - Ethereum-style
+  const ethereumPatterns = [
     /(?:basescan|etherscan|arbiscan|optimistic|polygonscan|snowtrace|bscscan|ftmscan|gnosisscan|celoscan|aurorascan|harmony|explorer)\.(?:org|io|com)\/tx\/(0x[a-fA-F0-9]{64})/i,
     /\/tx\/(0x[a-fA-F0-9]{64})/i,
     /transaction[\/=](0x[a-fA-F0-9]{64})/i,
   ];
 
-  for (const pattern of patterns) {
+  for (const pattern of ethereumPatterns) {
+    const match = input.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+
+  // Extract from Solana explorer URLs (solscan, explorer.solana.com, etc.)
+  const solanaPatterns = [
+    /(?:solscan|explorer\.solana)\.(?:io|com)\/tx\/([1-9A-HJ-NP-Za-km-z]{87,88})/i,
+    /\/tx\/([1-9A-HJ-NP-Za-km-z]{87,88})/i,
+    /transaction[\/=]([1-9A-HJ-NP-Za-km-z]{87,88})/i,
+  ];
+
+  for (const pattern of solanaPatterns) {
     const match = input.match(pattern);
     if (match && match[1]) {
       return match[1];
@@ -104,9 +127,15 @@ export function extractTransactionHash(input: string): string | null {
 
 /**
  * Detect chain ID from transaction link
+ * Returns null for Solana transactions (they don't use chain IDs)
  */
 export function detectChainFromLink(link: string): number | null {
   const lowerLink = link.toLowerCase();
+  
+  // Solana explorers
+  if (lowerLink.includes("solscan") || lowerLink.includes("explorer.solana")) {
+    return null; // Solana doesn't use chain IDs
+  }
   
   if (lowerLink.includes("basescan") || lowerLink.includes("base")) {
     return 8453;

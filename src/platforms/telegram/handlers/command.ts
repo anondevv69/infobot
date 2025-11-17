@@ -111,7 +111,7 @@ Just send:
           // Extract transaction hash from input
           const txHash = extractTransactionHash(query);
           if (!txHash) {
-            await bot.sendMessage(chatId, "❌ Could not extract a valid transaction hash from the provided input. Please provide a transaction hash (0x...) or a transaction link from a block explorer.", { parse_mode: "HTML" });
+            await bot.sendMessage(chatId, "❌ Could not extract a valid transaction hash from the provided input. Please provide:\n• An Ethereum-style transaction hash (0x...)\n• A Solana transaction signature\n• A transaction link from a block explorer (Ethereum, Base, Solana, etc.)", { parse_mode: "HTML" });
             return;
           }
 
