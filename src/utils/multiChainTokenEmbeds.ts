@@ -2,7 +2,6 @@ import {
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle,
 } from "discord.js";
 import { MultiChainTokenData } from "../services/dexscreener";
 import { applyBranding } from "./branding";
