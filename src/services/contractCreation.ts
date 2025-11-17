@@ -8,6 +8,7 @@ interface ContractCreation {
   contractCreator: string;
   txHash: string;
   chainId: string;
+  createdAt?: number | null; // Timestamp in seconds
 }
 
 // Cache creator addresses (they never change once a contract is deployed)
@@ -85,6 +86,7 @@ export async function getContractCreation(
           from: string;
           to: string;
           contractAddress?: string;
+          timeStamp?: string;
         }>;
       };
 
@@ -99,11 +101,13 @@ export async function getContractCreation(
           firstTx.to.toLowerCase() === normalizedAddress;
         
         if (isContractCreation) {
+          const createdAt = firstTx.timeStamp ? parseInt(firstTx.timeStamp, 10) : null;
           const result: ContractCreation = {
             contractAddress: contractAddress,
             contractCreator: firstTx.from,
             txHash: firstTx.hash,
             chainId: chainId,
+            createdAt,
           };
           // Cache the result
           creatorCache.set(cacheKey, result);
@@ -134,11 +138,33 @@ export async function getContractCreation(
 
       if (data.status === "1" && data.result && data.result.length > 0) {
         const apiResult = data.result[0];
+        // Try to get timestamp from transaction
+        let createdAt: number | null = null;
+        try {
+          const txUrl = `${apiBase}?module=proxy&action=eth_getTransactionByHash&txhash=${apiResult.txHash}&tag=latest${apiKeyParam}`;
+          const txResponse = await fetch(txUrl, { headers: { Accept: "application/json" } });
+          if (txResponse.ok) {
+            const txData = (await txResponse.json()) as { result?: { blockNumber?: string } };
+            if (txData.result?.blockNumber) {
+              const blockUrl = `${apiBase}?module=proxy&action=eth_getBlockByNumber&tag=${txData.result.blockNumber}&boolean=true${apiKeyParam}`;
+              const blockResponse = await fetch(blockUrl, { headers: { Accept: "application/json" } });
+              if (blockResponse.ok) {
+                const blockData = (await blockResponse.json()) as { result?: { timestamp?: string } };
+                if (blockData.result?.timestamp) {
+                  createdAt = parseInt(blockData.result.timestamp, 16);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          // Ignore timestamp fetch errors
+        }
         const result: ContractCreation = {
           contractAddress: apiResult.contractAddress,
           contractCreator: apiResult.contractCreator,
           txHash: apiResult.txHash,
           chainId: chainId,
+          createdAt,
         };
         // Cache the result
         creatorCache.set(cacheKey, result);

@@ -23,6 +23,18 @@ function formatPercentage(value?: number | null): string {
   return `${sign}${value.toFixed(2)}%`;
 }
 
+function formatDate(timestamp: number | null | undefined): string {
+  if (!timestamp) return "Unknown";
+  const date = new Date(timestamp * 1000);
+  const day = date.getDate().toString().padStart(2, "0");
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const year = date.getFullYear();
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  const seconds = date.getSeconds().toString().padStart(2, "0");
+  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+}
+
 export async function buildBaseTokenEmbed(
   contractAddress: string,
   tokenName?: string | null,
@@ -30,6 +42,7 @@ export async function buildBaseTokenEmbed(
   metrics?: TokenMetrics | null,
   factory?: BaseFactory | null,
   creatorAddress?: string | null,
+  createdAt?: number | null,
 ): Promise<{
   embed: EmbedBuilder;
   components: ActionRowBuilder<ButtonBuilder>[];
@@ -50,39 +63,96 @@ export async function buildBaseTokenEmbed(
     .setTitle(`🪙 ${title}`)
     .setURL(embedUrl);
 
-  // Token Metrics
-  const metricsLines: string[] = [];
+  // Chain Information
+  embed.addFields({
+    name: "🔗 Chain",
+    value: "Base",
+    inline: false,
+  });
+
+  // Token Name
+  if (finalTokenName) {
+    embed.addFields({
+      name: "🏠 Name",
+      value: finalTokenName,
+      inline: false,
+    });
+  }
+
+  // Token Symbol
+  if (finalTokenSymbol) {
+    embed.addFields({
+      name: "🔖 Symbol",
+      value: finalTokenSymbol,
+      inline: false,
+    });
+  }
+
+  // Contract Address
+  embed.addFields({
+    name: "🔑 Address",
+    value: `\`\`\`\n${contractAddress}\n\`\`\``,
+    inline: false,
+  });
+
+  // Created At
+  const finalCreatedAt = createdAt ?? metrics?.createdAt ?? null;
+  if (finalCreatedAt) {
+    embed.addFields({
+      name: "Created at",
+      value: formatDate(finalCreatedAt),
+      inline: false,
+    });
+  }
+
+  // Developer/Creator Address
+  const finalCreatorAddress = creatorAddress ?? metrics?.creatorAddress ?? null;
+  if (finalCreatorAddress) {
+    embed.addFields({
+      name: "🛠️ Dev",
+      value: `\`\`\`\n${finalCreatorAddress}\n\`\`\``,
+      inline: false,
+    });
+  }
+
+  // Market Cap
+  if (metrics?.marketCap != null) {
+    embed.addFields({
+      name: "💸 MarketCap",
+      value: formatCurrency(metrics.marketCap),
+      inline: false,
+    });
+  }
+
+  // Additional Token Metrics (if available)
+  const additionalMetrics: string[] = [];
   
   if (metrics?.priceUsd != null) {
-    metricsLines.push(`💰 Price: ${formatCurrency(metrics.priceUsd)}`);
-  }
-  
-  if (metrics?.marketCap != null) {
-    metricsLines.push(`💎 MC: ${formatCurrency(metrics.marketCap)}`);
+    additionalMetrics.push(`💰 Price: ${formatCurrency(metrics.priceUsd)}`);
   }
   
   if (metrics?.fdv != null && metrics.fdv !== metrics.marketCap) {
-    metricsLines.push(`💎 FDV: ${formatCurrency(metrics.fdv)}`);
+    additionalMetrics.push(`💎 FDV: ${formatCurrency(metrics.fdv)}`);
   }
   
   if (metrics?.liquidity != null) {
-    metricsLines.push(`💧 Liq: ${formatCurrency(metrics.liquidity)}`);
+    additionalMetrics.push(`💧 Liq: ${formatCurrency(metrics.liquidity)}`);
   }
   
   if (metrics?.volume24h != null) {
-    metricsLines.push(`📊 Vol 24H: ${formatCurrency(metrics.volume24h)}`);
+    additionalMetrics.push(`📊 Vol 24H: ${formatCurrency(metrics.volume24h)}`);
   }
   
   if (metrics?.priceChange24h != null) {
     const change = metrics.priceChange24h;
     const emoji = change >= 0 ? "📈" : "📉";
-    metricsLines.push(`${emoji} 24H: ${formatPercentage(change)}`);
+    additionalMetrics.push(`${emoji} 24H: ${formatPercentage(change)}`);
   }
 
-  if (metricsLines.length > 0) {
+  if (additionalMetrics.length > 0) {
     embed.addFields({
       name: "Token Metrics",
-      value: metricsLines.join("\n"),
+      value: additionalMetrics.join("\n"),
       inline: false,
     });
   }
@@ -112,23 +182,6 @@ export async function buildBaseTokenEmbed(
       inline: false,
     });
   }
-
-  // Creator Address (always show if available)
-  const finalCreatorAddress = creatorAddress ?? metrics?.creatorAddress ?? null;
-  if (finalCreatorAddress) {
-    embed.addFields({
-      name: "Creator",
-      value: `\`\`\`\n${finalCreatorAddress}\n\`\`\``,
-      inline: false,
-    });
-  }
-
-  // Contract Address
-  embed.addFields({
-    name: "Contract",
-    value: `\`\`\`\n${contractAddress}\n\`\`\``,
-    inline: false,
-  });
 
   applyBranding(embed, "base token");
   return { embed, components: [] };

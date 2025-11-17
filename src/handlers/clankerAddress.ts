@@ -312,9 +312,10 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           }
         }
 
-        // Add creator and factory to token data
+        // Add creator, factory, and creation date to token data
         baseTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
         baseTokenData.factoryName = detectedFactoryName ?? factory?.name ?? null;
+        baseTokenData.createdAt = contractCreation?.createdAt ?? null;
 
         const { embed, components } = await buildBaseTokenEmbed(
           address,
@@ -323,6 +324,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           baseTokenData,
           factory,
           contractCreation?.contractCreator ?? null,
+          contractCreation?.createdAt ?? null, // Creation timestamp
         );
 
         const factoryDisplayName = factory ? ` (${factory.name})` : "";
@@ -357,6 +359,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
 
           multiChainTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
           multiChainTokenData.factoryName = factoryName;
+          multiChainTokenData.createdAt = contractCreation?.createdAt ?? null;
 
           const { embed, components } = buildMultiChainTokenEmbed(address, multiChainTokenData);
           await message.reply({

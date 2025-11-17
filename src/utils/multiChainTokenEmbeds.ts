@@ -20,6 +20,18 @@ function formatPercentage(value?: number | null): string {
   return `${sign}${value.toFixed(2)}%`;
 }
 
+function formatDate(timestamp: number | null | undefined): string {
+  if (!timestamp) return "Unknown";
+  const date = new Date(timestamp * 1000);
+  const day = date.getDate().toString().padStart(2, "0");
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const year = date.getFullYear();
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  const seconds = date.getSeconds().toString().padStart(2, "0");
+  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+}
+
 function getChainExplorerUrl(chainId: string, address: string): string {
   const explorerMap: Record<string, string> = {
     "1": `https://etherscan.io/address/${address}`,
@@ -87,44 +99,101 @@ export function buildMultiChainTokenEmbed(
 
   // Chain Information
   embed.addFields({
-    name: "Chain",
-    value: `🔗 ${tokenData.chainName}`,
+    name: "🔗 Chain",
+    value: tokenData.chainName,
     inline: false,
   });
 
-  // Token Metrics
-  const metricsLines: string[] = [];
+  // Token Name
+  if (tokenData.tokenName) {
+    embed.addFields({
+      name: "🏠 Name",
+      value: tokenData.tokenName,
+      inline: false,
+    });
+  }
+
+  // Token Symbol
+  if (tokenData.tokenSymbol) {
+    embed.addFields({
+      name: "🔖 Symbol",
+      value: tokenData.tokenSymbol,
+      inline: false,
+    });
+  }
+
+  // Contract Address
+  embed.addFields({
+    name: "🔑 Address",
+    value: `\`\`\`\n${contractAddress}\n\`\`\``,
+    inline: false,
+  });
+
+  // Created At
+  if (tokenData.createdAt) {
+    embed.addFields({
+      name: "Created at",
+      value: formatDate(tokenData.createdAt),
+      inline: false,
+    });
+  }
+
+  // Creator Address (if available)
+  if (tokenData.creatorAddress) {
+    embed.addFields({
+      name: "🛠️ Dev",
+      value: `\`\`\`\n${tokenData.creatorAddress}\n\`\`\``,
+      inline: false,
+    });
+  }
+
+  // Market Cap
+  if (tokenData.marketCap != null) {
+    embed.addFields({
+      name: "💸 MarketCap",
+      value: formatCurrency(tokenData.marketCap),
+      inline: false,
+    });
+  }
+
+  // Factory Information (if available)
+  if (tokenData.factoryName) {
+    embed.addFields({
+      name: "Factory",
+      value: `🏭 ${tokenData.factoryName}`,
+      inline: false,
+    });
+  }
+
+  // Additional Token Metrics (if available)
+  const additionalMetrics: string[] = [];
   
   if (tokenData.priceUsd != null) {
-    metricsLines.push(`💰 Price: ${formatCurrency(tokenData.priceUsd)}`);
-  }
-  
-  if (tokenData.marketCap != null) {
-    metricsLines.push(`💎 MC: ${formatCurrency(tokenData.marketCap)}`);
+    additionalMetrics.push(`💰 Price: ${formatCurrency(tokenData.priceUsd)}`);
   }
   
   if (tokenData.fdv != null && tokenData.fdv !== tokenData.marketCap) {
-    metricsLines.push(`💎 FDV: ${formatCurrency(tokenData.fdv)}`);
+    additionalMetrics.push(`💎 FDV: ${formatCurrency(tokenData.fdv)}`);
   }
   
   if (tokenData.liquidity != null) {
-    metricsLines.push(`💧 Liq: ${formatCurrency(tokenData.liquidity)}`);
+    additionalMetrics.push(`💧 Liq: ${formatCurrency(tokenData.liquidity)}`);
   }
   
   if (tokenData.volume24h != null) {
-    metricsLines.push(`📊 Vol 24H: ${formatCurrency(tokenData.volume24h)}`);
+    additionalMetrics.push(`📊 Vol 24H: ${formatCurrency(tokenData.volume24h)}`);
   }
   
   if (tokenData.priceChange24h != null) {
     const change = tokenData.priceChange24h;
     const emoji = change >= 0 ? "📈" : "📉";
-    metricsLines.push(`${emoji} 24H: ${formatPercentage(change)}`);
+    additionalMetrics.push(`${emoji} 24H: ${formatPercentage(change)}`);
   }
 
-  if (metricsLines.length > 0) {
+  if (additionalMetrics.length > 0) {
     embed.addFields({
       name: "Token Metrics",
-      value: metricsLines.join("\n"),
+      value: additionalMetrics.join("\n"),
       inline: false,
     });
   }
@@ -145,32 +214,6 @@ export function buildMultiChainTokenEmbed(
     }
   }
 
-  // Creator Address (if available)
-  if (tokenData.creatorAddress) {
-    embed.addFields({
-      name: "Creator",
-      value: `\`\`\`\n${tokenData.creatorAddress}\n\`\`\``,
-      inline: false,
-    });
-  }
-
-  // Factory Information (if available)
-  if (tokenData.factoryName) {
-    embed.addFields({
-      name: "Factory",
-      value: `🏭 ${tokenData.factoryName}`,
-      inline: false,
-    });
-  }
-
-  // Contract Address
-  embed.addFields({
-    name: "Contract",
-    value: `\`\`\`\n${contractAddress}\n\`\`\``,
-    inline: false,
-  });
-
   applyBranding(embed, `${tokenData.chainName.toLowerCase()} token`);
   return { embed, components: [] };
 }
-

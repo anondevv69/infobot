@@ -150,9 +150,10 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             }
           }
 
-          // Add creator and factory to token data
+          // Add creator, factory, and creation date to token data
           baseTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
           baseTokenData.factoryName = detectedFactoryName ?? factory?.name ?? null;
+          baseTokenData.createdAt = contractCreation?.createdAt ?? null;
 
           const { embed } = await buildBaseTokenEmbed(
             address,
@@ -161,6 +162,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             baseTokenData,
             factory,
             contractCreation?.contractCreator ?? null,
+            contractCreation?.createdAt ?? null, // Creation timestamp
           );
 
           const factoryDisplayName = factory ? ` (${factory.name})` : "";
@@ -198,6 +200,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
 
             multiChainTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
             multiChainTokenData.factoryName = factoryName;
+            multiChainTokenData.createdAt = contractCreation?.createdAt ?? null;
 
             const { embed } = buildMultiChainTokenEmbed(address, multiChainTokenData);
             const messages = embedsToTelegram([embed]);

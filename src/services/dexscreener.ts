@@ -64,6 +64,7 @@ export interface TokenMetrics {
   tokenSymbol?: string | null;
   creatorAddress?: string | null;
   factoryName?: string | null;
+  createdAt?: number | null; // Timestamp in seconds
 }
 
 export interface MultiChainTokenData extends TokenMetrics {
@@ -73,6 +74,7 @@ export interface MultiChainTokenData extends TokenMetrics {
   tokenSymbol?: string | null;
   creatorAddress?: string | null;
   factoryName?: string | null;
+  createdAt?: number | null; // Timestamp in seconds
 }
 
 /**
