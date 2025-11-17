@@ -103,11 +103,12 @@ export async function buildBaseTokenEmbed(
     }
   }
 
-  // Factory Information
-  if (factory) {
+  // Factory Information (check both factory parameter and metrics)
+  const finalFactoryName = factory?.name ?? metrics?.factoryName ?? null;
+  if (finalFactoryName) {
     embed.addFields({
       name: "Factory",
-      value: `🏭 ${factory.name}`,
+      value: `🏭 ${finalFactoryName}`,
       inline: false,
     });
   }
