@@ -318,6 +318,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
         }
 
         // Detect factory: Get the transaction details to find the factory address
+        // The factory is the "to" field in the creation transaction
         let detectedFactoryName: string | null = null;
         if (contractCreation?.txHash) {
           try {
@@ -329,6 +330,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
               const txData = (await txResponse.json()) as { result?: { from?: string; to?: string | null } };
               if (txData.result?.to) {
                 // If "to" exists, that's the factory address
+                // The "from" is the creator (transaction origin)
                 const { getFactoryByAddress } = await import("../services/baseFactories");
                 const knownFactory = getFactoryByAddress(txData.result.to);
                 if (knownFactory) {
