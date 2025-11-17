@@ -153,28 +153,7 @@ export function buildMultiChainTokenEmbed(
     inline: false,
   });
 
-  // Add DEX link button if available
-  const components: ActionRowBuilder<ButtonBuilder>[] = [];
-  if (tokenData.dexUrl) {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setLabel("View on DEX")
-        .setURL(tokenData.dexUrl)
-        .setStyle(ButtonStyle.Link),
-    );
-    components.push(row);
-  }
-
-  // Add explorer link button
-  const explorerRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setLabel(`View on ${tokenData.chainName} Explorer`)
-      .setURL(explorerUrl)
-      .setStyle(ButtonStyle.Link),
-  );
-  components.push(explorerRow);
-
   applyBranding(embed, `${tokenData.chainName.toLowerCase()} token`);
-  return { embed, components };
+  return { embed, components: [] };
 }
 
