@@ -88,21 +88,28 @@ export async function findUserByXHandle(handle: string): Promise<User | null> {
   url.searchParams.set("x_username", normalized);
 
   try {
+    const apiKey = requireEnv(env.neynarApiKey, "NEYNAR_API_KEY");
     const headers: Record<string, string> = {
       accept: "application/json",
-      "api-key": requireEnv(env.neynarApiKey, "NEYNAR_API_KEY"),
+      "api-key": apiKey,
       "x-neynar-experimental": "true", // Always enable experimental for X handle lookups
     };
 
+    console.log(`[X Handle Lookup] Calling API for: ${normalized}`);
+    console.log(`[X Handle Lookup] URL: ${url.toString()}`);
+
     const response = await fetch(url, { headers });
 
+    console.log(`[X Handle Lookup] Response status: ${response.status}`);
+
     if (response.status === 404) {
+      console.log(`[X Handle Lookup] 404 - No user found for ${normalized}`);
       return null;
     }
 
     if (response.status === 401) {
       console.warn(
-        "Failed to lookup user by X handle due to unauthorized response. Check API plan and key.",
+        "[X Handle Lookup] 401 - Failed to lookup user by X handle due to unauthorized response. Check API plan and key.",
       );
       return null;
     }
@@ -111,7 +118,7 @@ export async function findUserByXHandle(handle: string): Promise<User | null> {
       // 402 Payment Required - this endpoint requires Enterprise tier or micropayments
       // Log this so we know it's happening, but still return null for fallback
       console.warn(
-        `X handle lookup requires Enterprise tier (402) for ${normalized}. Falling back to username lookup.`,
+        `[X Handle Lookup] 402 - X handle lookup requires Enterprise tier for ${normalized}. Falling back to username lookup.`,
       );
       return null;
     }
@@ -119,7 +126,7 @@ export async function findUserByXHandle(handle: string): Promise<User | null> {
     if (!response.ok) {
       const body = await response.text().catch(() => "failed to read body");
       console.warn(
-        `Failed to lookup user by X handle ${normalized}: ${response.status} ${body}`,
+        `[X Handle Lookup] Error ${response.status} for ${normalized}: ${body}`,
       );
       return null;
     }
@@ -127,32 +134,25 @@ export async function findUserByXHandle(handle: string): Promise<User | null> {
     const payload = (await response.json()) as { users?: User[] };
     const users = payload.users ?? [];
     
+    console.log(`[X Handle Lookup] Found ${users.length} user(s) for ${normalized}`);
+    
     if (users.length === 0) {
+      console.log(`[X Handle Lookup] No users in response for ${normalized}`);
       return null;
     }
 
     // Return the first user (the API should return users with matching X accounts)
+    // The API endpoint is authoritative - if it returns a user, that user has the X account
     const [user] = users;
     
-    // Verify the user actually has the X account in verified_accounts (safety check)
-    const hasMatchingXAccount = user.verified_accounts?.some(
-      (account) =>
-        account.platform === "x" &&
-        account.username?.replace(/^@/, "").toLowerCase() === normalized,
-    );
-
-    if (hasMatchingXAccount) {
-      return user;
-    }
-
-    // If no matching X account found in verified_accounts, still return the user
-    // (the API endpoint should be authoritative, but log a warning)
-    console.warn(
-      `X handle lookup returned user ${user.username} (fid: ${user.fid}) but verified_accounts doesn't match ${normalized}`,
-    );
+    console.log(`[X Handle Lookup] Returning user: ${user.username} (fid: ${user.fid})`);
+    console.log(`[X Handle Lookup] Verified accounts:`, JSON.stringify(user.verified_accounts, null, 2));
+    
+    // Trust the API response - if it returns a user for this X handle, use it
+    // The API endpoint specifically searches by X username, so it's authoritative
     return user;
   } catch (error) {
-    console.error("Failed to lookup user by X handle", error);
+    console.error(`[X Handle Lookup] Exception for ${normalized}:`, error);
     return null;
   }
 }
