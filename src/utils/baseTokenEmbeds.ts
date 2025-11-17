@@ -178,6 +178,7 @@ export async function buildBaseTokenEmbed(
   const poolInfo: string[] = [];
   
   // Factory Information (check both factory parameter and metrics)
+  // Prioritize factory object (known factory) over metrics.factoryName
   const finalFactoryName = factory?.name ?? metrics?.factoryName ?? null;
   const isKnownFactory = factory !== null; // If factory object exists, it's a known factory
   
@@ -187,6 +188,9 @@ export async function buildBaseTokenEmbed(
       ? `🏭 Factory: ${finalFactoryName} ✅`
       : `🏭 Factory: ${finalFactoryName}`;
     poolInfo.push(factoryDisplay);
+  } else if (factory === null && metrics?.factoryName) {
+    // If we have factoryName in metrics but no factory object, still show it
+    poolInfo.push(`🏭 Factory: ${metrics.factoryName}`);
   }
 
   // Add liquidity warning if very low (like the example)
@@ -227,7 +231,7 @@ export async function buildBaseTokenEmbed(
   }
 
   // Add creation transaction link if we have the txHash
-  if (creationTxHash) {
+  if (creationTxHash && creationTxHash.trim() !== "") {
     const txLink = `https://basescan.org/tx/${creationTxHash}`;
     tokenInfo.push(`🔗 [Creation Transaction](${txLink})`);
   }

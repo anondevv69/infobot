@@ -324,19 +324,46 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
         
         if (contractCreation?.txHash) {
           try {
-            // Method 1: Get the transaction details to find the factory address
-            const apiKeyParam = env.basescanApiKey ? `&apikey=${env.basescanApiKey}` : "";
-            const txUrl = `https://api.basescan.org/api?module=proxy&action=eth_getTransactionByHash&txhash=${contractCreation.txHash}&tag=latest${apiKeyParam}`;
-            const txResponse = await fetch(txUrl, { headers: { Accept: "application/json" } });
-            if (txResponse.ok) {
-              const txData = (await txResponse.json()) as { result?: { from?: string; to?: string | null } };
-              if (txData.result?.to) {
+            // Method 1: Use Base RPC directly to get transaction details (more reliable than deprecated Basescan API)
+            const BASE_RPC_URL = "https://mainnet.base.org";
+            const rpcResponse = await fetch(BASE_RPC_URL, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                jsonrpc: "2.0",
+                method: "eth_getTransactionByHash",
+                params: [contractCreation.txHash],
+                id: 1,
+              }),
+            });
+            
+            if (rpcResponse.ok) {
+              const rpcData = (await rpcResponse.json()) as { result?: { from?: string; to?: string | null } };
+              if (rpcData.result?.to) {
                 // If "to" exists, that's the factory address
-                detectedFactoryAddress = txData.result.to;
+                detectedFactoryAddress = rpcData.result.to;
+                console.log(`[Base Token] Found factory address from transaction: ${detectedFactoryAddress}`);
               }
             }
           } catch (error) {
             console.error(`[Base Token] Failed to get transaction details for factory detection:`, error);
+            // Fallback: Try Basescan API (might be deprecated but worth trying)
+            try {
+              const apiKeyParam = env.basescanApiKey ? `&apikey=${env.basescanApiKey}` : "";
+              const txUrl = `https://api.basescan.org/api?module=proxy&action=eth_getTransactionByHash&txhash=${contractCreation.txHash}&tag=latest${apiKeyParam}`;
+              const txResponse = await fetch(txUrl, { headers: { Accept: "application/json" } });
+              if (txResponse.ok) {
+                const txData = (await txResponse.json()) as { result?: { from?: string; to?: string | null } };
+                if (txData.result?.to) {
+                  detectedFactoryAddress = txData.result.to;
+                  console.log(`[Base Token] Found factory address from Basescan API: ${detectedFactoryAddress}`);
+                }
+              }
+            } catch (fallbackError) {
+              console.error(`[Base Token] Basescan API fallback also failed:`, fallbackError);
+            }
           }
         }
         
