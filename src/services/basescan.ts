@@ -189,74 +189,113 @@ export async function getContractCreation(
         
         // Look for contract creator pattern in the HTML
         // Basescan shows: "Contract Creator: 0x..." or "Creator: 0x..."
-        const creatorMatch = pageHtml.match(/Contract Creator[^>]*>([^<]*<a[^>]*>)?(0x[a-fA-F0-9]{40})/i);
-        const txHashMatch = pageHtml.match(/Creation Transaction[^>]*>([^<]*<a[^>]*href="[^"]*tx\/(0x[a-fA-F0-9]{64})[^"]*"[^>]*>)?(0x[a-fA-F0-9]{64})/i);
+        // Try multiple patterns to catch different HTML structures
+        let creator: string | null = null;
+        let txHash: string | null = null;
         
-        if (creatorMatch && creatorMatch[2]) {
-          const creator = creatorMatch[2];
-          let txHash: string | null = null;
+        // Pattern 1: Find creator address - look for href="/address/0x..." near "Contract Creator"
+        // The HTML structure: <!-- Contract Creator --> ... <a href='/address/0x...'>
+        const creatorSectionMatch = pageHtml.match(/<!-- Contract Creator -->[\s\S]{0,2000}?href=['"]\/address\/(0x[a-fA-F0-9]{40})['"]/i);
+        if (creatorSectionMatch && creatorSectionMatch[1]) {
+          creator = creatorSectionMatch[1];
+        }
+        
+        // Fallback: Look for any address link near "Contract Creator" text
+        if (!creator) {
+          const creatorPatterns = [
+            /Contract Creator[\s\S]{0,500}?href=['"]\/address\/(0x[a-fA-F0-9]{40})['"]/i,
+            /Creator[\s\S]{0,500}?href=['"]\/address\/(0x[a-fA-F0-9]{40})['"]/i,
+          ];
           
-          if (txHashMatch) {
-            txHash = txHashMatch[2] || txHashMatch[3] || null;
+          for (const pattern of creatorPatterns) {
+            const match = pageHtml.match(pattern);
+            if (match && match[1]) {
+              creator = match[1];
+              break;
+            }
           }
+        }
+        
+        // Pattern 2: Find creation transaction hash - look for href="/tx/0x..." near "Creation Transaction" or in creator section
+        const txSectionMatch = pageHtml.match(/<!-- Contract Creator -->[\s\S]{0,2000}?href=['"]\/tx\/(0x[a-fA-F0-9]{64})['"]/i);
+        if (txSectionMatch && txSectionMatch[1]) {
+          txHash = txSectionMatch[1];
+        }
+        
+        // Fallback: Look for transaction link near "Creation Transaction" or time ago text
+        if (!txHash) {
+          const txPatterns = [
+            /Creation Transaction[\s\S]{0,500}?href=['"]\/tx\/(0x[a-fA-F0-9]{64})['"]/i,
+            /href=['"]\/tx\/(0x[a-fA-F0-9]{64})['"][\s\S]{0,200}?<span>.*days? ago/i,
+            /<!-- Contract Creator -->[\s\S]{0,3000}?href=['"]\/tx\/(0x[a-fA-F0-9]{64})['"]/i,
+          ];
           
-          if (creator && txHash) {
-            // Get timestamp from the transaction
-            let createdAt: number | null = null;
-            try {
-              // Use Base RPC to get transaction details
-              const rpcResponse = await fetch(BASE_RPC_URL, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  jsonrpc: "2.0",
-                  method: "eth_getTransactionByHash",
-                  params: [txHash],
-                  id: 1,
-                }),
-              });
-              
-              if (rpcResponse.ok) {
-                const rpcData = (await rpcResponse.json()) as { result?: { blockNumber?: string } };
-                if (rpcData.result?.blockNumber) {
-                  // Get block timestamp
-                  const blockResponse = await fetch(BASE_RPC_URL, {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                      jsonrpc: "2.0",
-                      method: "eth_getBlockByNumber",
-                      params: [rpcData.result.blockNumber, false],
-                      id: 1,
-                    }),
-                  });
-                  
-                  if (blockResponse.ok) {
-                    const blockData = (await blockResponse.json()) as { result?: { timestamp?: string } };
-                    if (blockData.result?.timestamp) {
-                      createdAt = parseInt(blockData.result.timestamp, 16);
-                    }
+          for (const pattern of txPatterns) {
+            const match = pageHtml.match(pattern);
+            if (match && match[1]) {
+              txHash = match[1];
+              break;
+            }
+          }
+        }
+        
+        // Validate and use the results
+        if (creator && /^0x[a-fA-F0-9]{40}$/.test(creator) && txHash && /^0x[a-fA-F0-9]{64}$/.test(txHash)) {
+          // Get timestamp from the transaction
+          let createdAt: number | null = null;
+          try {
+            // Use Base RPC to get transaction details
+            const rpcResponse = await fetch(BASE_RPC_URL, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                jsonrpc: "2.0",
+                method: "eth_getTransactionByHash",
+                params: [txHash],
+                id: 1,
+              }),
+            });
+            
+            if (rpcResponse.ok) {
+              const rpcData = (await rpcResponse.json()) as { result?: { blockNumber?: string } };
+              if (rpcData.result?.blockNumber) {
+                // Get block timestamp
+                const blockResponse = await fetch(BASE_RPC_URL, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    method: "eth_getBlockByNumber",
+                    params: [rpcData.result.blockNumber, false],
+                    id: 1,
+                  }),
+                });
+                
+                if (blockResponse.ok) {
+                  const blockData = (await blockResponse.json()) as { result?: { timestamp?: string } };
+                  if (blockData.result?.timestamp) {
+                    createdAt = parseInt(blockData.result.timestamp, 16);
                   }
                 }
               }
-            } catch (error) {
-              // Ignore timestamp errors
             }
-            
-            const result = {
-              contractAddress: contractAddress,
-              contractCreator: creator,
-              txHash: txHash,
-              createdAt,
-            };
-            creatorCache.set(normalizedAddress, result);
-            console.log(`[Basescan] Found creator via website parsing for ${contractAddress}: ${result.contractCreator}`);
-            return result;
+          } catch (error) {
+            // Ignore timestamp errors
           }
+          
+          const result = {
+            contractAddress: contractAddress,
+            contractCreator: creator,
+            txHash: txHash,
+            createdAt,
+          };
+          creatorCache.set(normalizedAddress, result);
+          console.log(`[Basescan] Found creator via website parsing for ${contractAddress}: ${result.contractCreator}`);
+          return result;
         }
       }
     } catch (error) {
