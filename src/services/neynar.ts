@@ -80,6 +80,8 @@ export async function findUserByXHandle(handle: string): Promise<User | null> {
   if (!normalized) {
     return null;
   }
+  
+  // Use the Neynar API endpoint directly - it searches X accounts against Farcaster profiles
   const url = new URL(
     "https://api.neynar.com/v2/farcaster/user/by_x_username/",
   );
@@ -107,30 +109,50 @@ export async function findUserByXHandle(handle: string): Promise<User | null> {
 
     if (response.status === 402) {
       // 402 Payment Required - this endpoint requires Enterprise tier or micropayments
-      // Silently fall back to username lookup (handled in xAccount.ts)
-      return null;
-    }
-
-    if (response.status === 404) {
+      // Log this so we know it's happening, but still return null for fallback
+      console.warn(
+        `X handle lookup requires Enterprise tier (402) for ${normalized}. Falling back to username lookup.`,
+      );
       return null;
     }
 
     if (!response.ok) {
       const body = await response.text().catch(() => "failed to read body");
-      // Only log non-402 errors (402 is expected and has a fallback)
-      if (response.status !== 402) {
-        console.warn(
-          `Failed to lookup user by X handle ${normalized}: ${response.status} ${body}`,
-        );
-      }
+      console.warn(
+        `Failed to lookup user by X handle ${normalized}: ${response.status} ${body}`,
+      );
       return null;
     }
 
     const payload = (await response.json()) as { users?: User[] };
-    const [user] = payload.users ?? [];
-    return user ?? null;
+    const users = payload.users ?? [];
+    
+    if (users.length === 0) {
+      return null;
+    }
+
+    // Return the first user (the API should return users with matching X accounts)
+    const [user] = users;
+    
+    // Verify the user actually has the X account in verified_accounts (safety check)
+    const hasMatchingXAccount = user.verified_accounts?.some(
+      (account) =>
+        account.platform === "x" &&
+        account.username?.replace(/^@/, "").toLowerCase() === normalized,
+    );
+
+    if (hasMatchingXAccount) {
+      return user;
+    }
+
+    // If no matching X account found in verified_accounts, still return the user
+    // (the API endpoint should be authoritative, but log a warning)
+    console.warn(
+      `X handle lookup returned user ${user.username} (fid: ${user.fid}) but verified_accounts doesn't match ${normalized}`,
+    );
+    return user;
   } catch (error) {
-    console.warn("Failed to lookup user by X handle", error);
+    console.error("Failed to lookup user by X handle", error);
     return null;
   }
 }

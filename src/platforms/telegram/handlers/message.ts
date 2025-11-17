@@ -571,43 +571,29 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       for (const handle of handles) {
         if (!handle) continue;
 
+        // Use Neynar API to search X account directly - it searches against Farcaster profiles
         const byXHandle = await findUserByXHandle(handle);
-        let byUsername = null;
-        let byEnsName = null;
         
+        // If the experimental endpoint works, use it directly
+        // Only fallback to username lookup if the endpoint fails (402 Payment Required)
+        let byUsername = null;
         if (!byXHandle) {
-          // Try username lookup first
+          // Fallback: try username lookup and check if it has matching X account
+          // This is only needed if the experimental endpoint requires Enterprise tier
           try {
             byUsername = await findUserByUsername(handle);
+            // Only use if it has matching X account
+            if (byUsername && !userHasMatchingXAccount(byUsername, handle)) {
+              byUsername = null;
+            }
           } catch (error) {
             // User not found, continue
           }
-          
-          // If username lookup failed, try ENS name variations (e.g., jessepollak -> jessepollak.eth, jessepollak.base.eth)
-          if (!byUsername) {
-            const ensVariations = [
-              `${handle}.eth`,
-              `${handle}.base.eth`,
-            ];
-            
-            for (const ensName of ensVariations) {
-              try {
-                const user = await findUserByUsername(ensName);
-                if (user && userHasMatchingXAccount(user, handle)) {
-                  byEnsName = user;
-                  break;
-                }
-              } catch (error) {
-                // Continue to next variation
-              }
-            }
-          }
         }
 
-        // If findUserByXHandle returned a user, trust it (the endpoint specifically looks up by X handle)
-        // Otherwise, check if the username lookup found a user with matching X account
-        // Or check if ENS name lookup found a user with matching X account
-        const farcasterUser = byXHandle ?? byEnsName ?? (byUsername && userHasMatchingXAccount(byUsername, handle) ? byUsername : null);
+        // Trust the X handle lookup result (it searches X accounts directly)
+        // Only use username fallback if X handle lookup failed
+        const farcasterUser = byXHandle ?? byUsername;
         if (farcasterUser) {
           const [tokens, latestCast, zoraSummary] = await Promise.all([
             safeFetchTokensByFid(farcasterUser.fid),
