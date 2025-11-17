@@ -69,6 +69,11 @@ export async function buildBaseTokenEmbed(
     .setTitle(`${titlePrefix} ${title}`)
     .setURL(embedUrl);
 
+  // Add warning description for AperStore tokens
+  if (factoryName === "AperStore") {
+    embed.setDescription("⚠️ **We do not recommend AperStore coins.**");
+  }
+
   // Factory Information (moved to top section)
   const finalFactoryName = factory?.name ?? metrics?.factoryName ?? null;
   const isKnownFactory = factory !== null;
