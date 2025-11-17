@@ -122,7 +122,7 @@ Just send:
           const transaction = await fetchRelayTransaction(txHash, sourceChainId || undefined);
 
           if (!transaction) {
-            await bot.sendMessage(chatId, `❌ Transaction <code>${txHash}</code> not found on Relay.link API.\n\n<b>Possible reasons:</b>\n• The transaction may not be a Relay cross-chain transaction\n• The wallet address could not be extracted from the transaction\n• The transaction may not be indexed yet\n\n<b>Note:</b> Relay API requires querying by wallet address, not transaction hash. If the transaction is very recent, it may take a few minutes to appear.`, { parse_mode: "HTML" });
+            await bot.sendMessage(chatId, `❌ Transaction <code>${txHash}</code> not found on Relay.link API.\n\n<b>Possible reasons:</b>\n• The transaction may not be a Relay cross-chain transaction\n• The transaction may not be indexed yet\n• The transaction might be too old or not tracked by Relay\n\n<b>Note:</b> If the transaction is very recent, it may take a few minutes to appear in Relay's system.`, { parse_mode: "HTML" });
             return;
           }
 
