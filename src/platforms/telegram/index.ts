@@ -23,6 +23,7 @@ export async function startTelegramBot(): Promise<void> {
     { command: "zora", description: "Search Zora accounts, contracts, or creator coins" },
     { command: "clanker", description: "Search Clanker deployments" },
     { command: "casts", description: "Search Farcaster casts by keyword" },
+    { command: "relay", description: "Get cross-chain transaction details from Relay.link" },
   ]);
 
   bot.on("message", async (msg) => {
@@ -186,6 +187,35 @@ export async function startTelegramBot(): Promise<void> {
       eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id);
     }
     await handleTelegramCommand(bot, msg, "casts");
+    if (eyeMessageId && msg.chat.id) {
+      setTimeout(() => {
+        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
+      }, 2000);
+    }
+  });
+
+  bot.onText(/\/relay (.+)/, async (msg, match) => {
+    let eyeMessageId: number | null = null;
+    if (msg.chat.id) {
+      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id);
+    }
+    const query = match?.[1];
+    if (query) {
+      await handleTelegramCommand(bot, msg, "relay", query);
+    }
+    if (eyeMessageId && msg.chat.id) {
+      setTimeout(() => {
+        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
+      }, 2000);
+    }
+  });
+
+  bot.onText(/\/relay$/, async (msg) => {
+    let eyeMessageId: number | null = null;
+    if (msg.chat.id) {
+      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id);
+    }
+    await handleTelegramCommand(bot, msg, "relay");
     if (eyeMessageId && msg.chat.id) {
       setTimeout(() => {
         deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});

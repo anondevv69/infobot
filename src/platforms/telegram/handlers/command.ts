@@ -16,6 +16,11 @@ import { safeFetchTokensByFid, safeFetchMostRecentCast } from "../../../utils/fa
 import { buildZoraCoinResponse } from "../../../handlers/zoraAddress";
 import { fetchZoraCoin } from "../../../services/zora";
 import { findUserByXHandle } from "../../../services/neynar";
+import {
+  fetchRelayTransaction,
+  extractTransactionHash,
+  detectChainFromLink,
+} from "../../../services/relay";
 
 export async function handleTelegramCommand(
   bot: TelegramBot,
@@ -36,6 +41,7 @@ export async function handleTelegramCommand(
 <code>/zora &lt;query&gt;</code> - Search Zora accounts, contracts, or creator coins
 <code>/clanker &lt;query&gt;</code> - Search Clanker deployments
 <code>/casts &lt;keyword&gt;</code> - Search Farcaster casts by keyword
+<code>/relay &lt;transaction&gt;</code> - Get cross-chain transaction details from Relay.link
 
 <b>Auto-Detection:</b>
 Just send:
@@ -89,6 +95,71 @@ Just send:
         await bot.sendChatAction(chatId, "typing");
         
         await handleClankerQuery(bot, chatId, query);
+        break;
+      }
+
+      case "relay": {
+        if (!query) {
+          await bot.sendMessage(chatId, "Please provide a transaction hash or transaction link.\n\nUsage: <code>/relay &lt;transaction&gt;</code>\nExample: <code>/relay 0x281d831decc5fd1832f5a84155a88da8918a16f68c57c512b7ca7d6a687d8e70</code>\nOr: <code>/relay https://basescan.org/tx/0x281d831decc5fd1832f5a84155a88da8918a16f68c57c512b7ca7d6a687d8e70</code>", { parse_mode: "HTML" });
+          return;
+        }
+        
+        // Send typing indicator
+        await bot.sendChatAction(chatId, "typing");
+        
+        try {
+          // Extract transaction hash from input
+          const txHash = extractTransactionHash(query);
+          if (!txHash) {
+            await bot.sendMessage(chatId, "❌ Could not extract a valid transaction hash from the provided input. Please provide a transaction hash (0x...) or a transaction link from a block explorer.", { parse_mode: "HTML" });
+            return;
+          }
+
+          // Detect source chain from link if possible
+          const sourceChainId = detectChainFromLink(query);
+
+          // Fetch transaction data from Relay.link
+          const transaction = await fetchRelayTransaction(txHash, sourceChainId || undefined);
+
+          if (!transaction) {
+            await bot.sendMessage(chatId, `❌ Transaction <code>${txHash}</code> not found on Relay.link. This transaction may not be a cross-chain bridge transaction, or it may not have been indexed yet.`, { parse_mode: "HTML" });
+            return;
+          }
+
+          // Build message with transaction details
+          let message = `<b>🌉 Relay Cross-Chain Transaction</b>\n\n`;
+          message += `<b>📤 Source:</b>\n`;
+          message += `Chain: ${transaction.sourceChain.chainName} (${transaction.sourceChain.chainId})\n`;
+          message += `Wallet: <code>${transaction.sourceChain.wallet}</code>\n\n`;
+          message += `<b>📥 Destination:</b>\n`;
+          message += `Chain: ${transaction.destinationChain.chainName} (${transaction.destinationChain.chainId})\n`;
+          message += `Wallet: <code>${transaction.destinationChain.wallet}</code>\n\n`;
+
+          if (transaction.amount) {
+            message += `<b>💰 Amount:</b> `;
+            if (transaction.token) {
+              message += `${transaction.amount} ${transaction.token.symbol}\n`;
+            } else {
+              message += `${transaction.amount}\n`;
+            }
+          }
+
+          if (transaction.token) {
+            message += `\n<b>🪙 Token:</b> ${transaction.token.symbol}\n`;
+            message += `<code>${transaction.token.address}</code>\n`;
+          }
+
+          if (transaction.status) {
+            message += `\n<b>📊 Status:</b> ${transaction.status}\n`;
+          }
+
+          message += `\n<b>Transaction Hash:</b>\n<code>${txHash}</code>`;
+
+          await bot.sendMessage(chatId, message, { parse_mode: "HTML" });
+        } catch (error) {
+          console.error("Error handling relay command:", error);
+          await bot.sendMessage(chatId, `❌ Error fetching transaction data: ${error instanceof Error ? error.message : "Unknown error"}`, { parse_mode: "HTML" });
+        }
         break;
       }
 

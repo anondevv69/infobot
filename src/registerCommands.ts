@@ -54,6 +54,15 @@ async function registerCommands(): Promise<void> {
           .setDescription("Keyword, symbol, contract, Farcaster username, or wallet")
           .setRequired(true),
       ),
+    new SlashCommandBuilder()
+      .setName("relay")
+      .setDescription("Get cross-chain transaction details from Relay.link")
+      .addStringOption((option) =>
+        option
+          .setName("transaction")
+          .setDescription("Transaction hash (0x...) or transaction link from block explorer")
+          .setRequired(true),
+      ),
   ].map((command) => command.toJSON());
 
   const rest = new REST({ version: "10" }).setToken(token);

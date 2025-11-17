@@ -27,6 +27,7 @@ import { COPY_BUTTON_PREFIX } from "./utils/copyButtons";
 import { handleXAccountMessage } from "./handlers/xAccount";
 import { handleCopyValueButton } from "./handlers/copyValueButton";
 import { handleClankerCommand, handleClankerPagination } from "./commands/clanker";
+import { handleRelayCommand } from "./commands/relay";
 import { parsePaginationButton } from "./utils/pagination";
 import { handleGeneralPagination } from "./handlers/pagination";
 import { showDiscordTypingIndicator, showDiscordCommandTyping } from "./utils/typingIndicator";
@@ -150,6 +151,9 @@ async function handleChatCommand(
       break;
     case "clanker":
       await handleClankerCommand(interaction);
+      break;
+    case "relay":
+      await handleRelayCommand(interaction);
       break;
     default:
       await interaction.reply({
