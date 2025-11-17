@@ -105,7 +105,7 @@ export async function handleSearchCommand(
     }
 
     // Final fallback to Clanker token lookup
-    await replyWithClankerTokenLookup(interaction, query);
+      await replyWithClankerTokenLookup(interaction, query);
   } catch (error) {
     const message =
       error instanceof NeynarLookupError

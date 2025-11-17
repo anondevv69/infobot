@@ -117,7 +117,7 @@ export function buildZoraCoinEmbed(
   if (!creatorCoinMarketCap && options?.dexScreenerMetrics?.marketCap && creatorCoin?.address) {
     creatorCoinMarketCap = options.dexScreenerMetrics.marketCap;
   }
-  
+
   const creatorCoinField = buildCreatorCoinField(
     profile,
     summary.isCreatorCoin,

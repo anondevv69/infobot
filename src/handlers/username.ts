@@ -67,35 +67,35 @@ export async function handleUsernameMessage(message: Message): Promise<void> {
 
     // If Farcaster user found, show Farcaster profile
     if (user) {
-      const [tokens, latestCast, zoraSummaryForUser] = await Promise.all([
-        safeFetchTokensByFid(user.fid),
-        safeFetchMostRecentCast(user.fid),
-        findBestZoraSummary(collectZoraIdentifiers(user)),
-      ]);
+    const [tokens, latestCast, zoraSummaryForUser] = await Promise.all([
+      safeFetchTokensByFid(user.fid),
+      safeFetchMostRecentCast(user.fid),
+      findBestZoraSummary(collectZoraIdentifiers(user)),
+    ]);
 
-      const associatedZoraSummary =
-        zoraSummaryForUser && isSummaryAssociatedWithUser(user, zoraSummaryForUser)
-          ? zoraSummaryForUser
-          : null;
+    const associatedZoraSummary =
+      zoraSummaryForUser && isSummaryAssociatedWithUser(user, zoraSummaryForUser)
+        ? zoraSummaryForUser
+        : null;
 
-      const paginationIdentifier = `farcaster_username_${username}`;
+    const paginationIdentifier = `farcaster_username_${username}`;
 
-      // Use buildFarcasterPresentation for proper pagination
-      const presentation = await buildFarcasterPresentation(user, {
-        tokens,
-        zoraSummary: associatedZoraSummary,
-        latestCast,
-        titleSuffix: "Farcaster Profile",
-        includeButtons: false,
-        paginationIdentifier, // Use custom identifier
-      });
+    // Use buildFarcasterPresentation for proper pagination
+    const presentation = await buildFarcasterPresentation(user, {
+      tokens,
+      zoraSummary: associatedZoraSummary,
+      latestCast,
+      titleSuffix: "Farcaster Profile",
+      includeButtons: false,
+      paginationIdentifier, // Use custom identifier
+    });
 
-      await message.reply({
-        embeds: presentation.embeds,
-        components: presentation.components,
-      });
-      return;
-    }
+    await message.reply({
+      embeds: presentation.embeds,
+      components: presentation.components,
+    });
+    return;
+  }
   }
 
   // If no Farcaster user found for any username, try Zora as fallback

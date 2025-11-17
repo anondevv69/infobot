@@ -361,7 +361,7 @@ export async function buildTokenEmbed(
     addProfileSection(embed, farcasterUser, "Dev Profile");
     // Only include wallet fields if includeWallets is true
     if (includeWallets) {
-      appendWalletFields(embed, farcasterUser);
+    appendWalletFields(embed, farcasterUser);
     }
   }
 

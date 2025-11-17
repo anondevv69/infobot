@@ -56,12 +56,17 @@ export async function buildBaseTokenEmbed(
     ? `${finalTokenSymbol} • ${finalTokenName}`
     : finalTokenName ?? finalTokenSymbol ?? "Base Token";
 
+  // Add caution symbol for AperStore and Fey tokens
+  const factoryName = factory?.name ?? metrics?.factoryName ?? null;
+  const needsCaution = factoryName === "AperStore" || factoryName === "Fey";
+  const titlePrefix = needsCaution ? "⚠️ 🪙" : "🪙";
+
   // Use DexScreener URL if available, otherwise fallback to Basescan
   const embedUrl = metrics?.dexUrl ?? `https://basescan.org/address/${contractAddress}`;
 
   const embed = new EmbedBuilder()
     .setColor(0x0052ff) // Base blue
-    .setTitle(`🪙 ${title}`)
+    .setTitle(`${titlePrefix} ${title}`)
     .setURL(embedUrl);
 
   // Chain Information

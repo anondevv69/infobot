@@ -129,12 +129,12 @@ export async function buildZoraCoinResponse(
     
     // Fetch creator coin data if available
     (async () => {
-      if (creatorAddress) {
-        const normalizedCreator = creatorAddress.toLowerCase();
+  if (creatorAddress) {
+    const normalizedCreator = creatorAddress.toLowerCase();
         return summary?.createdCoins?.find(
-          (created) => created.address?.toLowerCase() === normalizedCreator,
+        (created) => created.address?.toLowerCase() === normalizedCreator,
         ) ?? (await fetchZoraCoin(creatorAddress).catch(() => null));
-      }
+  }
       return null;
     })(),
   ]);
@@ -330,7 +330,7 @@ export async function buildZoraCoinResponse(
       farcasterEmbed.data.fields?.forEach(field => {
         // Skip fields that are already in the creator field
         if (!field.name.includes("Profile") && !field.name.includes("Deployer")) {
-          page2Embed.addFields(field);
+        page2Embed.addFields(field);
         }
       });
 

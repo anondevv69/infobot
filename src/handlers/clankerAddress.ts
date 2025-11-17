@@ -392,10 +392,10 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
                     }
                   }
                   
-                  // If still not found, show the 'to' address
+                  // If still not found, show the 'to' address and log for manual addition
                   if (!detectedFactoryName) {
                     detectedFactoryName = `${detectedFactoryAddress.slice(0, 10)}...${detectedFactoryAddress.slice(-8)}`;
-                    console.log(`[Base Token] Unknown token factory: ${detectedFactoryAddress}`);
+                    console.log(`[Base Token] ⚠️ UNKNOWN TOKEN FACTORY - Please add to TOKEN_FACTORY_MAP: "${detectedFactoryAddress}": "FactoryName",`);
                   }
                 }
               }
