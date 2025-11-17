@@ -407,30 +407,57 @@ export async function fetchRelayTransaction(
     let data: any;
     if (response.ok) {
       data = await response.json();
-    } else if (response.status === 404 && isRelayTxId) {
-      // If hash query failed and this looks like a Relay transaction ID, try querying by id
-      console.log(`Hash query returned 404, trying id parameter for Relay transaction ID`);
-      url = new URL("https://api.relay.link/requests/v2");
-      url.searchParams.set("id", txHash);
-      
-      response = await fetch(url.toString(), {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      
-      if (response.ok) {
-        data = await response.json();
+      console.log(`First query (hash) succeeded, found ${(data.requests || []).length} requests`);
+    } else if (response.status === 404) {
+      // If hash query failed, try alternative methods
+      if (isRelayTxId) {
+        // Try querying by id parameter (without chainId)
+        console.log(`Hash query returned 404, trying id parameter for Relay transaction ID`);
+        url = new URL("https://api.relay.link/requests/v2");
+        url.searchParams.set("id", txHash);
+        // Don't include chainId when querying by id
+        
+        response = await fetch(url.toString(), {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+        
+        if (response.ok) {
+          data = await response.json();
+          console.log(`Id query succeeded, found ${(data.requests || []).length} requests`);
+        } else {
+          const errorText = await response.text().catch(() => "");
+          console.error(`Id query also failed: ${response.status} ${response.statusText} - ${errorText}`);
+          console.log(`Transaction ${txHash} not found on Relay API (tried both hash and id)`);
+          return null;
+        }
       } else {
-        console.log(`Transaction ${txHash} not found on Relay API (tried both hash and id)`);
-        return null;
+        // For non-Relay transaction IDs, also try without chainId filter
+        console.log(`Hash query returned 404, trying without chainId filter`);
+        url = new URL("https://api.relay.link/requests/v2");
+        url.searchParams.set("hash", txHash);
+        // Remove chainId to search across all chains
+        
+        response = await fetch(url.toString(), {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+        
+        if (response.ok) {
+          data = await response.json();
+          console.log(`Query without chainId succeeded, found ${(data.requests || []).length} requests`);
+        } else {
+          const errorText = await response.text().catch(() => "");
+          console.error(`Query without chainId also failed: ${response.status} ${response.statusText} - ${errorText}`);
+          console.log(`Transaction ${txHash} not found on Relay API`);
+          return null;
+        }
       }
     } else {
-      if (response.status === 404) {
-        console.log(`Transaction ${txHash} not found on Relay API`);
-        return null;
-      }
       const errorText = await response.text().catch(() => "");
       console.error(`Relay API error: ${response.status} ${response.statusText} - ${errorText}`);
       throw new Error(`Relay API error: ${response.status} ${response.statusText}`);
