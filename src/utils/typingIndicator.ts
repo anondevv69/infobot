@@ -68,9 +68,10 @@ export async function showTelegramEyeIndicator(
 ): Promise<number | null> {
   try {
     // Reply to the original message with eye emoji
+    // Note: Telegram bots cannot add reactions like Discord, so we reply to the message
     const sentMessage = await bot.sendMessage(chatId, "👁️", {
       reply_to_message_id: replyToMessageId,
-      parse_mode: "HTML",
+      allow_sending_without_reply: true, // Allow sending even if original message is not found
     });
     return sentMessage.message_id;
   } catch (error) {

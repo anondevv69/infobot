@@ -198,30 +198,50 @@ export async function fetchRelayTransaction(
 
     const data = await response.json();
 
+    // Debug: log the response to understand the structure
+    console.log("Relay API response:", JSON.stringify(data, null, 2));
+
     // Parse the response based on Relay.link API structure
-    // The actual structure may vary, so we'll handle common patterns
+    // Try multiple possible response formats
     const transaction: RelayTransaction = {
-      txHash: data.txHash || txHash,
+      txHash: data.txHash || data.hash || data.transactionHash || txHash,
       sourceChain: {
-        chainId: data.sourceChainId || data.sourceChain?.chainId || sourceChainId || 0,
-        chainName: getChainName(data.sourceChainId || data.sourceChain?.chainId || sourceChainId || 0),
-        wallet: data.sourceWallet || data.from || data.sourceAddress || "",
+        chainId: data.sourceChainId || data.sourceChain?.chainId || data.fromChainId || data.originChainId || sourceChainId || 0,
+        chainName: getChainName(data.sourceChainId || data.sourceChain?.chainId || data.fromChainId || data.originChainId || sourceChainId || 0),
+        wallet: data.sourceWallet || data.from || data.sourceAddress || data.originAddress || data.sender || "",
       },
       destinationChain: {
-        chainId: data.destinationChainId || data.destinationChain?.chainId || 0,
-        chainName: getChainName(data.destinationChainId || data.destinationChain?.chainId || 0),
-        wallet: data.destinationWallet || data.to || data.destinationAddress || "",
+        chainId: data.destinationChainId || data.destinationChain?.chainId || data.toChainId || data.targetChainId || 0,
+        chainName: getChainName(data.destinationChainId || data.destinationChain?.chainId || data.toChainId || data.targetChainId || 0),
+        wallet: data.destinationWallet || data.to || data.destinationAddress || data.targetAddress || data.recipient || "",
       },
-      amount: data.amount || data.value,
+      amount: data.amount || data.value || data.transferAmount,
       token: data.token
         ? {
-            symbol: data.token.symbol || "",
-            address: data.token.address || "",
+            symbol: data.token.symbol || data.tokenSymbol || "",
+            address: data.token.address || data.tokenAddress || "",
+          }
+        : data.tokenSymbol
+        ? {
+            symbol: data.tokenSymbol,
+            address: data.tokenAddress || "",
           }
         : undefined,
-      status: data.status || "unknown",
-      timestamp: data.timestamp || data.blockTimestamp,
+      status: data.status || data.transactionStatus || "unknown",
+      timestamp: data.timestamp || data.blockTimestamp || data.time || data.createdAt,
     };
+
+    // Validate that we have at least source and destination info
+    if (!transaction.sourceChain.wallet || !transaction.destinationChain.wallet) {
+      console.warn("Incomplete transaction data:", transaction);
+      // Try alternative parsing if main fields are missing
+      if (data.transactions && Array.isArray(data.transactions) && data.transactions.length > 0) {
+        const firstTx = data.transactions[0];
+        transaction.sourceChain.wallet = firstTx.from || transaction.sourceChain.wallet;
+        transaction.destinationChain.wallet = firstTx.to || transaction.destinationChain.wallet;
+        transaction.sourceChain.chainId = firstTx.chainId || transaction.sourceChain.chainId;
+      }
+    }
 
     return transaction;
   } catch (error) {
