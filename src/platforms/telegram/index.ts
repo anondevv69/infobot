@@ -2,7 +2,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { env } from "../../config";
 import { handleTelegramMessage } from "./handlers/message";
 import { handleTelegramCommand } from "./handlers/command";
-import { showTelegramTypingIndicator, showTelegramEyeIndicator, deleteTelegramMessage } from "../../utils/typingIndicator";
+import { showTelegramTypingIndicator } from "../../utils/typingIndicator";
 
 export async function startTelegramBot(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -33,222 +33,74 @@ export async function startTelegramBot(): Promise<void> {
     if (msg.text && !msg.text.startsWith("/")) {
       const text = msg.text.trim();
       
-      // Check if this message will actually be processed by the handler
-      // This matches the logic in handleTelegramMessage
-      let willProcess = false;
-      
-      if (msg.chat.type === "private") {
-        // In private chats, process all messages
-        willProcess = true;
-      } else {
-        // In groups, only process if:
-        // 1. Bot is mentioned, OR
-        // 2. Message contains address/username/X link/Farcaster link
-        const botUsername = (bot as any).options?.username || process.env.TELEGRAM_BOT_USERNAME;
-        const mentionsBot = botUsername && (
-          text.includes(`@${botUsername}`) ||
-          msg.entities?.some(e => e.type === "mention" && text.substring(e.offset, e.offset + e.length) === `@${botUsername}`)
-        );
-        
-        const hasXLink = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^\s<>()]+/gi.test(text);
-        const hasFarcasterLink = /https?:\/\/(?:www\.)?farcaster\.xyz\/[^\s<>()]+/gi.test(text);
-        const isEthAddr = /^0x[a-fA-F0-9]{40}$/i.test(text);
-        const startsWithAt = text.startsWith("@");
-        const hasZoraLink = text.includes("zora.co");
-        
-        willProcess = mentionsBot || isEthAddr || startsWithAt || hasXLink || hasFarcasterLink || hasZoraLink;
-      }
-      
-      // Only show eye emoji if message will be processed
-      let eyeMessageId: number | null = null;
-      if (willProcess && msg.chat.id && msg.message_id) {
-        eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id, msg.message_id);
-      }
-      
       // Handle the message
       await handleTelegramMessage(bot, msg);
-      
-      // Delete eye emoji after response is sent (wait longer to ensure all responses are sent)
-      if (eyeMessageId && msg.chat.id) {
-        // Delay to ensure response is fully sent before removing eye emoji
-        setTimeout(() => {
-          deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
-        }, 2000);
-      }
     }
   });
 
   bot.onText(/\/start/, async (msg) => {
-    let eyeMessageId: number | null = null;
-    if (msg.chat.id && msg.message_id) {
-      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id, msg.message_id);
-    }
     await handleTelegramCommand(bot, msg, "start");
-    if (eyeMessageId && msg.chat.id) {
-      setTimeout(() => {
-        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
-      }, 2000);
-    }
   });
 
   bot.onText(/\/help/, async (msg) => {
-    let eyeMessageId: number | null = null;
-    if (msg.chat.id && msg.message_id) {
-      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id, msg.message_id);
-    }
     await handleTelegramCommand(bot, msg, "help");
-    if (eyeMessageId && msg.chat.id) {
-      setTimeout(() => {
-        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
-      }, 2000);
-    }
   });
 
   // Commands with parameters
   bot.onText(/\/search (.+)/, async (msg, match) => {
-    let eyeMessageId: number | null = null;
-    if (msg.chat.id && msg.message_id) {
-      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id, msg.message_id);
-    }
     const query = match?.[1];
     if (query) {
       await handleTelegramCommand(bot, msg, "search", query);
     }
-    if (eyeMessageId && msg.chat.id) {
-      setTimeout(() => {
-        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
-      }, 2000);
-    }
   });
 
   bot.onText(/\/zora (.+)/, async (msg, match) => {
-    let eyeMessageId: number | null = null;
-    if (msg.chat.id && msg.message_id) {
-      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id, msg.message_id);
-    }
     const query = match?.[1];
     if (query) {
       await handleTelegramCommand(bot, msg, "zora", query);
     }
-    if (eyeMessageId && msg.chat.id) {
-      setTimeout(() => {
-        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
-      }, 2000);
-    }
   });
 
   bot.onText(/\/clanker (.+)/, async (msg, match) => {
-    let eyeMessageId: number | null = null;
-    if (msg.chat.id && msg.message_id) {
-      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id, msg.message_id);
-    }
     const query = match?.[1];
     if (query) {
       await handleTelegramCommand(bot, msg, "clanker", query);
     }
-    if (eyeMessageId && msg.chat.id) {
-      setTimeout(() => {
-        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
-      }, 2000);
-    }
   });
 
   bot.onText(/\/casts (.+)/, async (msg, match) => {
-    let eyeMessageId: number | null = null;
-    if (msg.chat.id && msg.message_id) {
-      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id, msg.message_id);
-    }
     const keyword = match?.[1];
     if (keyword) {
       await handleTelegramCommand(bot, msg, "casts", keyword);
-    }
-    if (eyeMessageId && msg.chat.id) {
-      setTimeout(() => {
-        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
-      }, 2000);
     }
   });
 
   // Commands without parameters (show usage)
   bot.onText(/\/search$/, async (msg) => {
-    let eyeMessageId: number | null = null;
-    if (msg.chat.id && msg.message_id) {
-      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id, msg.message_id);
-    }
     await handleTelegramCommand(bot, msg, "search");
-    if (eyeMessageId && msg.chat.id) {
-      setTimeout(() => {
-        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
-      }, 2000);
-    }
   });
 
   bot.onText(/\/zora$/, async (msg) => {
-    let eyeMessageId: number | null = null;
-    if (msg.chat.id && msg.message_id) {
-      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id, msg.message_id);
-    }
     await handleTelegramCommand(bot, msg, "zora");
-    if (eyeMessageId && msg.chat.id) {
-      setTimeout(() => {
-        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
-      }, 2000);
-    }
   });
 
   bot.onText(/\/clanker$/, async (msg) => {
-    let eyeMessageId: number | null = null;
-    if (msg.chat.id && msg.message_id) {
-      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id, msg.message_id);
-    }
     await handleTelegramCommand(bot, msg, "clanker");
-    if (eyeMessageId && msg.chat.id) {
-      setTimeout(() => {
-        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
-      }, 2000);
-    }
   });
 
   bot.onText(/\/casts$/, async (msg) => {
-    let eyeMessageId: number | null = null;
-    if (msg.chat.id && msg.message_id) {
-      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id, msg.message_id);
-    }
     await handleTelegramCommand(bot, msg, "casts");
-    if (eyeMessageId && msg.chat.id) {
-      setTimeout(() => {
-        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
-      }, 2000);
-    }
   });
 
   bot.onText(/\/relay (.+)/, async (msg, match) => {
-    let eyeMessageId: number | null = null;
-    if (msg.chat.id && msg.message_id) {
-      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id, msg.message_id);
-    }
     const query = match?.[1];
     if (query) {
       await handleTelegramCommand(bot, msg, "relay", query);
     }
-    if (eyeMessageId && msg.chat.id) {
-      setTimeout(() => {
-        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
-      }, 2000);
-    }
   });
 
   bot.onText(/\/relay$/, async (msg) => {
-    let eyeMessageId: number | null = null;
-    if (msg.chat.id && msg.message_id) {
-      eyeMessageId = await showTelegramEyeIndicator(bot, msg.chat.id, msg.message_id);
-    }
     await handleTelegramCommand(bot, msg, "relay");
-    if (eyeMessageId && msg.chat.id) {
-      setTimeout(() => {
-        deleteTelegramMessage(bot, msg.chat.id, eyeMessageId!).catch(() => {});
-      }, 2000);
-    }
   });
 
   // Handle pagination callbacks

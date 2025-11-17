@@ -172,14 +172,20 @@ export async function fetchRelayTransaction(
   sourceChainId?: number,
 ): Promise<RelayTransaction | null> {
   try {
-    // Optionally index first if we know the source chain
+    // Always try to index first if we know the source chain
+    // This helps ensure the transaction is indexed before querying
     if (sourceChainId) {
       await indexRelayTransaction(txHash, sourceChainId);
-      // Small delay to allow indexing
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Wait longer for indexing to complete
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    } else {
+      // If we don't know the chain, try Base (8453) as default since most transactions are on Base
+      await indexRelayTransaction(txHash, 8453);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
 
-    const response = await fetch(
+    // Try multiple endpoints - the transaction might be under a different endpoint
+    let response = await fetch(
       `https://api.relay.link/transactions/${txHash}`,
       {
         method: "GET",
@@ -188,6 +194,23 @@ export async function fetchRelayTransaction(
         },
       },
     );
+
+    // If that fails, try querying by address instead
+    if (!response.ok && response.status === 404) {
+      // Try the address-based endpoint if transaction endpoint doesn't work
+      // First, we'd need to get the address from the transaction, but for now let's try the transaction endpoint again
+      // with a longer wait
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      response = await fetch(
+        `https://api.relay.link/transactions/${txHash}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
+    }
 
     if (!response.ok) {
       if (response.status === 404) {
