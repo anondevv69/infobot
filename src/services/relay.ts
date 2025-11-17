@@ -384,24 +384,49 @@ export async function fetchRelayTransaction(
 ): Promise<RelayTransaction | null> {
   try {
     const chainIdToUse = sourceChainId || 8453; // Default to Base
+    const isRelayTxId = txHash.startsWith("0x") && txHash.length === 66; // Relay transaction IDs are 0x + 64 hex chars
 
-    // Query Relay API using the official /requests/v2 endpoint with hash parameter
-    // This is the correct way according to the API documentation
-    console.log(`Querying Relay API for transaction hash: ${txHash}`);
-    const url = new URL("https://api.relay.link/requests/v2");
+    // Query Relay API using the official /requests/v2 endpoint
+    // Try by hash first (for source/destination transaction hashes)
+    // If that fails and it looks like a Relay transaction ID, try by id parameter
+    console.log(`Querying Relay API for transaction: ${txHash}${isRelayTxId ? " (Relay transaction ID)" : ""}`);
+    
+    let url = new URL("https://api.relay.link/requests/v2");
     url.searchParams.set("hash", txHash);
     if (chainIdToUse) {
       url.searchParams.set("chainId", chainIdToUse.toString());
     }
 
-    const response = await fetch(url.toString(), {
+    let response = await fetch(url.toString(), {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
       },
     });
 
-    if (!response.ok) {
+    let data: any;
+    if (response.ok) {
+      data = await response.json();
+    } else if (response.status === 404 && isRelayTxId) {
+      // If hash query failed and this looks like a Relay transaction ID, try querying by id
+      console.log(`Hash query returned 404, trying id parameter for Relay transaction ID`);
+      url = new URL("https://api.relay.link/requests/v2");
+      url.searchParams.set("id", txHash);
+      
+      response = await fetch(url.toString(), {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (response.ok) {
+        data = await response.json();
+      } else {
+        console.log(`Transaction ${txHash} not found on Relay API (tried both hash and id)`);
+        return null;
+      }
+    } else {
       if (response.status === 404) {
         console.log(`Transaction ${txHash} not found on Relay API`);
         return null;
@@ -411,17 +436,15 @@ export async function fetchRelayTransaction(
       throw new Error(`Relay API error: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
-
     // Debug: log the response to understand the structure
     console.log("Relay API response:", JSON.stringify(data, null, 2));
 
     // The API returns { requests: [...], continuation: "..." }
     const requests = data.requests || [];
-    console.log(`Found ${requests.length} request(s) for hash ${txHash}`);
+    console.log(`Found ${requests.length} request(s) for ${txHash}`);
 
     if (requests.length === 0) {
-      console.log(`No requests found for transaction hash ${txHash}`);
+      console.log(`No requests found for transaction ${txHash}`);
       
       // If this is a Solana transaction, suggest using the Relay transaction ID instead
       // Solana transactions might not be directly queryable by their signature
@@ -433,9 +456,15 @@ export async function fetchRelayTransaction(
     }
 
     // Find the request that matches our hash
-    // The hash could be in inTxs (incoming) or outTxs (outgoing)
+    // If we queried by id, the request ID should match directly
+    // Otherwise, the hash could be in inTxs (incoming) or outTxs (outgoing)
     const searchHash = txHash.toLowerCase();
     let matchingRequest = requests.find((req: any) => {
+      // If this looks like a Relay transaction ID, check if the request ID matches
+      if (isRelayTxId && req.id?.toLowerCase() === searchHash) {
+        return true;
+      }
+      
       // Check inTxs (incoming transactions)
       const inTxs = req.data?.inTxs || [];
       for (const inTx of inTxs) {
@@ -453,9 +482,10 @@ export async function fetchRelayTransaction(
       return false;
     });
 
-    // If no exact match, use the first request (hash parameter should filter it)
+    // If no exact match, use the first request (hash/id parameter should filter it)
     if (!matchingRequest && requests.length > 0) {
       matchingRequest = requests[0];
+      console.log(`Using first request from results (ID: ${matchingRequest.id})`);
     }
 
     if (!matchingRequest) {
