@@ -58,7 +58,7 @@ router.get("/siwf", async (req, res) => {
 
     // Replicate the exact logic from generateSIWFUrl
     const callbackUrl = `${testBackendUrl}/api/siwf/callback?challenge=${testChallenge}&userId=${testUserId}&platform=${testPlatform}`;
-    const baseUrl = "https://warpcast.com/~/signin";
+    const baseUrl = "https://farcaster.xyz/~/signin";
     const params = new URLSearchParams({
       challenge: testChallenge,
       redirect_uri: callbackUrl,

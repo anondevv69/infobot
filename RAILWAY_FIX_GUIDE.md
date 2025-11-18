@@ -154,8 +154,9 @@ After completing all steps:
 
 ## 📝 Notes
 
-- The code is **correct** - it uses `warpcast.com` (line 85 in `src/services/siwf.ts`)
+- The code is **correct** - it uses `farcaster.xyz` (line 86 in `src/services/siwf.ts`)
 - The issue is **deployment-related** - Railway is running old code
+- According to Farcaster's rebranding, `farcaster.xyz` is the canonical domain
 - The debug endpoints help identify exactly what's running
 
 ## 🔗 Related Files
