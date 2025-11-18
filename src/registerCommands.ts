@@ -10,11 +10,11 @@ async function registerCommands(): Promise<void> {
   const commands = [
     new SlashCommandBuilder()
       .setName("search")
-      .setDescription("Search wallets, contracts, Farcaster profiles, or Zora accounts.")
+      .setDescription("Search wallets, contracts, Farcaster profiles, Zora accounts, or transactions across multiple chains.")
       .addStringOption((option) =>
         option
           .setName("query")
-          .setDescription("Wallet (0x...), contract, Farcaster username, or Zora account")
+          .setDescription("Wallet (0x...), contract, Farcaster username, Zora account, or transaction hash")
           .setRequired(true),
       ),
     new SlashCommandBuilder()
@@ -56,11 +56,11 @@ async function registerCommands(): Promise<void> {
       ),
     new SlashCommandBuilder()
       .setName("relay")
-      .setDescription("Get cross-chain transaction details from Relay.link")
+      .setDescription("Get cross-chain transaction details from Relay.link. Provide a full transaction link from a block explorer.")
       .addStringOption((option) =>
         option
           .setName("transaction")
-          .setDescription("Transaction hash (0x...) or transaction link from block explorer")
+          .setDescription("Full transaction link (e.g., https://basescan.org/tx/0x...) or transaction hash")
           .setRequired(true),
       ),
   ].map((command) => command.toJSON());

@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, ActionRowBuilder, ButtonBuilder } from "discord.js";
+import { ChatInputCommandInteraction, ActionRowBuilder, ButtonBuilder, EmbedBuilder } from "discord.js";
 import type { User } from "@neynar/nodejs-sdk/build/api";
 import {
   findUserByUsername,
@@ -22,7 +22,10 @@ import {
   resolveUserFromToken,
 } from "../utils/clankerEmbeds";
 import { safeFetchMostRecentCast, safeFetchTokensByFid, safeFetchEarliestCastByQuery } from "../utils/farcasterHelpers";
-import { isEthAddress, isSolAddress } from "../utils/address";
+import { isEthAddress, isSolAddress, isTransactionHash } from "../utils/address";
+import { extractTransactionHash } from "../services/relay";
+import { lookupTransaction, detectChainFromTransactionLink } from "../services/transactionLookup";
+import { lookupAddress } from "../services/addressLookup";
 import { buildZoraPresentation, collectZoraIdentifiers } from "../utils/zoraPresentation";
 import { appendZoraSummaryFields, buildZoraProfileEmbed } from "../utils/zoraEmbeds";
 import { buildWalletProfileResponse, buildZoraWalletProfileResponse } from "../utils/walletEmbed";
@@ -48,6 +51,13 @@ export async function handleSearchCommand(
   await interaction.deferReply();
 
   try {
+    // Check if it's a transaction hash first
+    const txHash = extractTransactionHash(query);
+    if (txHash && isTransactionHash(txHash)) {
+      await handleTransactionSearch(interaction, txHash, query);
+      return;
+    }
+
     if (isEthAddress(query) || isSolAddress(query)) {
       await handleWalletSearch(interaction, query);
       return;
@@ -296,8 +306,61 @@ async function handleWalletSearch(
     return;
   }
 
+  // Final fallback: Try to get basic address information across chains
+  const addressInfo = await lookupAddress(address);
+  
+  if (addressInfo.length > 0) {
+    const embed = new EmbedBuilder()
+      .setTitle("🔍 Address Information")
+      .setDescription(`Found activity for \`${address}\` on ${addressInfo.length} chain(s)`)
+      .setColor(0x00d4ff);
+
+    for (const info of addressInfo) {
+      let value = "";
+      if (info.isContract) {
+        value += "📄 **Contract**\n";
+      } else {
+        value += "👤 **EOA (Externally Owned Account)**\n";
+      }
+
+      if (info.balance) {
+        try {
+          const balanceWei = BigInt(info.balance);
+          const balanceEth = Number(balanceWei) / 1e18;
+          if (balanceEth > 0) {
+            value += `💰 Balance: ${balanceEth.toFixed(6)} ETH\n`;
+          }
+        } catch (error) {
+          // Ignore balance parsing errors
+        }
+      }
+
+      if (info.transactionCount !== null) {
+        value += `📊 Transactions: ${info.transactionCount.toLocaleString()}\n`;
+      }
+
+      value += `🔗 [View on ${info.chainName} Explorer](${info.explorerUrl})`;
+
+      embed.addFields({
+        name: `${info.chainName} (Chain ID: ${info.chainId})`,
+        value,
+        inline: false,
+      });
+    }
+
+    embed.setFooter({
+      text: `Address: ${address.slice(0, 10)}...${address.slice(-8)}`,
+    });
+
+    await interaction.editReply({
+      content: `No Farcaster profile, Clanker deployments, or Zora coins found for \`${address}\`, but found activity on the following chain(s):`,
+      embeds: [embed],
+    });
+    return;
+  }
+
   await interaction.editReply({
-    content: `We're continuing to add more wallet tracking systems and cannot connect \`${address}\` to any wallet or contract at this time.`,
+    content: `We're continuing to add more wallet tracking systems and cannot connect \`${address}\` to any wallet or contract at this time.\n\n**Note:** This address has no activity on any supported chain (Ethereum, Base, Polygon, Arbitrum, Optimism, Avalanche, BSC, Fantom, Mantle).`,
   });
 }
 
@@ -431,9 +494,120 @@ async function replyWithClankerTokenLookup(
     components.push(...buildPaginationButtons(0, totalPages, identifier));
   }
 
+    await interaction.editReply({
+      content: `No Farcaster profile found for \`${query}\`, but the keyword matches this Clanker deployment:`,
+      embeds: [embeds[0]],
+      components,
+    });
+}
+
+/**
+ * Handle transaction hash search
+ */
+async function handleTransactionSearch(
+  interaction: ChatInputCommandInteraction,
+  txHash: string,
+  originalQuery: string,
+): Promise<void> {
+  // Try to detect chain from link if it's a URL
+  const preferredChainId = detectChainFromTransactionLink(originalQuery);
+  
+  const transaction = await lookupTransaction(txHash, preferredChainId || undefined);
+
+  if (!transaction) {
+    await interaction.editReply({
+      content: `❌ Transaction \`${txHash}\` not found on any supported chain.\n\n**Supported chains:** Ethereum, Base, Polygon, Arbitrum, Optimism, Avalanche, BSC, Fantom, Mantle, Gnosis, Celo, Linea, Scroll\n\n**Note:** If this is a Relay cross-chain transaction, use \`/relay\` instead.`,
+    });
+    return;
+  }
+
+  // Build embed with transaction details
+  const embed = new EmbedBuilder()
+    .setTitle("🔍 Transaction Details")
+    .setColor(transaction.status === "success" ? 0x00ff00 : transaction.status === "failed" ? 0xff0000 : 0xffff00)
+    .addFields(
+      {
+        name: "🌐 Chain",
+        value: `${transaction.chainName} (Chain ID: ${transaction.chainId})`,
+        inline: true,
+      },
+      {
+        name: "📊 Status",
+        value: transaction.status === "success" ? "✅ Success" : transaction.status === "failed" ? "❌ Failed" : transaction.status === "pending" ? "⏳ Pending" : "❓ Unknown",
+        inline: true,
+      },
+      {
+        name: "📤 From",
+        value: `\`${transaction.from}\``,
+        inline: false,
+      },
+    );
+
+  if (transaction.to) {
+    embed.addFields({
+      name: "📥 To",
+      value: `\`${transaction.to}\``,
+      inline: false,
+    });
+  }
+
+  if (transaction.blockNumber) {
+    embed.addFields({
+      name: "🔢 Block",
+      value: `#${transaction.blockNumber.toLocaleString()}`,
+      inline: true,
+    });
+  }
+
+  if (transaction.timestamp) {
+    embed.addFields({
+      name: "🕐 Time",
+      value: `<t:${transaction.timestamp}:F>`,
+      inline: true,
+    });
+  }
+
+  // Convert value from hex to ETH
+  if (transaction.value && transaction.value !== "0x0") {
+    try {
+      const valueWei = BigInt(transaction.value);
+      const valueEth = Number(valueWei) / 1e18;
+      if (valueEth > 0) {
+        embed.addFields({
+          name: "💰 Value",
+          value: `${valueEth.toFixed(6)} ETH`,
+          inline: true,
+        });
+      }
+    } catch (error) {
+      // Ignore value parsing errors
+    }
+  }
+
+  if (transaction.gasUsed) {
+    try {
+      const gasUsed = parseInt(transaction.gasUsed, 16);
+      embed.addFields({
+        name: "⛽ Gas Used",
+        value: gasUsed.toLocaleString(),
+        inline: true,
+      });
+    } catch (error) {
+      // Ignore gas parsing errors
+    }
+  }
+
+  embed
+    .addFields({
+      name: "🔗 Explorer",
+      value: `[View on ${transaction.chainName} Explorer](${transaction.explorerUrl})`,
+      inline: false,
+    })
+    .setFooter({
+      text: `Transaction Hash: ${txHash.slice(0, 10)}...${txHash.slice(-8)}`,
+    });
+
   await interaction.editReply({
-    content: `No Farcaster profile found for \`${query}\`, but the keyword matches this Clanker deployment:`,
-    embeds: [embeds[0]],
-    components,
+    embeds: [embed],
   });
 }

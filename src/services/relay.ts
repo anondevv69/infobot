@@ -123,14 +123,22 @@ export function extractTransactionHash(input: string): string | null {
   const trimmed = input.trim();
   
   // Direct Ethereum-style hash (0x followed by 64 hex chars)
+  // Transaction hashes are 66 chars total (0x + 64 hex)
   if (/^0x[a-fA-F0-9]{64}$/i.test(trimmed)) {
     return trimmed;
   }
 
-  // Direct Solana transaction signature (base58, typically 87-88 characters)
-  // Solana signatures are base58 encoded and usually 87-88 chars long
-  if (/^[1-9A-HJ-NP-Za-km-z]{87,88}$/.test(trimmed)) {
+  // Direct Solana transaction signature (base58, 43-88 characters)
+  // Solana signatures are base58 encoded and can be 43-88 chars long
+  // Note: Relay API only supports EVM hashes, but we extract Solana sigs to provide helpful error messages
+  if (/^[1-9A-HJ-NP-Za-km-z]{43,88}$/.test(trimmed)) {
     return trimmed;
+  }
+  
+  // Check if it's an Ethereum address (0x + 40 hex = 42 chars) - reject these
+  // Addresses are shorter than transaction hashes
+  if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
+    return null; // This is an address, not a transaction hash
   }
 
   // Extract from various explorer URLs - Ethereum-style
@@ -149,9 +157,9 @@ export function extractTransactionHash(input: string): string | null {
 
   // Extract from Solana explorer URLs (solscan, explorer.solana.com, etc.)
   const solanaPatterns = [
-    /(?:solscan|explorer\.solana)\.(?:io|com)\/tx\/([1-9A-HJ-NP-Za-km-z]{87,88})/i,
-    /\/tx\/([1-9A-HJ-NP-Za-km-z]{87,88})/i,
-    /transaction[\/=]([1-9A-HJ-NP-Za-km-z]{87,88})/i,
+    /(?:solscan|explorer\.solana)\.(?:io|com)\/tx\/([1-9A-HJ-NP-Za-km-z]{43,88})/i,
+    /\/tx\/([1-9A-HJ-NP-Za-km-z]{43,88})/i,
+    /transaction[\/=]([1-9A-HJ-NP-Za-km-z]{43,88})/i,
   ];
 
   for (const pattern of solanaPatterns) {
@@ -164,7 +172,7 @@ export function extractTransactionHash(input: string): string | null {
   // Extract from Relay.link transaction URLs (these use Relay's transaction IDs)
   const relayPatterns = [
     /relay\.link\/transaction\/(0x[a-fA-F0-9]{64})/i,
-    /relay\.link\/transaction\/([1-9A-HJ-NP-Za-km-z]{87,88})/i,
+    /relay\.link\/transaction\/([1-9A-HJ-NP-Za-km-z]{43,88})/i,
   ];
 
   for (const pattern of relayPatterns) {
@@ -606,8 +614,8 @@ export async function fetchRelayTransaction(
   walletAddress?: string,
 ): Promise<RelayTransaction | null> {
   try {
-    // Detect if this is a Solana transaction (base58, 87-88 chars, not starting with 0x)
-    const isSolanaTx = !txHash.startsWith("0x") && txHash.length >= 87 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(txHash);
+    // Detect if this is a Solana transaction (base58, 43-88 chars, not starting with 0x)
+    const isSolanaTx = !txHash.startsWith("0x") && txHash.length >= 43 && txHash.length <= 88 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(txHash);
     
     // If no chainId provided, try to detect from common patterns or use advanced detection
     let chainIdToUse = sourceChainId;

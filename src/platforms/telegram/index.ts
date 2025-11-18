@@ -23,7 +23,7 @@ export async function startTelegramBot(): Promise<void> {
     { command: "zora", description: "Search Zora accounts, contracts, or creator coins" },
     { command: "clanker", description: "Search Clanker deployments" },
     { command: "casts", description: "Search Farcaster casts by keyword" },
-    { command: "relay", description: "Get cross-chain transaction details from Relay.link" },
+    { command: "relay", description: "Get cross-chain transaction details from Relay.link. Provide a full transaction link from a block explorer (e.g., https://basescan.org/tx/0x...)" },
   ]);
 
   bot.on("message", async (msg) => {
