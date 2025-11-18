@@ -33,12 +33,30 @@ export async function handleTelegramConnect(
   // Check if already connected
   const existingSession = await getSIWFSession(userId, "telegram", env.backendUrl);
   if (existingSession) {
+    // Check if user has a signer
+    let hasSigner = false;
+    let signerAddress = "";
+    try {
+      const signerResponse = await fetch(`${env.backendUrl}/api/siwf/signer?userId=${userId}&platform=telegram`);
+      if (signerResponse.ok) {
+        const signerData = await signerResponse.json();
+        hasSigner = !!signerData.signerAddress;
+        signerAddress = signerData.signerAddress || "";
+      }
+    } catch (error) {
+      console.error("[Telegram Connect] Failed to check signer:", error);
+    }
+
     await bot.sendMessage(
       chatId,
       `✅ <b>Already Connected</b>\n\n` +
         `Farcaster ID: ${existingSession.fid}\n` +
         `Username: ${existingSession.username || "N/A"}\n` +
         `Custody Wallet: <code>${existingSession.custodyAddress}</code>\n\n` +
+        (hasSigner
+          ? `✅ <b>Trading Signer:</b> Connected (<code>${signerAddress.slice(0, 10)}...${signerAddress.slice(-8)}</code>)\n\n`
+          : `⚠️ <b>Trading Signer:</b> Not connected\n\n` +
+            `To enable trading, run /connect-signer &lt;private_key&gt;\n\n`) +
         `Use /disconnect to disconnect.`,
       { parse_mode: "HTML" },
     );
