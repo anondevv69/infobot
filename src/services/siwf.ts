@@ -61,30 +61,20 @@ export function getSIWFChallenge(userId: string, platform: "discord" | "telegram
   return challenge;
 }
 
-// Generate SIWF URL for Warpcast with referral code
-// For bots, we'll use a simplified flow:
-// 1. User clicks link to Warpcast sign-in page
-// 2. User signs in/up (with referral code)
-// 3. User comes back and provides their Farcaster username
-// 4. Bot verifies via Neynar API
+// Generate signup/signin URL for Farcaster with referral code
+// Note: SIWF requires a web callback, so for bots we use a simpler flow:
+// 1. User clicks link to sign up/sign in on Warpcast
+// 2. User creates account or signs in (with referral code)
+// 3. User comes back and runs /connect @username to verify
 export function generateSIWFUrl(challenge: string, redirectUrl?: string, referralCode?: string): string {
-  // Use Warpcast sign-in URL
-  // Format: https://warpcast.com/~/signin?challenge=...&ref=CODE
-  const baseUrl = "https://warpcast.com/~/signin";
-  const params = new URLSearchParams({
-    challenge,
-  });
-  
-  if (redirectUrl) {
-    params.append("redirect_uri", redirectUrl);
-  }
-
-  // Add referral code for new signups
+  // For bots, we'll use the Warpcast app URL which opens the app or web
+  // If referral code provided, use signup URL, otherwise signin
   if (referralCode) {
-    params.append("ref", referralCode);
+    // Signup URL with referral code
+    return `https://warpcast.com/~/signup?ref=${referralCode}`;
   }
-
-  return `${baseUrl}?${params.toString()}`;
+  // Signin URL
+  return "https://warpcast.com/~/signin";
 }
 
 // Alternative: Generate Farcaster signup URL with referral

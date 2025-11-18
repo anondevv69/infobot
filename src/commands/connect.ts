@@ -89,34 +89,36 @@ export async function handleConnectCommand(
     }
   }
 
-  // Generate SIWF challenge
-  const challenge = generateSIWFChallenge(userId, "discord");
-  const siwfUrl = generateSIWFUrl(challenge.challenge, undefined, env.farcasterReferralCode);
+  // Generate signup URL with referral code
+  const signupUrl = `https://warpcast.com/~/signup?ref=${env.farcasterReferralCode}`;
+  const signinUrl = "https://warpcast.com/~/signin";
 
   const embed = new EmbedBuilder()
     .setTitle("🔗 Connect Farcaster")
     .setDescription(
       `To connect your Farcaster account:\n\n` +
-      `**Option 1: If you have Farcaster**\n` +
+      `**Quick Connect (Recommended):**\n` +
+      `Run: \`/connect @yourusername\` or \`/connect 0xwallet\`\n\n` +
+      `**Or sign up/sign in first:**\n` +
       `1. Click the button below to open Warpcast\n` +
-      `2. Sign in and approve the connection\n` +
+      `2. Sign up (new users) or sign in (existing users)\n` +
       `3. Then run \`/connect @yourusername\` to verify\n\n` +
-      `**Option 2: If you don't have Farcaster**\n` +
-      `1. Click the button below to sign up (referral: ${env.farcasterReferralCode})\n` +
-      `2. Create your account\n` +
-      `3. Then run \`/connect @yourusername\` to verify\n\n` +
-      `**Or provide your Farcaster username now:**\n` +
-      `Run \`/connect @username\` or \`/connect 0xwallet\``
+      `💡 <b>Tip:</b> If you don't have Farcaster, sign up using the link below (referral: ${env.farcasterReferralCode})`
     )
     .setColor(0x8a63d2)
     .setFooter({ text: `Referral code: ${env.farcasterReferralCode} - Sign up to get started!` });
 
-  const button = new ButtonBuilder()
-    .setLabel("Connect with Farcaster")
-    .setURL(siwfUrl)
+  const signupButton = new ButtonBuilder()
+    .setLabel("Sign Up on Warpcast")
+    .setURL(signupUrl)
     .setStyle(ButtonStyle.Link);
 
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
+  const signinButton = new ButtonBuilder()
+    .setLabel("Sign In on Warpcast")
+    .setURL(signinUrl)
+    .setStyle(ButtonStyle.Link);
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(signupButton, signinButton);
 
   await interaction.reply({
     embeds: [embed],

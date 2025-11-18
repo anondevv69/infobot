@@ -63,7 +63,13 @@ async function registerGlobalCommands(): Promise<void> {
       ),
     new SlashCommandBuilder()
       .setName("connect")
-      .setDescription("Connect your Farcaster account to enable trading."),
+      .setDescription("Connect your Farcaster account to enable trading.")
+      .addStringOption((option) =>
+        option
+          .setName("username_or_wallet")
+          .setDescription("Your Farcaster username (@username) or wallet address (0x...) - optional")
+          .setRequired(false),
+      ),
     new SlashCommandBuilder()
       .setName("disconnect")
       .setDescription("Disconnect your Farcaster account."),

@@ -86,23 +86,23 @@ export async function handleTelegramConnect(
     }
   }
 
-  // Generate SIWF challenge with referral code
-  const challenge = generateSIWFChallenge(userId, "telegram");
-  const siwfUrl = generateSIWFUrl(challenge.challenge, undefined, env.farcasterReferralCode);
+  // Generate signup/signin URLs
+  const signupUrl = `https://warpcast.com/~/signup?ref=${env.farcasterReferralCode}`;
+  const signinUrl = "https://warpcast.com/~/signin";
 
   await bot.sendMessage(
     chatId,
     `🔗 <b>Connect Farcaster</b>\n\n` +
       `To connect your Farcaster account:\n\n` +
-      `<b>Option 1: Direct Connection</b>\n` +
+      `<b>Quick Connect (Recommended):</b>\n` +
       `Run: <code>/connect @yourusername</code> or <code>/connect 0xwallet</code>\n\n` +
-      `<b>Option 2: Sign Up/In</b>\n` +
-      `1. Click the link below to open Warpcast\n` +
-      `2. If you don't have Farcaster, sign up (referral: <code>${env.farcasterReferralCode}</code>)\n` +
-      `3. If you have Farcaster, sign in\n` +
-      `4. Then run: <code>/connect @yourusername</code>\n\n` +
-      `<a href="${siwfUrl}">🔐 Open Warpcast</a>\n\n` +
-      `💡 <i>Tip: You can connect directly by providing your Farcaster username or wallet!</i>`,
+      `<b>Or sign up/sign in first:</b>\n` +
+      `1. Click a link below to open Warpcast\n` +
+      `2. Sign up (new) or sign in (existing)\n` +
+      `3. Then run: <code>/connect @yourusername</code>\n\n` +
+      `<a href="${signupUrl}">📝 Sign Up (Referral: ${env.farcasterReferralCode})</a>\n` +
+      `<a href="${signinUrl}">🔐 Sign In</a>\n\n` +
+      `💡 <i>Tip: Connect directly by providing your Farcaster username or wallet!</i>`,
     {
       parse_mode: "HTML",
       disable_web_page_preview: false,
