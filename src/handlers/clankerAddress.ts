@@ -500,7 +500,14 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
 
       // Check for tokens on OTHER EVM chains (BSC, Ethereum, Polygon, etc.)
       // BEFORE treating it as a wallet to avoid showing wrong information
-      const multiChainTokenData = await fetchMultiChainTokenData(address);
+      let multiChainTokenData = null;
+      try {
+        multiChainTokenData = await fetchMultiChainTokenData(address);
+      } catch (err) {
+        console.error(`[Discord] Multi-chain fetch failed for ${address}:`, err);
+        // Continue to ERC-20 detection fallback
+      }
+      
       if (multiChainTokenData) {
         // Only show if it's NOT on Base (we already checked Base above)
         if (multiChainTokenData.chainId.toLowerCase() !== "base" && multiChainTokenData.chainId !== "8453") {
@@ -546,6 +553,49 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           
           return true;
         }
+      }
+      
+      // If multi-chain returned data but it's Base, we already handled it above
+      // So we can return here
+      if (multiChainTokenData) {
+        return true;
+      }
+    }
+    
+    // If DexScreener found nothing, try ERC-20 detection for tokens not on DEXes
+    // This should run BEFORE wallet/Zora checks
+    if (isEthAddress(address)) {
+      try {
+        const { detectTokenContract } = await import("../services/tokenDetection");
+        const tokenDetectionPromise = detectTokenContract(address);
+        const timeoutPromise = new Promise<null>((resolve) => {
+          setTimeout(() => {
+            console.log(`[Discord] Token detection timeout for ${address}`);
+            resolve(null);
+          }, 8000); // 8 second timeout
+        });
+        const tokenInfo = await Promise.race([tokenDetectionPromise, timeoutPromise]).catch(() => null);
+
+        if (tokenInfo && tokenInfo.isToken) {
+          const tokenInfoText = [
+            `🪙 **Token Contract Detected**`,
+            ``,
+            `🔗 **Chain:** ${tokenInfo.chainName}`,
+            tokenInfo.name ? `🏠 **Name:** ${tokenInfo.name}` : null,
+            tokenInfo.symbol ? `🔖 **Symbol:** ${tokenInfo.symbol}` : null,
+            tokenInfo.decimals !== null ? `🔢 **Decimals:** ${tokenInfo.decimals}` : null,
+            tokenInfo.totalSupply ? `📊 **Total Supply:** ${tokenInfo.totalSupply}` : null,
+            `🔑 **Address:** \`${address}\``,
+            ``,
+            `⚠️ This token is not yet listed on any DEX tracked by DexScreener.`,
+            `It may be a new token that hasn't created a liquidity pool yet.`,
+          ].filter(Boolean).join("\n");
+
+          await message.reply({ content: tokenInfoText });
+          return true;
+        }
+      } catch (error) {
+        console.error(`[Discord] Token detection failed:`, error);
       }
     }
   }
@@ -625,45 +675,8 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
       return false;
     }
     
-    // Try ERC-20 token detection for tokens not on DEXes (with timeout)
-    try {
-      const { detectTokenContract } = await import("../services/tokenDetection");
-      
-      // Add timeout to prevent hanging (8 seconds max - parallel checking is faster)
-      const tokenDetectionPromise = detectTokenContract(address);
-      const timeoutPromise = new Promise<null>((resolve) => {
-        setTimeout(() => {
-          console.log(`[Discord] Token detection timeout for ${address}`);
-          resolve(null);
-        }, 8000);
-      });
-      
-      const tokenInfo = await Promise.race([tokenDetectionPromise, timeoutPromise]).catch(() => null);
-      
-      if (tokenInfo && tokenInfo.isToken) {
-        // It's a token but not on DEX - show basic token info
-        const tokenInfoText = [
-          `🪙 **Token Contract Detected**`,
-          ``,
-          `🔗 **Chain:** ${tokenInfo.chainName}`,
-          tokenInfo.name ? `🏠 **Name:** ${tokenInfo.name}` : null,
-          tokenInfo.symbol ? `🔖 **Symbol:** ${tokenInfo.symbol}` : null,
-          tokenInfo.decimals !== null ? `🔢 **Decimals:** ${tokenInfo.decimals}` : null,
-          tokenInfo.totalSupply ? `📊 **Total Supply:** ${tokenInfo.totalSupply}` : null,
-          `🔑 **Address:** \`${address}\``,
-          ``,
-          `⚠️ This token is not yet listed on any DEX tracked by DexScreener.`,
-          `It may be a new token that hasn't created a liquidity pool yet.`,
-        ].filter(Boolean).join("\n");
-        
-        await message.reply({
-          content: tokenInfoText,
-        });
-        return true;
-      }
-    } catch (error) {
-      console.error(`[Discord] Token detection failed:`, error);
-    }
+    // ERC-20 token detection already ran above (before wallet/Zora checks)
+    // So we only need address lookup fallback here
     
     // Fallback to basic address lookup (with timeout)
     console.log(`[Discord] Attempting address lookup for ${address}`);

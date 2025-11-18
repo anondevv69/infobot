@@ -315,6 +315,45 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           
           return;  // EXIT
         }
+        
+        // If multi-chain returned data but it's Base, we already handled it above
+        // So we can return here
+        if (multiChainTokenData) {
+          return;  // EXIT
+        }
+      }
+      
+      // If DexScreener found nothing, try ERC-20 detection for tokens not on DEXes
+      // This should run BEFORE wallet/Zora checks
+      if (isEthFormat) {
+        try {
+          const { detectTokenContract } = await import("../../../services/tokenDetection");
+          const tokenDetectionPromise = detectTokenContract(address);
+          const timeoutPromise = new Promise<null>((resolve) => {
+            setTimeout(() => {
+              console.log(`[Telegram] Token detection timeout for ${address}`);
+              resolve(null);
+            }, 8000); // 8 second timeout
+          });
+          const tokenInfo = await Promise.race([tokenDetectionPromise, timeoutPromise]).catch(() => null);
+
+          if (tokenInfo && tokenInfo.isToken) {
+            tokenFound = true;  // ✅ TOKEN FOUND
+            const tokenMessage = `🪙 Token Contract Detected\n\n` +
+              `🔗 Chain: ${tokenInfo.chainName}\n` +
+              (tokenInfo.name ? `🏠 Name: ${tokenInfo.name}\n` : "") +
+              (tokenInfo.symbol ? `🔖 Symbol: ${tokenInfo.symbol}\n` : "") +
+              (tokenInfo.decimals !== null ? `🔢 Decimals: ${tokenInfo.decimals}\n` : "") +
+              (tokenInfo.totalSupply ? `📊 Total Supply: ${tokenInfo.totalSupply}\n` : "") +
+              `🔑 Address: <code>${address}</code>\n\n` +
+              `⚠️ This token is not yet listed on any DEX tracked by DexScreener.\n` +
+              `It may be a new token that hasn't created a liquidity pool yet.`;
+            await bot.sendMessage(chatId, tokenMessage, { parse_mode: "HTML", disable_web_page_preview: true });
+            return;  // EXIT
+          }
+        } catch (error) {
+          console.error(`[Telegram] Token detection failed:`, error);
+        }
       }
 
       // Try wallet (need to find user first)
@@ -1039,42 +1078,10 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
 
     // If we get here and it's a private chat, check if we should send a "not found" message
     // Only send if we actually tried to process an address (not just random text)
+    // ERC-20 detection already ran above (before wallet/Zora checks)
     if (address && !tokenFound) {
       try {
-        // FIRST: Try to detect if it's an ERC-20 token contract (even if not on DEX yet)
-        const { detectTokenContract } = await import("../../../services/tokenDetection");
-        
-        // Add timeout (8 seconds max - parallel checking is faster)
-        const tokenDetectionPromise = detectTokenContract(address);
-        const timeoutPromise = new Promise<null>((resolve) => {
-          setTimeout(() => {
-            console.log(`[Telegram] Token detection timeout for ${address}`);
-            resolve(null);
-          }, 8000);
-        });
-        
-        const tokenInfo = await Promise.race([tokenDetectionPromise, timeoutPromise]).catch(() => null);
-        
-        if (tokenInfo && tokenInfo.isToken) {
-          // It's a token but not on DEX - show basic token info
-          const tokenMessage = `🪙 Token Contract Detected\n\n` +
-            `🔗 Chain: ${tokenInfo.chainName}\n` +
-            (tokenInfo.name ? `🏠 Name: ${tokenInfo.name}\n` : "") +
-            (tokenInfo.symbol ? `🔖 Symbol: ${tokenInfo.symbol}\n` : "") +
-            (tokenInfo.decimals !== null ? `🔢 Decimals: ${tokenInfo.decimals}\n` : "") +
-            (tokenInfo.totalSupply ? `📊 Total Supply: ${tokenInfo.totalSupply}\n` : "") +
-            `🔑 Address: <code>${address}</code>\n\n` +
-            `⚠️ This token is not yet listed on any DEX tracked by DexScreener.\n` +
-            `It may be a new token that hasn't created a liquidity pool yet.`;
-          
-          await bot.sendMessage(chatId, tokenMessage, {
-            parse_mode: "HTML",
-            disable_web_page_preview: true,
-          });
-          return;
-        }
-        
-        // SECOND: Try basic address lookup as fallback
+        // Try basic address lookup as fallback
         const { lookupAddress } = await import("../../../services/addressLookup");
         const addressInfo = await lookupAddress(address).catch(() => null);
         
