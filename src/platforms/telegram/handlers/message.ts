@@ -272,23 +272,38 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           const { getContractCreation, getContractCreationTx } = await import("../../../services/contractCreation");
           const { env } = await import("../../../config");
           
-          // Start creator lookup in background (non-blocking, with timeout)
-          // Send token info immediately, then update with creator info if available
+          // Fetch creator address and detect factory for this chain (with timeout for speed)
           const creatorLookupPromise = Promise.all([
             getContractCreation(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
             getContractCreationTx(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
           ]);
           
           const creatorTimeoutPromise = new Promise<[null, null]>((resolve) => {
-            setTimeout(() => resolve([null, null]), 3000); // 3 second timeout (reduced for speed)
+            setTimeout(() => resolve([null, null]), 5000); // 5 second timeout for creator lookup
           });
           
-          // Build embed immediately without waiting for creator info
-          // Creator info will be added if available, but won't block the response
+          // Wait for creator lookup (with timeout) before building embed
+          const [contractCreation, creationTx] = await Promise.race([
+            creatorLookupPromise,
+            creatorTimeoutPromise,
+          ]);
+
+          // Detect factory: if creationTx.to exists, that's the factory address
+          let factoryName: string | null = null;
+          if (creationTx?.to) {
+            factoryName = `Factory: ${creationTx.to.slice(0, 10)}...${creationTx.to.slice(-8)}`;
+          }
+
+          // Add creator info to token data before building embed
+          multiChainTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
+          multiChainTokenData.factoryName = factoryName;
+          multiChainTokenData.createdAt = contractCreation?.createdAt ?? null;
+          multiChainTokenData.creationTxHash = contractCreation?.txHash ?? null;
+
+          // Build embed with creator info (if available)
           const { embed } = await buildMultiChainTokenEmbed(address, multiChainTokenData);
           const messages = embedsToTelegram([embed]);
           
-          // Send response immediately
           await bot.sendMessage(chatId, `${multiChainTokenData.chainName} token detected for <code>${address}</code>.`, {
             parse_mode: "HTML",
             disable_web_page_preview: true,
@@ -296,17 +311,6 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           await bot.sendMessage(chatId, messages[0], {
             parse_mode: "HTML",
             disable_web_page_preview: true,
-          });
-          
-          // Try to get creator info in background (non-blocking)
-          // If it completes quickly, we could send an update, but for now just log it
-          Promise.race([creatorLookupPromise, creatorTimeoutPromise]).then(([contractCreation, creationTx]) => {
-            if (contractCreation?.contractCreator) {
-              // Creator found - could send update message, but for speed we'll just log
-              // In future, could send a follow-up message with creator info
-            }
-          }).catch(() => {
-            // Ignore errors - already sent response
           });
           
           return;  // EXIT

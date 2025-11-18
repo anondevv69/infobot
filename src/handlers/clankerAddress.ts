@@ -507,34 +507,41 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           // Fetch creator address and detect factory for this chain (with timeout for speed)
           const { getContractCreation, getContractCreationTx } = await import("../services/contractCreation");
           
-          // Start creator lookup in background (non-blocking, with timeout)
-          // Build embed immediately, add creator info if available quickly
+          // Fetch creator address and detect factory for this chain (with timeout for speed)
           const creatorLookupPromise = Promise.all([
             getContractCreation(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
             getContractCreationTx(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
           ]);
           
           const creatorTimeoutPromise = new Promise<[null, null]>((resolve) => {
-            setTimeout(() => resolve([null, null]), 3000); // 3 second timeout (reduced for speed)
+            setTimeout(() => resolve([null, null]), 5000); // 5 second timeout for creator lookup
           });
           
-          // Build embed immediately without waiting for creator info
+          // Wait for creator lookup (with timeout) before building embed
+          const [contractCreation, creationTx] = await Promise.race([
+            creatorLookupPromise,
+            creatorTimeoutPromise,
+          ]);
+
+          // Detect factory: if creationTx.to exists, that's the factory address
+          let factoryName: string | null = null;
+          if (creationTx?.to) {
+            factoryName = `Factory: ${creationTx.to.slice(0, 10)}...${creationTx.to.slice(-8)}`;
+          }
+
+          // Add creator info to token data before building embed
+          multiChainTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
+          multiChainTokenData.factoryName = factoryName;
+          multiChainTokenData.createdAt = contractCreation?.createdAt ?? null;
+          multiChainTokenData.creationTxHash = contractCreation?.txHash ?? null;
+
+          // Build embed with creator info (if available)
           const { embed, components } = await buildMultiChainTokenEmbed(address, multiChainTokenData);
           
-          // Send response immediately
           await message.reply({
             content: `${multiChainTokenData.chainName} token detected for \`${address}\`.`,
             embeds: [embed],
             components,
-          });
-          
-          // Try to get creator info in background (non-blocking)
-          Promise.race([creatorLookupPromise, creatorTimeoutPromise]).then(([contractCreation, creationTx]) => {
-            if (contractCreation?.contractCreator) {
-              // Creator found - could send update, but for speed we skip it
-            }
-          }).catch(() => {
-            // Ignore errors - already sent response
           });
           
           return true;
