@@ -610,6 +610,62 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
     if (zoraReference) {
       return false;
     }
+    
+    // Try ERC-20 token detection for tokens not on DEXes
+    try {
+      const { detectTokenContract } = await import("../services/tokenDetection");
+      const tokenInfo = await detectTokenContract(address).catch(() => null);
+      
+      if (tokenInfo && tokenInfo.isToken) {
+        // It's a token but not on DEX - show basic token info
+        const tokenInfoText = [
+          `🪙 **Token Contract Detected**`,
+          ``,
+          `🔗 **Chain:** ${tokenInfo.chainName}`,
+          tokenInfo.name ? `🏠 **Name:** ${tokenInfo.name}` : null,
+          tokenInfo.symbol ? `🔖 **Symbol:** ${tokenInfo.symbol}` : null,
+          tokenInfo.decimals !== null ? `🔢 **Decimals:** ${tokenInfo.decimals}` : null,
+          tokenInfo.totalSupply ? `📊 **Total Supply:** ${tokenInfo.totalSupply}` : null,
+          `🔑 **Address:** \`${address}\``,
+          ``,
+          `⚠️ This token is not yet listed on any DEX tracked by DexScreener.`,
+          `It may be a new token that hasn't created a liquidity pool yet.`,
+        ].filter(Boolean).join("\n");
+        
+        await message.reply({
+          content: tokenInfoText,
+        });
+        return true;
+      }
+    } catch (error) {
+      console.error(`[Discord] Token detection failed:`, error);
+    }
+    
+    // Fallback to basic address lookup
+    try {
+      const { lookupAddress } = await import("../services/addressLookup");
+      const addressInfo = await lookupAddress(address).catch(() => null);
+      
+      if (addressInfo && addressInfo.length > 0) {
+        const info = addressInfo[0];
+        const addressInfoText = [
+          `🔍 **Address found on ${info.chainName}**`,
+          ``,
+          `🔑 **Address:** \`${address}\``,
+          info.isContract ? `📄 **Type:** Contract` : `👤 **Type:** Wallet`,
+          info.balance ? `💰 **Balance:** ${info.balance}` : null,
+          `🔗 **Explorer:** ${info.explorerUrl}`,
+        ].filter(Boolean).join("\n");
+        
+        await message.reply({
+          content: addressInfoText,
+        });
+        return true;
+      }
+    } catch (error) {
+      console.error(`[Discord] Address lookup failed:`, error);
+    }
+    
     await message.reply({
       content: `We're continuing to add more wallet tracking systems and cannot connect \`${address}\` to any wallet or contract at this time.`,
     });
