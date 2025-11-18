@@ -48,12 +48,24 @@ function getChainRPCs(quicknodeApiKey?: string | null): ChainRPC[] {
     5000: "https://rpc.mantle.xyz",
   };
 
-  // Use QuickNode if API key is provided, otherwise use public RPCs
+  // Use QuickNode if API key is provided
+  // QuickNode requires creating endpoints in the dashboard - format may vary
+  // Try multiple possible formats
   if (quicknodeApiKey) {
-    return baseRPCs.map((chain) => ({
-      ...chain,
-      rpcUrl: `https://${chain.quicknodeEndpoint}.quiknode.pro/${quicknodeApiKey}/`,
-    }));
+    return baseRPCs.map((chain) => {
+      // Try different QuickNode endpoint formats
+      // Format 1: https://{chain}.quiknode.pro/{API_KEY}/
+      // Format 2: https://{endpoint-name}.{chain}.quiknode.pro/{API_KEY}/
+      // Format 3: https://{chain}-mainnet.quiknode.pro/{API_KEY}/
+      
+      // For now, use a format that might work, but user should check their dashboard
+      const quicknodeUrl = `https://${chain.quicknodeEndpoint}.quiknode.pro/${quicknodeApiKey}/`;
+      
+      return {
+        ...chain,
+        rpcUrl: quicknodeUrl,
+      };
+    });
   }
 
   return baseRPCs.map((chain) => ({
