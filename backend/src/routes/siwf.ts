@@ -146,96 +146,10 @@ router.get("/callback", async (req, res) => {
       `);
     }
 
-    // If FID is provided in callback (from Warpcast), use it
-    if (fid) {
-      try {
-        const fidNum = parseInt(fid as string, 10);
-        const user = await neynarClient.lookupUserByFid({ fid: fidNum });
-
-        if (!user) {
-          return res.status(404).send(`
-            <!DOCTYPE html>
-            <html>
-              <head><title>User Not Found</title></head>
-              <body>
-                <h1>❌ User Not Found</h1>
-                <p>Farcaster user not found.</p>
-              </body>
-            </html>
-          `);
-        }
-
-        // Store the verified connection
-        const key = `${verificationPlatform}:${verificationUserId}`;
-        verifiedConnections.set(key, {
-          fid: user.fid,
-          username: user.username || "",
-          custodyAddress: user.custody_address || "",
-          verifiedAddresses: user.verified_addresses?.eth_addresses || [],
-          platform: verificationPlatform,
-        });
-
-        // Clean up pending verification
-        pendingVerifications.delete(verificationChallenge);
-
-        // Show success page
-        return res.send(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>✅ Connected to Farcaster</title>
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <style>
-                body {
-                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                  max-width: 600px;
-                  margin: 50px auto;
-                  padding: 20px;
-                  text-align: center;
-                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                  color: white;
-                }
-                .card {
-                  background: white;
-                  color: #333;
-                  padding: 40px;
-                  border-radius: 20px;
-                  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-                }
-                h1 { color: #4CAF50; margin-top: 0; }
-                .username { font-size: 24px; font-weight: bold; color: #667eea; margin: 20px 0; }
-                .info { background: #f5f5f5; padding: 15px; border-radius: 10px; margin: 15px 0; text-align: left; }
-                .info strong { color: #667eea; }
-              </style>
-            </head>
-            <body>
-              <div class="card">
-                <h1>✅ Successfully Connected!</h1>
-                <p>Your Farcaster account is now linked to your ${verificationPlatform === "discord" ? "Discord" : "Telegram"} account.</p>
-                
-                <div class="username">@${user.username}</div>
-                
-                <div class="info">
-                  <strong>Farcaster ID:</strong> ${user.fid}<br>
-                  <strong>Username:</strong> @${user.username}<br>
-                  <strong>Custody Wallet:</strong> ${user.custody_address?.slice(0, 10)}...${user.custody_address?.slice(-8)}
-                </div>
-                
-                <p style="margin-top: 30px;">
-                  <strong>You can now close this window and return to ${verificationPlatform === "discord" ? "Discord" : "Telegram"}.</strong><br>
-                  Use trading commands like /buy, /sell, and /swap!
-                </p>
-              </div>
-            </body>
-          </html>
-        `);
-      } catch (error: any) {
-        logger.error("Failed to lookup user by FID:", error);
-        // Fall through to show instructions
-      }
-    }
-
-    // No FID provided - show page asking user to complete connection
+    // Warpcast redirects here after sign-in
+    // Since we can't automatically get the FID from the redirect,
+    // we'll show instructions for the user to complete the connection
+    // by providing their username
     return res.send(`
       <!DOCTYPE html>
       <html>
@@ -307,4 +221,3 @@ router.get("/callback", async (req, res) => {
 });
 
 export const siwfRouter = router;
-export { getConnection };
