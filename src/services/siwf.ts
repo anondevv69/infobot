@@ -78,16 +78,20 @@ export function generateSIWFUrl(
   backendUrl: string,
   referralCode?: string,
 ): string {
+  // WARNING: Direct SIWF URLs are unreliable and often fail with "Could not reach Farcaster"
+  // RECOMMENDED: Use Mini App approach instead (set MINIAPP_URL environment variable)
+  
   // Encode user info in the challenge for the callback to identify the user
   // The challenge already contains this, but we'll also pass it in the callback URL
   const callbackUrl = `${backendUrl}/api/siwf/callback?challenge=${challenge}&userId=${userId}&platform=${platform}`;
   
-  // Use farcaster.xyz as the canonical SIWF endpoint
-  const baseUrl = "https://farcaster.xyz/~/signin";
+  // Try warpcast.com first (more reliable than farcaster.xyz)
+  // If this fails, the user should use Mini App instead
+  const baseUrl = "https://warpcast.com/~/signin";
   
   const params = new URLSearchParams({
     challenge,
-    redirect_uri: callbackUrl,
+    redirect_uri: encodeURIComponent(callbackUrl), // Ensure proper encoding
   });
 
   // Add referral code for new signups
@@ -99,8 +103,10 @@ export function generateSIWFUrl(
   
   // Log the generated URL for debugging (only first time to avoid spam)
   if (!(global as any).__siwf_url_logged) {
+    console.log("[SIWF] ⚠️  WARNING: Direct SIWF URLs are unreliable");
     console.log("[SIWF] ✅ Generated URL base:", baseUrl);
-    console.log("[SIWF] ✅ Full generated URL (first call):", generatedUrl.substring(0, 100) + "...");
+    console.log("[SIWF] ✅ Full generated URL (first call):", generatedUrl.substring(0, 150) + "...");
+    console.log("[SIWF] 💡 RECOMMENDED: Use Mini App instead (set MINIAPP_URL)");
     (global as any).__siwf_url_logged = true;
   }
   

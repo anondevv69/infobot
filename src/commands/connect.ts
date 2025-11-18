@@ -96,7 +96,8 @@ export async function handleConnectCommand(
       `🔒 **Security:** This method verifies you own the Farcaster account.\n\n` +
       `💡 **Better UX:** Mini App provides QR code login and native Farcaster experience!`;
   } else {
-    // Fallback to direct SIWF (may have issues, but works as backup)
+    // Fallback to direct SIWF (WARNING: This often fails with "Could not reach Farcaster")
+    // The issue is that direct SIWF URLs are unreliable - Mini App is the recommended approach
     const challenge = generateSIWFChallenge(userId, "discord");
     const siwfUrl = generateSIWFUrl(
       challenge.challenge,
@@ -109,13 +110,18 @@ export async function handleConnectCommand(
     connectUrl = siwfUrl;
     connectLabel = "🔐 Connect with Farcaster";
     description =
-      `To securely connect your Farcaster account:\n\n` +
+      `⚠️ **IMPORTANT:** Direct SIWF URLs often fail with "Could not reach Farcaster" error.\n\n` +
+      `**To fix this, please:**\n` +
+      `1. Deploy the Mini App (see MINIAPP_SETUP.md)\n` +
+      `2. Set MINIAPP_URL environment variable\n` +
+      `3. This will provide QR code support and reliable authentication\n\n` +
+      `**Temporary workaround (may not work):**\n` +
       `**Step 1:** Click the button below to open Warpcast\n` +
-      `**Step 2:** Sign in to your Farcaster account (or sign up if new - referral: ${env.farcasterReferralCode})\n` +
-      `**Step 3:** Approve the connection request\n` +
-      `**Step 4:** You'll be redirected back and your account will be securely linked!\n\n` +
+      `**Step 2:** Sign in to your Farcaster account\n` +
+      `**Step 3:** If you see "Could not reach Farcaster", the URL format is wrong\n` +
+      `**Step 4:** You'll need to use the Mini App approach instead\n\n` +
       `🔒 **Security:** This method verifies you own the Farcaster account.\n\n` +
-      `⚠️ **Note:** If this doesn't work, we recommend using the Mini App approach (set MINIAPP_URL in environment variables).`;
+      `💡 **Best Solution:** Deploy Mini App for reliable authentication with QR code support!`;
   }
 
   const embed = new EmbedBuilder()
