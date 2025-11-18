@@ -5,6 +5,7 @@ import {
   detectChainFromLink,
   type RelayTransaction,
 } from "../services/relay";
+import { isEthAddress, isSolAddress } from "../utils/address";
 
 export async function handleRelayCommand(
   interaction: ChatInputCommandInteraction,
@@ -23,18 +24,20 @@ export async function handleRelayCommand(
   await interaction.reply("👁️ Processing...");
 
   try {
-    // Check if input is a wallet address (Ethereum or Solana)
-    const { isEthAddress, isSolAddress } = await import("../utils/address");
-    const isWalletAddress = isEthAddress(input) || isSolAddress(input);
+    // First, check if input is a wallet address (Ethereum or Solana)
+    // This must be checked BEFORE trying to extract transaction hash
+    // because wallet addresses might match transaction hash patterns
+    const trimmedInput = input.trim();
+    const isWalletAddress = isEthAddress(trimmedInput) || isSolAddress(trimmedInput);
     
     if (isWalletAddress) {
       // Query by wallet address to get the most recent transaction
       const { fetchRelayTransactionByWallet } = await import("../services/relay");
-      const transaction = await fetchRelayTransactionByWallet(input);
+      const transaction = await fetchRelayTransactionByWallet(trimmedInput);
       
       if (!transaction) {
         await interaction.editReply({
-          content: `❌ No Relay transactions found for wallet \`${input}\`.\n\n**Possible reasons:**\n• This wallet has not made any Relay cross-chain transactions\n• The wallet address format is incorrect`,
+          content: `❌ No Relay transactions found for wallet \`${trimmedInput}\`.\n\n**Possible reasons:**\n• This wallet has not made any Relay cross-chain transactions\n• The wallet address format is incorrect`,
         });
         return;
       }

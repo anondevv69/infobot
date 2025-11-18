@@ -108,16 +108,19 @@ Just send:
         await bot.sendChatAction(chatId, "typing");
         
         try {
-          // Check if input is a wallet address (Ethereum or Solana)
-          const isWalletAddress = isEthAddress(query) || isSolAddress(query);
+          // First, check if input is a wallet address (Ethereum or Solana)
+          // This must be checked BEFORE trying to extract transaction hash
+          // because wallet addresses might match transaction hash patterns
+          const trimmedQuery = query.trim();
+          const isWalletAddress = isEthAddress(trimmedQuery) || isSolAddress(trimmedQuery);
           
           if (isWalletAddress) {
             // Query by wallet address to get the most recent transaction
             const { fetchRelayTransactionByWallet } = await import("../../../services/relay");
-            const transaction = await fetchRelayTransactionByWallet(query);
+            const transaction = await fetchRelayTransactionByWallet(trimmedQuery);
             
             if (!transaction) {
-              await bot.sendMessage(chatId, `❌ No Relay transactions found for wallet <code>${query}</code>.\n\n<b>Possible reasons:</b>\n• This wallet has not made any Relay cross-chain transactions\n• The wallet address format is incorrect`, { parse_mode: "HTML" });
+              await bot.sendMessage(chatId, `❌ No Relay transactions found for wallet <code>${trimmedQuery}</code>.\n\n<b>Possible reasons:</b>\n• This wallet has not made any Relay cross-chain transactions\n• The wallet address format is incorrect`, { parse_mode: "HTML" });
               return;
             }
             
