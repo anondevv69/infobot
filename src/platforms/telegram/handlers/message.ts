@@ -252,13 +252,25 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       // STEP 4: MULTI-CHAIN TOKENS (Mantle, BSC, etc.)
       // ============================================
       // Multi-chain MUST run even if isEthAddress() === false
+      console.log(`[Telegram] Attempting multi-chain token lookup for ${address}`);
       let multiChainTokenData = null;
 
       try {
+        console.log(`[Telegram] Calling DexScreener API for ${address}...`);
         multiChainTokenData = await fetchMultiChainTokenData(address);  // DexScreener API
+        if (multiChainTokenData) {
+          console.log(`[Telegram] DexScreener returned token data:`, {
+            chainId: multiChainTokenData.chainId,
+            chainName: multiChainTokenData.chainName,
+            tokenName: multiChainTokenData.tokenName,
+            tokenSymbol: multiChainTokenData.tokenSymbol,
+          });
+        } else {
+          console.log(`[Telegram] DexScreener returned null for ${address} - token not found on any chain`);
+        }
       } catch (err) {
         console.error(`[Telegram] Multi-chain fetch failed for ${address}:`, err);
-        return;  // Prevent Zora fallback
+        // Don't return here - let it continue to wallet lookup
       }
 
       if (multiChainTokenData) {
@@ -266,7 +278,10 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         const chainIdLower = multiChainTokenData.chainId.toLowerCase();
         console.log(`[Telegram] Multi-chain token found: ${multiChainTokenData.chainName} (chainId: ${multiChainTokenData.chainId}, normalized: ${chainIdLower})`);
         // Handle all non-Base chains (including BSC, Mantle, etc.)
-        if (chainIdLower !== "base" && multiChainTokenData.chainId !== "8453") {
+        // Check both lowercase and original chainId to handle "bsc" vs "56"
+        const isBase = chainIdLower === "base" || multiChainTokenData.chainId === "8453";
+        console.log(`[Telegram] Is Base chain? ${isBase} (chainId: ${multiChainTokenData.chainId}, normalized: ${chainIdLower})`);
+        if (!isBase) {
           console.log(`[Telegram] ✅ Showing ${multiChainTokenData.chainName} token for ${address} (chainId: ${multiChainTokenData.chainId})`);
           // Fetch creator address and detect factory for this chain
           const { getContractCreation, getContractCreationTx } = await import("../../../services/contractCreation");
