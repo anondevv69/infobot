@@ -18,19 +18,49 @@ interface ChainRPC {
   chainId: number;
   name: string;
   rpcUrl: string;
+  quicknodeEndpoint?: string; // QuickNode endpoint name for this chain
 }
 
-const CHAIN_RPCS: ChainRPC[] = [
-  { chainId: 1, name: "Ethereum", rpcUrl: "https://eth.llamarpc.com" },
-  { chainId: 56, name: "BSC", rpcUrl: "https://bsc-dataseed.binance.org" },
-  { chainId: 137, name: "Polygon", rpcUrl: "https://polygon-rpc.com" },
-  { chainId: 42161, name: "Arbitrum", rpcUrl: "https://arb1.arbitrum.io/rpc" },
-  { chainId: 10, name: "Optimism", rpcUrl: "https://mainnet.optimism.io" },
-  { chainId: 8453, name: "Base", rpcUrl: "https://mainnet.base.org" },
-  { chainId: 43114, name: "Avalanche", rpcUrl: "https://api.avax.network/ext/bc/C/rpc" },
-  { chainId: 250, name: "Fantom", rpcUrl: "https://rpc.ftm.tools" },
-  { chainId: 5000, name: "Mantle", rpcUrl: "https://rpc.mantle.xyz" },
-];
+// Get RPC URLs - use QuickNode if available, otherwise fallback to public RPCs
+function getChainRPCs(quicknodeApiKey?: string | null): ChainRPC[] {
+  const baseRPCs: Omit<ChainRPC, "rpcUrl">[] = [
+    { chainId: 1, name: "Ethereum", quicknodeEndpoint: "ethereum" },
+    { chainId: 56, name: "BSC", quicknodeEndpoint: "bsc" },
+    { chainId: 137, name: "Polygon", quicknodeEndpoint: "polygon" },
+    { chainId: 42161, name: "Arbitrum", quicknodeEndpoint: "arbitrum" },
+    { chainId: 10, name: "Optimism", quicknodeEndpoint: "optimism" },
+    { chainId: 8453, name: "Base", quicknodeEndpoint: "base" },
+    { chainId: 43114, name: "Avalanche", quicknodeEndpoint: "avalanche" },
+    { chainId: 250, name: "Fantom", quicknodeEndpoint: "fantom" },
+    { chainId: 5000, name: "Mantle", quicknodeEndpoint: "mantle" },
+  ];
+
+  // Public RPC fallbacks
+  const publicRPCs: Record<number, string> = {
+    1: "https://eth.llamarpc.com",
+    56: "https://bsc-dataseed.binance.org",
+    137: "https://polygon-rpc.com",
+    42161: "https://arb1.arbitrum.io/rpc",
+    10: "https://mainnet.optimism.io",
+    8453: "https://mainnet.base.org",
+    43114: "https://api.avax.network/ext/bc/C/rpc",
+    250: "https://rpc.ftm.tools",
+    5000: "https://rpc.mantle.xyz",
+  };
+
+  // Use QuickNode if API key is provided, otherwise use public RPCs
+  if (quicknodeApiKey) {
+    return baseRPCs.map((chain) => ({
+      ...chain,
+      rpcUrl: `https://${chain.quicknodeEndpoint}.quiknode.pro/${quicknodeApiKey}/`,
+    }));
+  }
+
+  return baseRPCs.map((chain) => ({
+    ...chain,
+    rpcUrl: publicRPCs[chain.chainId] || `https://rpc.${chain.name.toLowerCase()}.com`,
+  }));
+}
 
 /**
  * Call a contract function via RPC
@@ -201,9 +231,13 @@ export async function detectTokenContract(
   address: string,
   chainId?: number,
 ): Promise<TokenInfo | null> {
+  // Dynamically get RPC URLs (with QuickNode if available)
+  const { env } = await import("../config");
+  const allChains = getChainRPCs(env.quicknodeApiKey);
+  
   const chainsToCheck = chainId
-    ? CHAIN_RPCS.filter((c) => c.chainId === chainId)
-    : CHAIN_RPCS;
+    ? allChains.filter((c) => c.chainId === chainId)
+    : allChains;
 
   // Check all chains in parallel (with 5 second timeout per chain)
   // This is much faster than sequential checking
