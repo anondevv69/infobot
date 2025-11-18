@@ -61,6 +61,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
     
     // Extract address first (works for any EVM address format)
     const address = extractFirstAddress(text);
+    let tokenFound = false; // Track if we found a token
     if (address) {
       // Check if it's an Ethereum address format (for Base token checks)
       const isEthFormat = isEthAddress(address);
@@ -77,7 +78,6 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       // 6. Zora profile ONLY as part of wallet lookup, not standalone
 
       // CRITICAL: Flag to block Zora fallback when any token is found
-      let tokenFound = false;
       const normalizedAddress = address.toLowerCase();
 
       // FIRST: Check if this is a creator coin or any Zora coin - do this before any other processing
@@ -282,6 +282,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         const isBase = chainIdLower === "base" || multiChainTokenData.chainId === "8453";
         console.log(`[Telegram] Is Base chain? ${isBase} (chainId: ${multiChainTokenData.chainId}, normalized: ${chainIdLower})`);
         if (!isBase) {
+          // Process non-Base multi-chain tokens
           console.log(`[Telegram] ✅ Showing ${multiChainTokenData.chainName} token for ${address} (chainId: ${multiChainTokenData.chainId})`);
           // Fetch creator address and detect factory for this chain
           const { getContractCreation, getContractCreationTx } = await import("../../../services/contractCreation");
@@ -699,7 +700,6 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         // 6. Zora profile fallback
 
         // CRITICAL: Flag to block Zora fallback when any token is found
-        let tokenFound = false;
         const normalizedAddress = address.toLowerCase();
 
         // FIRST: Check if this is a Zora coin
@@ -1063,7 +1063,47 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       }
     }
 
-    // If we get here and it's a private chat, don't send anything (silent failure for auto-detection)
+    // If we get here and it's a private chat, check if we should send a "not found" message
+    // Only send if we actually tried to process an address (not just random text)
+    if (address && !tokenFound) {
+      console.log(`[Telegram] No token/wallet found for ${address} - sending not found message`);
+      try {
+        // Try basic address lookup as final fallback
+        const { lookupAddress } = await import("../../../services/addressLookup");
+        const addressInfo = await lookupAddress(address).catch(() => null);
+        
+        if (addressInfo && addressInfo.length > 0) {
+          // Found address info on some chain
+          const info = addressInfo[0];
+          const message = `🔍 Address found on ${info.chainName}\n` +
+            `🔑 Address: <code>${address}</code>\n` +
+            `${info.isContract ? "📄 Contract" : "👤 Wallet"}\n` +
+            (info.balance ? `💰 Balance: ${info.balance}` : "") +
+            `\n🔗 <a href="${info.explorerUrl}">View on Explorer</a>`;
+          await bot.sendMessage(chatId, message, {
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          });
+        } else {
+          // Nothing found - send helpful message
+          await bot.sendMessage(chatId, `❌ No token or wallet information found for <code>${address}</code>.\n\n` +
+            `This address may not be:\n` +
+            `• Listed on any DEX tracked by DexScreener\n` +
+            `• A known wallet with Farcaster/Zora profiles\n` +
+            `• Active on supported chains\n\n` +
+            `Try searching for a different address or check the address on a block explorer.`, {
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          });
+        }
+      } catch (fallbackError) {
+        console.error(`[Telegram] Fallback address lookup failed:`, fallbackError);
+        // Send basic not found message
+        await bot.sendMessage(chatId, `❌ No information found for <code>${address}</code>.`, {
+          parse_mode: "HTML",
+        });
+      }
+    }
     // In groups, we already filtered out non-mentions above
   } catch (error) {
     console.error(`[Telegram] Error in processMessage:`, error);
