@@ -15,6 +15,13 @@ export function isSolAddress(value: string): boolean {
   return SOL_ADDRESS_REGEX.test(value);
 }
 
+/**
+ * Check if a string is a valid EVM transaction hash (66 chars: 0x + 64 hex)
+ */
+export function isTransactionHash(value: string): boolean {
+  return /^0x[a-fA-F0-9]{64}$/i.test(value.trim());
+}
+
 export function extractFirstAddress(content: string): string | null {
   const ethMatch = content.match(ETH_ADDRESS_FINDER_REGEX);
   if (ethMatch) {

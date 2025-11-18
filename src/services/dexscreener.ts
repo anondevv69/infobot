@@ -246,6 +246,8 @@ function getChainName(chainId: string): string {
     "fantom": "Fantom",
     "100": "Gnosis",
     "gnosis": "Gnosis",
+    "5000": "Mantle",
+    "mantle": "Mantle",
   };
   return chainMap[chainId.toLowerCase()] ?? chainId;
 }
@@ -257,5 +259,6 @@ export async function checkTokenExists(contractAddress: string): Promise<boolean
   const data = await fetchBaseTokenData(contractAddress);
   return data !== null;
 }
+
 
 

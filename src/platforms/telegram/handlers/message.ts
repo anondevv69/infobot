@@ -66,26 +66,61 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         // Check Zora/Clanker FIRST (they have creator info, so we don't need Basescan API)
         // Only use Basescan API for Base tokens that are NOT Zora/Clanker
         
-        // Try Clanker first (build all pages)
-        // IMPORTANT: Clanker tokens are also Base tokens, so we must check Clanker BEFORE Base tokens
-        try {
-          const clankerSent = await sendClankerTokenPages(bot, chatId, address);
-          if (clankerSent) {
-            return; // Found Clanker token, don't check Base tokens
-          }
-        } catch (error) {
-          console.error("Error checking Clanker tokens:", error);
-          // Continue to other checks if Clanker check fails
-        }
+        // IMPORTANT: Check order must match Discord EXACTLY:
+        // 1. Zora coins FIRST (check if address IS a Zora coin)
+        // 2. Clanker tokens
+        // 3. Base tokens
+        // 4. Multi-chain tokens (Mantle, BSC, etc.)
+        // 5. Farcaster user with wallet (includes Zora profile if associated)
+        // 6. Zora profile ONLY as part of wallet lookup, not standalone
 
-        // Try Zora
+        // CRITICAL: Flag to block Zora fallback when any token is found
+        let tokenFound = false;
+        const normalizedAddress = address.toLowerCase();
+
+        // FIRST: Check if this is a creator coin or any Zora coin - do this before any other processing
+        // This matches Discord's exact order
         const reference = extractZoraContractReference(text);
-        if (reference) {
-          const coin = await fetchZoraCoin(reference.address, reference.chainId);
+        if (isEthAddress(address) || reference) {
+          // Try to fetch the coin directly first
+          let coin = await fetchZoraCoin(reference?.address || address, reference?.chainId);
+          let summary = await findBestZoraSummary([normalizedAddress]);
+          
+          // If we got a summary but no coin, try to get the coin from the summary
+          if (!coin && summary) {
+            // Check if this address matches the creator coin address
+            if (summary.profile?.creatorCoinAddress?.toLowerCase() === normalizedAddress) {
+              coin = await fetchZoraCoin(summary.profile.creatorCoinAddress);
+            }
+            // Or check if it's in the createdCoins array
+            if (!coin && summary.createdCoins) {
+              const matchingCoin = summary.createdCoins.find(c => c.address?.toLowerCase() === normalizedAddress);
+              if (matchingCoin) {
+                coin = matchingCoin;
+              }
+            }
+            // Or try the latest coin
+            if (!coin && summary.latestCoin?.coin?.address?.toLowerCase() === normalizedAddress) {
+              coin = summary.latestCoin.coin;
+            }
+          }
+          
+          // If we have a coin, show it as a coin card (not a profile) - matching Discord
           if (coin) {
-            const zoraSummary = await findBestZoraSummary([address.toLowerCase()]);
-            const response = await buildZoraCoinResponse(coin, zoraSummary, { returnAllPages: true }); // Get all pages for Telegram
-            const identifier = `zora_coin_${address.toLowerCase()}`;
+            tokenFound = true;
+            // Get the full summary if we don't have it yet
+            if (!summary) {
+              const { fetchZoraSummary } = await import("../../../services/zora");
+              if (coin.creatorProfile?.handle) {
+                summary = await fetchZoraSummary(coin.creatorProfile.handle);
+              } else if (coin.creatorAddress) {
+                summary = await findBestZoraSummary([coin.creatorAddress]);
+              }
+            }
+            
+            const { buildZoraCoinResponse } = await import("../../../handlers/zoraAddress");
+            const response = await buildZoraCoinResponse(coin, summary, { returnAllPages: true });
+            const identifier = `zora_coin_${normalizedAddress}`;
             const pageLabels = response.embeds.length > 1
               ? ["Coin Details", "Creator Coin & Farcaster"]
               : undefined;
@@ -93,26 +128,23 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             return;
           }
         }
-        
-        // Try Zora profile lookup (Zora-only wallet, no Farcaster user)
-        const zoraSummary = await findBestZoraSummary([address.toLowerCase()]);
-        if (zoraSummary) {
-          // Use buildZoraWalletProfileResponse for wallet lookups (same as Discord)
-          const associated = isSummaryAssociatedWithAddress(zoraSummary, address)
-            ? zoraSummary
-            : null;
-          
-          const zoraResponse = buildZoraWalletProfileResponse({
-            wallet: address,
-            summary: associated ?? zoraSummary,
-            returnAllPages: true, // Get all pages for Telegram
-          });
-          
-          const identifier = `zora_wallet_${address.toLowerCase()}`;
-          await sendPaginatedTelegramMessage(bot, chatId, zoraResponse.embeds, identifier);
-          return;
-        }
 
+        // SECOND: Check for direct Clanker matches (just like Discord does)
+        // This must happen BEFORE calling sendClankerTokenPages to match Discord logic
+        const { fetchTokensByAddress } = await import("../../../services/clanker");
+        const tokens = await fetchTokensByAddress(address).catch(() => []);
+        const directClankerMatches = tokens.filter(
+          (t) => t.contract_address?.toLowerCase() === normalizedAddress
+        );
+
+        if (directClankerMatches.length > 0) {
+          tokenFound = true;
+          const clankerSent = await sendClankerTokenPages(bot, chatId, address);
+          if (clankerSent) {
+            return; // Found Clanker token, don't check Base tokens
+          }
+        }
+        
         // NOW check for Base network tokens (only if NOT Zora/Clanker)
         // Only use Basescan API here since we've confirmed it's NOT Zora/Clanker
         const { fetchBaseTokenData, fetchMultiChainTokenData } = await import("../../../services/dexscreener");
@@ -128,6 +160,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         ]);
 
         if (baseTokenData) {
+          tokenFound = true;
           // Fetch creator address and detect factory for Base tokens
           const { getContractCreation } = await import("../../../services/basescan");
           const { getContractCreationTx } = await import("../../../services/contractCreation");
@@ -210,12 +243,26 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           return;
         }
 
-        // Check for tokens on OTHER EVM chains (BSC, Ethereum, Polygon, etc.)
+        // Check for tokens on OTHER EVM chains (BSC, Ethereum, Polygon, Mantle, etc.)
         // BEFORE treating it as a wallet to avoid showing wrong information
-        const multiChainTokenData = await fetchMultiChainTokenData(address);
+        // This MUST happen before Zora profile check to match Discord behavior
+        // CRITICAL: Do NOT swallow errors - if fetch fails, return early to prevent Zora fallback
+        let multiChainTokenData;
+        try {
+          multiChainTokenData = await fetchMultiChainTokenData(address);
+        } catch (err) {
+          console.error(`[Telegram] Multi-chain fetch failed for ${address}:`, err);
+          return; // CRITICAL: Stop before Zora fallback if token loader fails
+        }
+        
+        console.log(`[Telegram] Multi-chain token check for ${address}:`, multiChainTokenData ? `Found on ${multiChainTokenData.chainName} (${multiChainTokenData.chainId})` : 'Not found');
+        
         if (multiChainTokenData) {
+          tokenFound = true;
           // Only show if it's NOT on Base (we already checked Base above)
-          if (multiChainTokenData.chainId.toLowerCase() !== "base" && multiChainTokenData.chainId !== "8453") {
+          const chainIdLower = multiChainTokenData.chainId.toLowerCase();
+          if (chainIdLower !== "base" && multiChainTokenData.chainId !== "8453") {
+            console.log(`[Telegram] ✅ Showing ${multiChainTokenData.chainName} token for ${address} (chainId: ${multiChainTokenData.chainId})`);
             // Fetch creator address and detect factory for this chain
             const { getContractCreation, getContractCreationTx } = await import("../../../services/contractCreation");
             const { env } = await import("../../../config");
@@ -244,40 +291,102 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
               parse_mode: "HTML",
               disable_web_page_preview: true,
             });
+            return; // CRITICAL: Return here to prevent Zora profile check
+          } else {
+            console.log(`[Telegram] Multi-chain token found but on Base chain (${multiChainTokenData.chainId}), skipping (already checked above)`);
+          }
+        } else {
+          console.log(`[Telegram] No multi-chain token data found for ${address} - will continue to wallet/profile checks`);
+        }
+
+        // Try wallet (need to find user first)
+        // This matches Discord - fetch zoraSummary early for fallback use
+        let user = null;
+        let zoraSummaryFromAddress = null;
+        try {
+          user = await findUserByWallet(address);
+        } catch (error) {
+          // User not found, continue
+        }
+        
+        // Fetch Zora summary early (like Discord does) for potential fallback
+        zoraSummaryFromAddress = await findBestZoraSummary([address.toLowerCase()]);
+        
+        // If we found a Farcaster user, show wallet profile
+        if (user) {
+          const [tokens, latestCast, zoraSummary] = await Promise.all([
+            safeFetchTokensByFid(user.fid),
+            safeFetchMostRecentCast(user.fid),
+            findBestZoraSummary(collectZoraIdentifiers(user)),
+          ]);
+          const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
+          
+          const walletResponse = await buildWalletProfileResponse({
+            wallet: address,
+            user,
+            zoraSummary: associatedSummary,
+            clankerTokens: tokens,
+            latestCast,
+            returnAllPages: true, // Get all pages for Telegram
+          });
+          if (walletResponse && walletResponse.embeds.length > 0) {
+            const identifier = `wallet_${address.toLowerCase()}`;
+            const pageLabels = walletResponse.embeds.length > 1
+              ? ["Profile", "Clankers & Zora"]
+              : undefined;
+            await sendPaginatedTelegramMessage(bot, chatId, walletResponse.embeds, identifier, pageLabels);
             return;
           }
         }
 
-        // Try wallet (need to find user first)
-        try {
-          const user = await findUserByWallet(address);
-          if (user) {
-            const [tokens, latestCast, zoraSummary] = await Promise.all([
-              safeFetchTokensByFid(user.fid),
-              safeFetchMostRecentCast(user.fid),
-              findBestZoraSummary(collectZoraIdentifiers(user)),
-            ]);
-            const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
-            
-            const walletResponse = await buildWalletProfileResponse({
+        // CRITICAL: Block Zora fallback if any token was found
+        if (tokenFound) {
+          return; // Do not show Zora profile if we found any token
+        }
+
+        // Fallback: If no user found but we have a Zora summary, show it (matching Discord)
+        // This is the LAST fallback, only after all token checks
+        if (zoraSummaryFromAddress) {
+          const hasZoraCoinData =
+            Boolean(zoraSummaryFromAddress.latestCoin?.coin) ||
+            (zoraSummaryFromAddress.createdCoins ?? []).length > 0;
+
+          // Only show Zora profile if there's no coin data (we already checked for coins above)
+          if (!hasZoraCoinData) {
+            const associated = isSummaryAssociatedWithAddress(zoraSummaryFromAddress, address)
+              ? zoraSummaryFromAddress
+              : null;
+
+            const zoraResponse = buildZoraWalletProfileResponse({
               wallet: address,
-              user,
-              zoraSummary: associatedSummary,
-              clankerTokens: tokens,
-              latestCast,
-              returnAllPages: true, // Get all pages for Telegram
+              summary: associated ?? zoraSummaryFromAddress,
+              returnAllPages: true,
             });
-            if (walletResponse && walletResponse.embeds.length > 0) {
-              const identifier = `wallet_${address.toLowerCase()}`;
-              const pageLabels = walletResponse.embeds.length > 1
-                ? ["Profile", "Clankers & Zora"]
-                : undefined;
-              await sendPaginatedTelegramMessage(bot, chatId, walletResponse.embeds, identifier, pageLabels);
-              return;
+
+            // Try to get Farcaster user from Zora handle (matching Discord)
+            let farcasterEmbeds = null;
+            const farcasterHandle = zoraSummaryFromAddress.profile.farcasterHandle;
+            if (farcasterHandle) {
+              try {
+                const farcasterUser = await findUserByUsername(farcasterHandle.replace(/^@/, ""));
+                if (farcasterUser) {
+                  farcasterEmbeds = await buildFarcasterPresentation(farcasterUser, {
+                    zoraSummary: associated,
+                    returnAllPages: true,
+                  });
+                }
+              } catch (error) {
+                console.warn("Failed to fetch Farcaster profile for Zora summary:", error);
+              }
             }
+
+            const identifier = `zora_wallet_${address.toLowerCase()}`;
+            const embedsToSend = farcasterEmbeds
+              ? [...farcasterEmbeds.embeds, ...zoraResponse.embeds]
+              : zoraResponse.embeds;
+            await sendPaginatedTelegramMessage(bot, chatId, embedsToSend, identifier);
+            return;
           }
-        } catch (error) {
-          // User not found, continue
         }
       }
     }
@@ -539,53 +648,84 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
 
         const address = query;
 
-        // Try Farcaster user by wallet first
-        let user;
-        try {
-          user = await findUserByWallet(address);
-        } catch (error) {
-          // Continue with other lookups
+        // IMPORTANT: Match Discord order exactly for /far command too:
+        // 1. Zora coins FIRST
+        // 2. Clanker tokens
+        // 3. Base tokens
+        // 4. Multi-chain tokens
+        // 5. Farcaster user with wallet
+        // 6. Zora profile fallback
+
+        // CRITICAL: Flag to block Zora fallback when any token is found
+        let tokenFound = false;
+        const normalizedAddress = address.toLowerCase();
+
+        // FIRST: Check if this is a Zora coin
+        const reference = extractZoraContractReference(text);
+        if (isEthAddress(address) || reference) {
+          let coin = await fetchZoraCoin(reference?.address || address, reference?.chainId);
+          let summary = await findBestZoraSummary([normalizedAddress]);
+          
+          if (!coin && summary) {
+            if (summary.profile?.creatorCoinAddress?.toLowerCase() === normalizedAddress) {
+              coin = await fetchZoraCoin(summary.profile.creatorCoinAddress);
+            }
+            if (!coin && summary.createdCoins) {
+              const matchingCoin = summary.createdCoins.find(c => c.address?.toLowerCase() === normalizedAddress);
+              if (matchingCoin) {
+                coin = matchingCoin;
+              }
+            }
+            if (!coin && summary.latestCoin?.coin?.address?.toLowerCase() === normalizedAddress) {
+              coin = summary.latestCoin.coin;
+            }
+          }
+          
+          if (coin) {
+            tokenFound = true;
+            if (!summary) {
+              const { fetchZoraSummary } = await import("../../../services/zora");
+              if (coin.creatorProfile?.handle) {
+                summary = await fetchZoraSummary(coin.creatorProfile.handle);
+              } else if (coin.creatorAddress) {
+                summary = await findBestZoraSummary([coin.creatorAddress]);
+              }
+            }
+            
+            const { buildZoraCoinResponse } = await import("../../../handlers/zoraAddress");
+            const response = await buildZoraCoinResponse(coin, summary, { returnAllPages: true });
+            const identifier = `zora_coin_${normalizedAddress}`;
+            const pageLabels = response.embeds.length > 1
+              ? ["Coin Details", "Creator Coin & Farcaster"]
+              : undefined;
+            await sendPaginatedTelegramMessage(bot, chatId, response.embeds, identifier, pageLabels);
+            return;
+          }
         }
 
-        // Try Zora summary
-        const zoraSummaryFromAddress = await findBestZoraSummary([address.toLowerCase()]);
+        // SECOND: Check for direct Clanker matches (just like Discord does)
+        // This must happen BEFORE calling sendClankerTokenPages to match Discord logic
+        const { fetchTokensByAddress } = await import("../../../services/clanker");
+        const tokens = await fetchTokensByAddress(address).catch(() => []);
+        const directClankerMatches = tokens.filter(
+          (t) => t.contract_address?.toLowerCase() === normalizedAddress
+        );
 
-        // If we have a Farcaster user, show wallet profile with Farcaster info
-        if (user) {
-          const zoraIdentifiers = collectZoraIdentifiers(user, address);
-          const [tokens, latestCast, zoraSummaryForUser] = await Promise.all([
-            safeFetchTokensByFid(user.fid),
-            safeFetchMostRecentCast(user.fid),
-            findBestZoraSummary(zoraIdentifiers),
-          ]);
-
-          const associatedSummary =
-            zoraSummaryForUser && isSummaryAssociatedWithUser(user, zoraSummaryForUser)
-              ? zoraSummaryForUser
-              : zoraSummaryFromAddress;
-
-          const walletResponse = await buildWalletProfileResponse({
-            wallet: address,
-            user,
-            zoraSummary: associatedSummary,
-            clankerTokens: tokens,
-            latestCast,
-            returnAllPages: true,
-          });
-
-          const identifier = `wallet_${address.toLowerCase()}`;
-          const pageLabels = walletResponse.embeds.length > 1
-            ? ["Profile", "Clankers & Zora"]
-            : undefined;
-          await sendPaginatedTelegramMessage(bot, chatId, walletResponse.embeds, identifier, pageLabels);
-          return;
+        if (directClankerMatches.length > 0) {
+          tokenFound = true;
+          const { sendClankerTokenPages } = await import("./clankerHandler");
+          const clankerSent = await sendClankerTokenPages(bot, chatId, address);
+          if (clankerSent) {
+            return;
+          }
         }
 
-        // Check for Base network tokens (only if NOT Zora/Clanker to save Basescan API calls)
+        // THIRD: Check for Base network tokens (only if NOT Zora/Clanker to save Basescan API calls)
         if (isEthAddress(address)) {
-          const { fetchBaseTokenData } = await import("../../../services/dexscreener");
+          const { fetchBaseTokenData, fetchMultiChainTokenData } = await import("../../../services/dexscreener");
           const { detectTokenFactory } = await import("../../../services/baseFactories");
           const { buildBaseTokenEmbed } = await import("../../../utils/baseTokenEmbeds");
+          const { buildMultiChainTokenEmbed } = await import("../../../utils/multiChainTokenEmbeds");
           const { embedsToTelegram } = await import("../adapters/telegramAdapter");
           
           // First check if it's a Base token (DexScreener - no rate limits)
@@ -595,6 +735,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           ]);
 
           if (baseTokenData) {
+            tokenFound = true;
             // Only fetch creator from Basescan if it's a Base token that's NOT Zora/Clanker
             // This saves API calls since Zora/Clanker already have creator info
             const { getContractCreation } = await import("../../../services/basescan");
@@ -662,56 +803,118 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             });
             return;
           }
-        }
 
-        // Try Clanker tokens
-        const { fetchTokensByAddress } = await import("../../../services/clanker");
-        const clankerTokens = await fetchTokensByAddress(address);
-        if (clankerTokens.length > 0) {
-          const { sendClankerTokenPages } = await import("./clankerHandler");
-          const clankerSent = await sendClankerTokenPages(bot, chatId, address);
-          if (clankerSent) {
-            return;
+          // Check for tokens on OTHER EVM chains (BSC, Ethereum, Polygon, Mantle, etc.)
+          // BEFORE treating it as a wallet to avoid showing wrong information
+          // CRITICAL: Do NOT swallow errors - if fetch fails, return early to prevent Zora fallback
+          let multiChainTokenData;
+          try {
+            multiChainTokenData = await fetchMultiChainTokenData(address);
+          } catch (err) {
+            console.error(`[Telegram /far] Multi-chain fetch failed for ${address}:`, err);
+            return; // CRITICAL: Stop before Zora fallback if token loader fails
           }
-        }
+          
+          console.log(`[Telegram /far] Multi-chain token check for ${address}:`, multiChainTokenData ? `Found on ${multiChainTokenData.chainName} (${multiChainTokenData.chainId})` : 'Not found');
+          
+          if (multiChainTokenData) {
+            tokenFound = true;
+            // Only show if it's NOT on Base (we already checked Base above)
+            const chainIdLower = multiChainTokenData.chainId.toLowerCase();
+            if (chainIdLower !== "base" && multiChainTokenData.chainId !== "8453") {
+              console.log(`[Telegram /far] ✅ Showing ${multiChainTokenData.chainName} token for ${address} (chainId: ${multiChainTokenData.chainId})`);
+              // Fetch creator address and detect factory for this chain
+              const { getContractCreation, getContractCreationTx } = await import("../../../services/contractCreation");
+              const { env } = await import("../../../config");
+              const [contractCreation, creationTx] = await Promise.all([
+                getContractCreation(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
+                getContractCreationTx(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
+              ]);
 
-        // Try Zora coin
-        if (zoraSummaryFromAddress) {
-          const lowerAddress = address.toLowerCase();
-          let matchedCoin =
-            zoraSummaryFromAddress.latestCoin?.coin.address?.toLowerCase() === lowerAddress
-              ? zoraSummaryFromAddress.latestCoin.coin
-              : null;
+              // Detect factory: if creationTx.to exists, that's the factory address
+              let factoryName: string | null = null;
+              if (creationTx?.to) {
+                factoryName = `Factory: ${creationTx.to.slice(0, 10)}...${creationTx.to.slice(-8)}`;
+              }
 
-          if (
-            !matchedCoin &&
-            zoraSummaryFromAddress.profile.creatorCoinAddress?.toLowerCase() === lowerAddress
-          ) {
-            matchedCoin =
-              zoraSummaryFromAddress.createdCoins?.find(
-                (coin) => coin.address?.toLowerCase() === lowerAddress,
-              ) ?? null;
-          }
+              multiChainTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
+              multiChainTokenData.factoryName = factoryName;
+              multiChainTokenData.createdAt = contractCreation?.createdAt ?? null;
 
-          if (!matchedCoin) {
-            try {
-              matchedCoin = await fetchZoraCoin(address);
-            } catch (error) {
-              // Continue to wallet profile
+              const { embed } = buildMultiChainTokenEmbed(address, multiChainTokenData);
+              const messages = embedsToTelegram([embed]);
+              await bot.sendMessage(chatId, `${multiChainTokenData.chainName} token detected for <code>${address}</code>.`, {
+                parse_mode: "HTML",
+                disable_web_page_preview: true,
+              });
+              await bot.sendMessage(chatId, messages[0], {
+                parse_mode: "HTML",
+                disable_web_page_preview: true,
+              });
+              return; // CRITICAL: Return here to prevent Zora profile check
+            } else {
+              console.log(`[Telegram /far] Multi-chain token found but on Base chain (${multiChainTokenData.chainId}), skipping (already checked above)`);
             }
+          } else {
+            console.log(`[Telegram /far] No multi-chain token data found for ${address} - will continue to wallet/profile checks`);
           }
+        }
 
-          if (matchedCoin) {
-            const response = await buildZoraCoinResponse(matchedCoin, zoraSummaryFromAddress, { returnAllPages: true });
-            const identifier = `zora_coin_${address.toLowerCase()}`;
-            const pageLabels = response.embeds.length > 1
-              ? ["Coin Details", "Creator Coin & Farcaster"]
-              : undefined;
-            await sendPaginatedTelegramMessage(bot, chatId, response.embeds, identifier, pageLabels);
-            return;
-          }
+        // FOURTH: Try Farcaster user by wallet (after all token checks)
+        let user;
+        try {
+          user = await findUserByWallet(address);
+        } catch (error) {
+          // Continue with other lookups
+        }
 
-          // Show Zora wallet profile
+        // Fetch Zora summary for potential fallback
+        const zoraSummaryFromAddress = await findBestZoraSummary([address.toLowerCase()]);
+
+        // If we have a Farcaster user, show wallet profile with Farcaster info
+        if (user) {
+          const zoraIdentifiers = collectZoraIdentifiers(user, address);
+          const [tokens, latestCast, zoraSummaryForUser] = await Promise.all([
+            safeFetchTokensByFid(user.fid),
+            safeFetchMostRecentCast(user.fid),
+            findBestZoraSummary(zoraIdentifiers),
+          ]);
+
+          const associatedSummary =
+            zoraSummaryForUser && isSummaryAssociatedWithUser(user, zoraSummaryForUser)
+              ? zoraSummaryForUser
+              : zoraSummaryFromAddress;
+
+          const walletResponse = await buildWalletProfileResponse({
+            wallet: address,
+            user,
+            zoraSummary: associatedSummary,
+            clankerTokens: tokens,
+            latestCast,
+            returnAllPages: true,
+          });
+
+          const identifier = `wallet_${address.toLowerCase()}`;
+          const pageLabels = walletResponse.embeds.length > 1
+            ? ["Profile", "Clankers & Zora"]
+            : undefined;
+          await sendPaginatedTelegramMessage(bot, chatId, walletResponse.embeds, identifier, pageLabels);
+          return;
+        }
+
+        // CRITICAL: Block Zora fallback if any token was found
+        if (tokenFound) {
+          return; // Do not show Zora profile if we found any token
+        }
+
+        // FIFTH: Fallback - Try Zora profile (only if no coin data, matching Discord)
+        if (zoraSummaryFromAddress) {
+          const hasZoraCoinData =
+            Boolean(zoraSummaryFromAddress.latestCoin?.coin) ||
+            (zoraSummaryFromAddress.createdCoins ?? []).length > 0;
+
+          if (!hasZoraCoinData) {
+            // Show Zora wallet profile (we already checked for coins above, so this is just a profile)
           const associated = isSummaryAssociatedWithAddress(zoraSummaryFromAddress, address)
             ? zoraSummaryFromAddress
             : null;

@@ -100,7 +100,7 @@ Just send:
 
       case "relay": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a transaction hash or transaction link.\n\nUsage: <code>/relay &lt;transaction&gt;</code>\nExample: <code>/relay 0x281d831decc5fd1832f5a84155a88da8918a16f68c57c512b7ca7d6a687d8e70</code>\nOr: <code>/relay https://basescan.org/tx/0x281d831decc5fd1832f5a84155a88da8918a16f68c57c512b7ca7d6a687d8e70</code>", { parse_mode: "HTML" });
+          await bot.sendMessage(chatId, "Please provide a full transaction link from a block explorer.\n\nUsage: <code>/relay &lt;transaction_link&gt;</code>\n\n<b>Example:</b>\n<code>/relay https://basescan.org/tx/0x281d831decc5fd1832f5a84155a88da8918a16f68c57c512b7ca7d6a687d8e70</code>\n\nOr provide a transaction hash:\n<code>/relay 0x281d831decc5fd1832f5a84155a88da8918a16f68c57c512b7ca7d6a687d8e70</code>", { parse_mode: "HTML" });
           return;
         }
         
@@ -160,7 +160,69 @@ Just send:
           // Extract transaction hash from input
           const txHash = extractTransactionHash(query);
           if (!txHash) {
-            await bot.sendMessage(chatId, "❌ Could not extract a valid transaction hash from the provided input. Please provide:\n• An Ethereum-style transaction hash (0x...)\n• A Solana transaction signature\n• A transaction link from a block explorer (Ethereum, Base, Solana, etc.)\n• A wallet address (0x... or Solana address) to find the most recent transaction", { parse_mode: "HTML" });
+            // Check if it's an Ethereum address (42 chars) vs transaction hash (66 chars)
+            const trimmedQuery = query.trim();
+            const isEthAddress = /^0x[a-fA-F0-9]{40}$/i.test(trimmedQuery);
+            // Solana addresses are typically 32-48 chars, transaction signatures are 43-88 chars
+            const isSolanaAddress = /^[1-9A-HJ-NP-Za-km-z]{32,42}$/.test(trimmedQuery);
+            const isEvmLikeButWrongLength = /^0x[a-fA-F0-9]+$/i.test(trimmedQuery) && !isEthAddress;
+            
+            let errorMessage = "❌ Could not extract a valid transaction hash from the provided input.\n\n";
+            
+            if (isEthAddress) {
+              errorMessage += `<b>Invalid Length:</b> You provided <code>${trimmedQuery}</code> (${trimmedQuery.length} characters).\n\n`;
+              errorMessage += "<b>This is an Ethereum address, not a transaction hash.</b>\n\n";
+              errorMessage += "<b>Transaction Hash Requirements:</b>\n";
+              errorMessage += "• Must start with <code>0x</code>\n";
+              errorMessage += "• Must be <b>66 characters total</b> (0x + 64 hex characters)\n";
+              errorMessage += "• Must contain exactly 64 hex characters after the <code>0x</code>\n\n";
+              errorMessage += "<b>Examples:</b>\n";
+              errorMessage += "❌ Invalid (42 chars = address): <code>0x9c212798d6353ef790a68f3803fc3279d286a0e9</code>\n";
+              errorMessage += "✅ Valid (66 chars = tx hash): <code>0x9c212798d6353ef790a68f3803fc3279d286a0e91234567890abcdef1234567890abcdef</code>\n\n";
+              errorMessage += "<b>Solution:</b>\n";
+              errorMessage += "• Use a full transaction hash from a block explorer\n";
+              errorMessage += "• Or use this address directly to find the most recent transaction\n";
+              errorMessage += "• Or provide a transaction link from a block explorer";
+            } else if (isEvmLikeButWrongLength) {
+              const hexLength = trimmedQuery.length - 2; // Subtract "0x"
+              errorMessage += `<b>Invalid Length:</b> You provided <code>${trimmedQuery}</code> (${trimmedQuery.length} characters, ${hexLength} hex chars).\n\n`;
+              errorMessage += "<b>Transaction Hash Requirements:</b>\n";
+              errorMessage += "• Must start with <code>0x</code>\n";
+              errorMessage += "• Must be <b>66 characters total</b> (0x + 64 hex characters)\n";
+              errorMessage += "• Must contain exactly <b>64 hex characters</b> after the <code>0x</code>\n\n";
+              errorMessage += "<b>Your input:</b>\n";
+              errorMessage += `• Length: ${trimmedQuery.length} characters (need 66)\n`;
+              errorMessage += `• Hex chars: ${hexLength} (need 64)\n\n`;
+              errorMessage += "<b>Examples:</b>\n";
+              errorMessage += "❌ Invalid: <code>0x9c212798d6353ef790a68f3803fc3279d286a0e9</code> (42 chars)\n";
+              errorMessage += "✅ Valid: <code>0x9c212798d6353ef790a68f3803fc3279d286a0e91234567890abcdef1234567890abcdef</code> (66 chars)\n\n";
+              errorMessage += "<b>Solution:</b> Get the full transaction hash from a block explorer (Etherscan, Basescan, etc.)";
+            } else if (isSolanaAddress) {
+              errorMessage += `<b>Invalid Length:</b> You provided <code>${trimmedQuery}</code> (${trimmedQuery.length} characters).\n\n`;
+              errorMessage += "<b>This looks like a Solana address, not a transaction signature.</b>\n\n";
+              errorMessage += "<b>Solana Transaction Signature Requirements:</b>\n";
+              errorMessage += "• Must be <b>43-88 characters long</b> (base58 encoded)\n";
+              errorMessage += "• Must contain only base58 characters (1-9, A-H, J-N, P-Z, a-k, m-z)\n\n";
+              errorMessage += "<b>Solution:</b>\n";
+              errorMessage += "• Use a full transaction signature from Solscan\n";
+              errorMessage += "• Or use this address directly to find the most recent transaction\n";
+              errorMessage += "• <b>Note:</b> Relay only supports EVM transaction hashes, so for Solana→EVM relays, use the destination EVM hash";
+            } else {
+              errorMessage += "<b>Transaction Hash Requirements:</b>\n\n";
+              errorMessage += "<b>EVM Transaction Hash:</b>\n";
+              errorMessage += "• Must start with <code>0x</code>\n";
+              errorMessage += "• Must be <b>66 characters total</b> (0x + 64 hex characters)\n";
+              errorMessage += "• Must contain exactly 64 hex characters after the <code>0x</code>\n\n";
+              errorMessage += "<b>Solana Transaction Signature:</b>\n";
+              errorMessage += "• Must be <b>43-88 characters long</b> (base58 encoded)\n\n";
+              errorMessage += "<b>Please provide:</b>\n";
+              errorMessage += "• A full EVM transaction hash (66 characters: 0x + 64 hex)\n";
+              errorMessage += "• A Solana transaction signature (43-88 base58 characters)\n";
+              errorMessage += "• A transaction link from a block explorer\n";
+              errorMessage += "• A wallet address to find the most recent transaction";
+            }
+            
+            await bot.sendMessage(chatId, errorMessage, { parse_mode: "HTML" });
             return;
           }
 
@@ -179,17 +241,22 @@ Just send:
           const transaction = await fetchRelayTransaction(txHash, sourceChainId || undefined);
 
           if (!transaction) {
-            // Check if this is a Solana transaction (base58, 87-88 chars, not starting with 0x)
-            const isSolanaTx = !txHash.startsWith("0x") && txHash.length >= 87 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(txHash);
-            // Check if this looks like a Relay transaction ID (from relay.link URLs)
-            const isRelayTxId = txHash.startsWith("0x") && txHash.length === 66;
+            // Check if this is a Solana transaction (base58, 43-88 chars, not starting with 0x)
+            const isSolanaTx = !txHash.startsWith("0x") && txHash.length >= 43 && txHash.length <= 88 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(txHash);
+            // Check if this is a valid EVM transaction hash format
+            const isEvmTxHash = txHash.startsWith("0x") && txHash.length === 66 && /^0x[a-fA-F0-9]{64}$/i.test(txHash);
+            // Check if the input was from a relay.link URL (to provide specific guidance)
+            const wasFromRelayLink = query.toLowerCase().includes("relay.link");
             
             let errorMessage = `❌ Transaction <code>${txHash}</code> not found on Relay.link API.\n\n<b>Possible reasons:</b>\n• The transaction may not be a Relay cross-chain transaction\n• The transaction may not be indexed yet\n• The transaction might be too old or not tracked by Relay`;
             
-            if (isRelayTxId) {
-              errorMessage += `\n\n<b>Note:</b> Relay transaction IDs from <code>relay.link/transaction/</code> URLs are <b>not supported</b> by the Relay API. The API only supports querying by actual blockchain transaction hashes.\n\n<b>Solution:</b> Open the Relay transaction page and look for the <b>source</b> or <b>destination</b> transaction hash (the actual blockchain transaction, not Relay's internal ID). Use that hash instead.`;
-            } else if (isSolanaTx) {
-              errorMessage += `\n\n<b>Note:</b> Solana transaction signatures are <b>not supported</b> by the Relay API. The API only supports EVM-compatible transaction hashes (0x...).\n\n<b>Solution:</b> If this is a Relay cross-chain transaction, open the Relay transaction page and use the <b>destination transaction hash</b> (the EVM chain transaction hash, not the Solana signature).`;
+            if (isSolanaTx) {
+              errorMessage += `\n\n<b>Note:</b> Solana transaction signatures are <b>not supported</b> by the Relay API. The API only supports EVM-compatible transaction hashes (0x...).\n\n<b>Solution:</b> If this is a Relay cross-chain transaction:\n1. Open the Relay transaction page using this Solana signature\n2. Find the <b>destination transaction hash</b> (the EVM chain transaction hash, not the Solana signature)\n3. Use that EVM transaction hash (0x...) with this command`;
+            } else if (wasFromRelayLink && isEvmTxHash) {
+              // If it came from a relay.link URL and looks like a transaction hash, it might be a Relay transaction ID
+              errorMessage += `\n\n<b>Note:</b> If you extracted this from a <code>relay.link/transaction/</code> URL, Relay transaction IDs are <b>not supported</b> by the Relay API. The API only supports querying by actual blockchain transaction hashes.\n\n<b>Solution:</b> Open the Relay transaction page and look for the <b>source</b> or <b>destination</b> transaction hash (the actual blockchain transaction, not Relay's internal ID). Use that hash instead.`;
+            } else if (isEvmTxHash) {
+              errorMessage += `\n\n<b>Note:</b> If the transaction is very recent, it may take a few minutes to appear in Relay's system.\n\n<b>Troubleshooting:</b>\n• Verify this is a Relay cross-chain transaction\n• Try using the wallet address that initiated the transaction instead\n• Check if the transaction completed successfully on the source chain`;
             } else {
               errorMessage += `\n\n<b>Note:</b> If the transaction is very recent, it may take a few minutes to appear in Relay's system.`;
             }

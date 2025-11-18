@@ -51,6 +51,8 @@ function getChainExplorerUrl(chainId: string, address: string): string {
     "avalanche": `https://snowtrace.io/address/${address}`,
     "250": `https://ftmscan.com/address/${address}`,
     "fantom": `https://ftmscan.com/address/${address}`,
+    "5000": `https://explorer.mantle.xyz/address/${address}`,
+    "mantle": `https://explorer.mantle.xyz/address/${address}`,
   };
   return explorerMap[chainId.toLowerCase()] ?? `https://etherscan.io/address/${address}`;
 }
@@ -74,6 +76,8 @@ function getChainColor(chainId: string): number {
     "avalanche": 0xe84142,
     "250": 0x1969ff, // Fantom blue
     "fantom": 0x1969ff,
+    "5000": 0x3eb489, // Mantle green
+    "mantle": 0x3eb489,
   };
   return colorMap[chainId.toLowerCase()] ?? 0x627eea;
 }
@@ -217,3 +221,4 @@ export function buildMultiChainTokenEmbed(
   applyBranding(embed, `${tokenData.chainName.toLowerCase()} token`);
   return { embed, components: [] };
 }
+
