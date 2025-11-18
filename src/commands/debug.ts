@@ -20,9 +20,9 @@ export async function handleDebugCommand(
     );
 
     // Check for issues
-    const hasOldUrl = testUrl.includes("farcaster.xyz");
-    const hasCorrectUrl = testUrl.includes("warpcast.com");
-    const isHealthy = hasCorrectUrl && !hasOldUrl;
+    const hasCorrectUrl = testUrl.includes("farcaster.xyz");
+    const hasWrongUrl = testUrl.includes("warpcast.com");
+    const isHealthy = hasCorrectUrl && !hasWrongUrl;
 
     // Get backend debug info
     let backendDebug: any = null;
@@ -47,8 +47,8 @@ export async function handleDebugCommand(
         {
           name: "📊 URL Analysis",
           value:
-            `Contains warpcast.com: ${hasCorrectUrl ? "✅ Yes" : "❌ No"}\n` +
-            `Contains farcaster.xyz: ${hasOldUrl ? "❌ Yes (PROBLEM!)" : "✅ No"}\n` +
+            `Contains farcaster.xyz: ${hasCorrectUrl ? "✅ Yes" : "❌ No"}\n` +
+            `Contains warpcast.com: ${hasWrongUrl ? "❌ Yes (WRONG!)" : "✅ No"}\n` +
             `Status: ${isHealthy ? "✅ CORRECT" : "❌ INCORRECT"}`,
           inline: false,
         },

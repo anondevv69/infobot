@@ -54,15 +54,15 @@ async function main(): Promise<void> {
       env.backendUrl || "https://infobot-production-f74e.up.railway.app",
       env.farcasterReferralCode,
     );
-    const hasOldUrl = testUrl.includes("farcaster.xyz");
-    const hasCorrectUrl = testUrl.includes("warpcast.com");
+    const hasCorrectUrl = testUrl.includes("farcaster.xyz");
+    const hasWrongUrl = testUrl.includes("warpcast.com");
     
     console.log(`[STARTUP] Generated URL: ${testUrl.substring(0, 80)}...`);
-    console.log(`[STARTUP] Contains warpcast.com: ${hasCorrectUrl ? "✅ YES" : "❌ NO"}`);
-    console.log(`[STARTUP] Contains farcaster.xyz: ${hasOldUrl ? "❌ YES (PROBLEM!)" : "✅ NO"}`);
-    console.log(`[STARTUP] Status: ${hasCorrectUrl && !hasOldUrl ? "✅ CORRECT" : "❌ INCORRECT - Railway is running old code!"}`);
+    console.log(`[STARTUP] Contains farcaster.xyz: ${hasCorrectUrl ? "✅ YES" : "❌ NO"}`);
+    console.log(`[STARTUP] Contains warpcast.com: ${hasWrongUrl ? "❌ YES (WRONG!)" : "✅ NO"}`);
+    console.log(`[STARTUP] Status: ${hasCorrectUrl && !hasWrongUrl ? "✅ CORRECT" : "❌ INCORRECT - Railway is running old code!"}`);
     
-    if (hasOldUrl || !hasCorrectUrl) {
+    if (!hasCorrectUrl || hasWrongUrl) {
       console.error("[STARTUP] 🚨 WARNING: SIWF URL generation is INCORRECT!");
       console.error("[STARTUP] 🚨 Railway is likely running old cached code!");
       console.error("[STARTUP] 🚨 Fix: Clear Railway build cache and redeploy");

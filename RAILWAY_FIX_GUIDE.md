@@ -49,16 +49,16 @@ After redeploying, check Railway logs. You should see:
 **✅ CORRECT (what you want to see):**
 ```
 [STARTUP] SIWF Configuration Check:
-[STARTUP] Generated URL: https://warpcast.com/~/signin?...
-[STARTUP] Contains warpcast.com: ✅ YES
-[STARTUP] Contains farcaster.xyz: ✅ NO
+[STARTUP] Generated URL: https://farcaster.xyz/~/signin?...
+[STARTUP] Contains farcaster.xyz: ✅ YES
+[STARTUP] Contains warpcast.com: ✅ NO
 [STARTUP] Status: ✅ CORRECT
 ```
 
 **❌ INCORRECT (old code still running):**
 ```
-[STARTUP] Contains warpcast.com: ❌ NO
-[STARTUP] Contains farcaster.xyz: ❌ YES (PROBLEM!)
+[STARTUP] Contains farcaster.xyz: ❌ NO
+[STARTUP] Contains warpcast.com: ❌ YES (WRONG!)
 [STARTUP] Status: ❌ INCORRECT - Railway is running old code!
 🚨 WARNING: SIWF URL generation is INCORRECT!
 ```
@@ -66,8 +66,8 @@ After redeploying, check Railway logs. You should see:
 ### Test 2: Use the Debug Command
 1. In Discord, run: `/debug`
 2. Check the output:
-   - ✅ Should show `warpcast.com` in the URL
-   - ❌ If it shows `farcaster.xyz`, deployment failed
+   - ✅ Should show `farcaster.xyz` in the URL
+   - ❌ If it shows `warpcast.com`, deployment failed
 
 ### Test 3: Check Backend Debug Endpoint
 Visit in browser (either URL works):
@@ -81,8 +81,8 @@ Expected response:
 {
   "status": "ok",
   "debug": {
-    "generatedUrl": "https://warpcast.com/~/signin?...",
-    "hasOldUrl": false,
+    "generatedUrl": "https://farcaster.xyz/~/signin?...",
+    "hasWrongUrl": false,
     "hasCorrectUrl": true
   },
   "health": {
@@ -94,8 +94,8 @@ Expected response:
 ### Test 3: Test /connect Command
 1. In Discord, run: `/connect`
 2. Click the "Connect with Farcaster" button
-3. **Should open:** `https://warpcast.com/~/signin?...`
-4. **Should NOT open:** `https://farcaster.xyz/~/signin?...`
+3. **Should open:** `https://farcaster.xyz/~/signin?...`
+4. **Should NOT open:** `https://warpcast.com/~/signin?...`
 
 ## 🔍 Debug Endpoints
 
@@ -148,9 +148,9 @@ The `/debug` command in Discord will show:
 After completing all steps:
 
 1. ✅ Run `/debug` in Discord - should show ✅ CORRECT
-2. ✅ Visit `/debug/siwf` endpoint - should show `warpcast.com`
-3. ✅ Run `/connect` - button should open `warpcast.com`
-4. ✅ Check Railway logs - should NOT show `farcaster.xyz`
+2. ✅ Visit `/debug/siwf` endpoint - should show `farcaster.xyz`
+3. ✅ Run `/connect` - button should open `farcaster.xyz`
+4. ✅ Check Railway logs - should show `farcaster.xyz` (not `warpcast.com`)
 
 ## 📝 Notes
 
