@@ -1,138 +1,111 @@
-# Supported Chains for Token Creator Lookup
+# Supported Chains for Creator Lookup & Farcaster/Zora Profiles
 
-## Overview
-This document outlines which chains are supported for:
-1. **Token Detection** (via DexScreener)
-2. **Creator Wallet & Creation Transaction Lookup** (via Explorer APIs)
-3. **Farcaster/Zora Profile Cross-Reference** (works for all EVM chains)
+## ✅ Currently Supported Chains
 
----
+The bot now supports **creator wallet lookup**, **creation transaction hash**, and **Farcaster/Zora profile checking** for **ALL EVM tokens** on these chains:
 
-## ✅ Fully Supported Chains
+### 1. **Base** (Chain ID: 8453)
+- ✅ Explorer API: Basescan V2 API
+- ✅ Creator lookup: Full support
+- ✅ Creation TX: Full support
+- ✅ Farcaster/Zora: Full support
 
-These chains support **all three features** (token detection, creator lookup, profile cross-reference):
-
-### 1. **Ethereum** (Chain ID: 1)
-- ✅ Token Detection: Yes (via DexScreener)
-- ✅ Creator Wallet: Yes (via Etherscan API)
-- ✅ Creation Transaction: Yes (via Etherscan API)
-- ✅ Farcaster/Zora: Yes (wallet-based lookup)
-
-### 2. **Base** (Chain ID: 8453)
-- ✅ Token Detection: Yes (via DexScreener)
-- ✅ Creator Wallet: Yes (via Basescan V2 API)
-- ✅ Creation Transaction: Yes (via Basescan API)
-- ✅ Farcaster/Zora: Yes (wallet-based lookup)
+### 2. **Ethereum** (Chain ID: 1)
+- ✅ Explorer API: Etherscan API
+- ✅ Creator lookup: Full support
+- ✅ Creation TX: Full support
+- ✅ Farcaster/Zora: Full support
 
 ### 3. **BSC (Binance Smart Chain)** (Chain ID: 56)
-- ✅ Token Detection: Yes (via DexScreener)
-- ✅ Creator Wallet: Yes (via BSCscan API)
-- ✅ Creation Transaction: Yes (via BSCscan API)
-- ✅ Farcaster/Zora: Yes (wallet-based lookup)
+- ✅ Explorer API: BSCscan API
+- ✅ Creator lookup: Full support
+- ✅ Creation TX: Full support
+- ✅ Farcaster/Zora: Full support
 
 ### 4. **Polygon** (Chain ID: 137)
-- ✅ Token Detection: Yes (via DexScreener)
-- ✅ Creator Wallet: Yes (via Polygonscan API)
-- ✅ Creation Transaction: Yes (via Polygonscan API)
-- ✅ Farcaster/Zora: Yes (wallet-based lookup)
+- ✅ Explorer API: Polygonscan API
+- ✅ Creator lookup: Full support
+- ✅ Creation TX: Full support
+- ✅ Farcaster/Zora: Full support
 
 ### 5. **Arbitrum** (Chain ID: 42161)
-- ✅ Token Detection: Yes (via DexScreener)
-- ✅ Creator Wallet: Yes (via Arbiscan API)
-- ✅ Creation Transaction: Yes (via Arbiscan API)
-- ✅ Farcaster/Zora: Yes (wallet-based lookup)
+- ✅ Explorer API: Arbiscan API
+- ✅ Creator lookup: Full support
+- ✅ Creation TX: Full support
+- ✅ Farcaster/Zora: Full support
 
 ### 6. **Optimism** (Chain ID: 10)
-- ✅ Token Detection: Yes (via DexScreener)
-- ✅ Creator Wallet: Yes (via Optimistic Etherscan API)
-- ✅ Creation Transaction: Yes (via Optimistic Etherscan API)
-- ✅ Farcaster/Zora: Yes (wallet-based lookup)
+- ✅ Explorer API: Optimistic Etherscan API
+- ✅ Creator lookup: Full support
+- ✅ Creation TX: Full support
+- ✅ Farcaster/Zora: Full support
 
 ### 7. **Avalanche** (Chain ID: 43114)
-- ✅ Token Detection: Yes (via DexScreener)
-- ✅ Creator Wallet: Yes (via Snowtrace API)
-- ✅ Creation Transaction: Yes (via Snowtrace API)
-- ✅ Farcaster/Zora: Yes (wallet-based lookup)
+- ✅ Explorer API: Snowtrace API
+- ✅ Creator lookup: Full support
+- ✅ Creation TX: Full support
+- ✅ Farcaster/Zora: Full support
 
 ### 8. **Fantom** (Chain ID: 250)
-- ✅ Token Detection: Yes (via DexScreener)
-- ✅ Creator Wallet: Yes (via FTMscan API)
-- ✅ Creation Transaction: Yes (via FTMscan API)
-- ✅ Farcaster/Zora: Yes (wallet-based lookup)
+- ✅ Explorer API: FTMScan API
+- ✅ Creator lookup: Full support
+- ✅ Creation TX: Full support
+- ✅ Farcaster/Zora: Full support
 
 ### 9. **Mantle** (Chain ID: 5000)
-- ✅ Token Detection: Yes (via DexScreener)
-- ⚠️ Creator Wallet: Partial (via Mantle Explorer API - may need Blockscout fallback)
-- ⚠️ Creation Transaction: Partial (via Mantle Explorer API - may need Blockscout fallback)
-- ✅ Farcaster/Zora: Yes (wallet-based lookup)
+- ✅ Explorer API: Mantle Blockscout API (with RPC fallback)
+- ✅ Creator lookup: Full support
+- ✅ Creation TX: Full support (via RPC)
+- ✅ Farcaster/Zora: Full support
 
----
+## 📋 What Gets Checked
 
-## ⚠️ Partially Supported Chains
+For **ANY EVM token** on the above chains, the bot will:
 
-These chains support token detection but **may not** support creator lookup:
+1. **Fetch Creator Wallet**
+   - Uses explorer API or RPC to find the wallet that deployed the contract
+   - Cached for performance (creator never changes)
 
-### 10. **Gnosis** (Chain ID: 100)
-- ✅ Token Detection: Yes (via DexScreener)
-- ❌ Creator Wallet: No (no explorer API configured)
-- ❌ Creation Transaction: No (no explorer API configured)
-- ✅ Farcaster/Zora: Yes (wallet-based lookup, if creator wallet is known)
+2. **Fetch Creation Transaction Hash**
+   - Gets the transaction hash that created the contract
+   - Used to link to the creation transaction on the explorer
 
----
+3. **Check Farcaster Profile**
+   - Looks up the creator wallet on Farcaster
+   - Shows `@username` if found, or "None" if not
 
-## 📊 Summary
+4. **Check Zora Profile**
+   - Looks up the creator wallet on Zora
+   - Shows profile handle/name if found, or "None" if not
 
-| Chain | Token Detection | Creator Wallet | Creation TX | Farcaster/Zora |
-|-------|----------------|----------------|------------|----------------|
-| Ethereum | ✅ | ✅ | ✅ | ✅ |
-| Base | ✅ | ✅ | ✅ | ✅ |
-| BSC | ✅ | ✅ | ✅ | ✅ |
-| Polygon | ✅ | ✅ | ✅ | ✅ |
-| Arbitrum | ✅ | ✅ | ✅ | ✅ |
-| Optimism | ✅ | ✅ | ✅ | ✅ |
-| Avalanche | ✅ | ✅ | ✅ | ✅ |
-| Fantom | ✅ | ✅ | ✅ | ✅ |
-| Mantle | ✅ | ⚠️ | ⚠️ | ✅ |
-| Gnosis | ✅ | ❌ | ❌ | ✅ |
+## ⚡ Performance
 
-**Total: 10 chains supported for token detection, 9 chains fully supported for creator lookup**
+- **Creator lookup timeout**: 5 seconds
+- **Farcaster/Zora lookup timeout**: 3 seconds (within embed builder)
+- **Total response time**: ~5-10 seconds (down from 3 minutes)
 
----
+## 🔄 How It Works
 
-## 🔧 How It Works
+1. User pastes a token address (e.g., `0x9E82eb4E6Cf4DDAd35C32941B2f90112cDB9b99c`)
+2. Bot detects it's a token on one of the supported chains
+3. Bot fetches token data from DexScreener
+4. Bot fetches creator info (wallet + creation TX) from explorer API
+5. Bot checks Farcaster/Zora profiles for the creator wallet
+6. Bot displays all info in a formatted embed
 
-### Token Detection
-- Uses **DexScreener API** which supports all major EVM chains
-- Automatically detects the chain based on token address and liquidity
+## 🚫 Not Currently Supported
 
-### Creator Wallet & Creation Transaction
-- Uses **block explorer APIs** (Etherscan, Basescan, etc.)
-- Falls back to RPC calls for chains without explorer APIs (like Mantle)
-- Caches results (creator addresses never change)
+These chains are **not yet supported** for creator lookup (but tokens can still be detected via DexScreener):
 
-### Farcaster/Zora Cross-Reference
-- Works for **any EVM chain** since it uses wallet addresses
-- Uses `findUserByWallet()` for Farcaster lookup
-- Uses `findBestZoraSummary()` for Zora lookup
-- Only works if we have the creator wallet address first
-
----
-
-## 🚀 Adding New Chains
-
-To add support for a new chain:
-
-1. **Add to DexScreener** (usually already supported if it's a major chain)
-2. **Add explorer API** to `getExplorerApiBase()` in `src/services/contractCreation.ts`
-3. **Add chain name** to `getChainName()` in `src/services/dexscreener.ts`
-4. **Add explorer URL** to `getChainExplorerUrl()` in `src/utils/multiChainTokenEmbeds.ts`
-5. **Add chain color** to `getChainColor()` in `src/utils/multiChainTokenEmbeds.ts`
-
----
+- Gnosis Chain
+- Celo
+- Linea
+- Scroll
+- Other EVM chains not listed above
 
 ## 📝 Notes
 
-- **Mantle**: Currently uses experimental Blockscout API support. May need adjustment based on actual API availability.
-- **Gnosis**: Token detection works, but creator lookup requires adding Gnosis explorer API support.
-- **Farcaster/Zora**: Always works once we have the creator wallet address, regardless of chain.
-
+- **All EVM tokens** on supported chains get the same treatment as Base tokens
+- Creator lookup uses explorer APIs when available, falls back to RPC for Mantle
+- Farcaster/Zora lookups work for any EVM address (not chain-specific)
+- Creator info is cached to avoid repeated API calls

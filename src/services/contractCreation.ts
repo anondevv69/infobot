@@ -100,40 +100,49 @@ async function getContractCreationViaRPC(
 
           if (data.status === "1" && Array.isArray(data.result) && data.result.length > 0) {
             const result = data.result[0];
-            // Get timestamp from transaction
+            // Get timestamp from transaction (with timeout to prevent hanging)
             let createdAt: number | null = null;
             try {
-              const txRpcResponse = await fetch(rpcUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  jsonrpc: "2.0",
-                  method: "eth_getTransactionByHash",
-                  params: [result.txHash],
-                  id: 1,
-                }),
-              });
-              if (txRpcResponse.ok) {
-                const txData = (await txRpcResponse.json()) as { result?: { blockNumber?: string } };
-                if (txData.result?.blockNumber) {
-                  const blockResponse = await fetch(rpcUrl, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      jsonrpc: "2.0",
-                      method: "eth_getBlockByNumber",
-                      params: [txData.result.blockNumber, false],
-                      id: 1,
-                    }),
-                  });
-                  if (blockResponse.ok) {
-                    const blockData = (await blockResponse.json()) as { result?: { timestamp?: string } };
-                    if (blockData.result?.timestamp) {
-                      createdAt = parseInt(blockData.result.timestamp, 16);
+              const timestampPromise = (async () => {
+                const txRpcResponse = await fetch(rpcUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    method: "eth_getTransactionByHash",
+                    params: [result.txHash],
+                    id: 1,
+                  }),
+                });
+                if (txRpcResponse.ok) {
+                  const txData = (await txRpcResponse.json()) as { result?: { blockNumber?: string } };
+                  if (txData.result?.blockNumber) {
+                    const blockResponse = await fetch(rpcUrl, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        jsonrpc: "2.0",
+                        method: "eth_getBlockByNumber",
+                        params: [txData.result.blockNumber, false],
+                        id: 1,
+                      }),
+                    });
+                    if (blockResponse.ok) {
+                      const blockData = (await blockResponse.json()) as { result?: { timestamp?: string } };
+                      if (blockData.result?.timestamp) {
+                        return parseInt(blockData.result.timestamp, 16);
+                      }
                     }
                   }
                 }
-              }
+                return null;
+              })();
+              
+              const timeoutPromise = new Promise<null>((resolve) => {
+                setTimeout(() => resolve(null), 2000); // 2 second timeout for timestamp
+              });
+              
+              createdAt = await Promise.race([timestampPromise, timeoutPromise]);
             } catch (error) {
               // Ignore timestamp errors
             }
@@ -147,7 +156,10 @@ async function getContractCreationViaRPC(
               createdAt,
             };
             creatorCache.set(cacheKey, contractCreation);
+            console.log(`[ContractCreation] ✅ Mantle creator found: ${result.contractCreator} for ${contractAddress}`);
             return contractCreation;
+          } else {
+            console.warn(`[ContractCreation] Mantle API returned status ${data.status}: ${data.message || "Unknown"}`);
           }
         }
       } catch (error) {
@@ -425,36 +437,47 @@ export async function getContractCreationTx(
   try {
     const apiBase = getExplorerApiBase(chainId);
     if (!apiBase) {
-      // For Mantle, try Blockscout API
+      // For Mantle, the txlist endpoint times out (504), so we'll use RPC to get the creation tx
       if (chainId.toLowerCase() === "5000" || chainId.toLowerCase() === "mantle") {
-        try {
-          const blockscoutUrl = `https://explorer.mantle.xyz/api?module=account&action=txlist&address=${contractAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc`;
-          const response = await fetch(blockscoutUrl, {
-            headers: { Accept: "application/json" },
-          });
-
-          if (response.ok) {
-            const data = (await response.json()) as {
-              status?: string;
-              message?: string;
-              result?: Array<{
-                hash: string;
-                from: string;
-                to: string;
-              }> | string;
-            };
-
-            if (data.status === "1" && Array.isArray(data.result) && data.result.length > 0) {
-              const firstTx = data.result[0];
-              return {
-                from: firstTx.from,
-                to: firstTx.to || null,
-                hash: firstTx.hash,
-              };
+        // First, get the creation tx hash from getContractCreation
+        const contractCreation = await getContractCreation(contractAddress, chainId, apiKey);
+        if (contractCreation?.txHash) {
+          // Use RPC to get transaction details
+          try {
+            const rpcUrl = getRpcUrl(chainId);
+            if (rpcUrl) {
+              const txResponse = await fetch(rpcUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  jsonrpc: "2.0",
+                  method: "eth_getTransactionByHash",
+                  params: [contractCreation.txHash],
+                  id: 1,
+                }),
+              });
+              
+              if (txResponse.ok) {
+                const txData = (await txResponse.json()) as { result?: { from?: string; to?: string | null } };
+                if (txData.result) {
+                  return {
+                    from: txData.result.from || contractCreation.contractCreator,
+                    to: txData.result.to || null,
+                    hash: contractCreation.txHash,
+                  };
+                }
+              }
             }
+          } catch (error) {
+            console.warn(`[ContractCreation] Mantle RPC failed for getContractCreationTx:`, error);
           }
-        } catch (error) {
-          console.warn(`[ContractCreation] Mantle Blockscout API failed for getContractCreationTx:`, error);
+          
+          // Fallback: return what we have from contractCreation
+          return {
+            from: contractCreation.contractCreator,
+            to: null, // Can't determine factory without tx details
+            hash: contractCreation.txHash,
+          };
         }
       }
       return null;
