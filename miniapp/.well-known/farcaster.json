@@ -1,0 +1,10 @@
+{
+  "name": "Trading Bot",
+  "iconUrl": "https://your-domain.com/icon.png",
+  "homeUrl": "https://your-domain.com",
+  "splashImageUrl": "https://your-domain.com/splash.png",
+  "splashBackgroundColor": "#667eea",
+  "heroImageUrl": "https://your-domain.com/hero.png",
+  "tagline": "Trade tokens directly from Discord and Telegram"
+}
+

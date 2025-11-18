@@ -7,7 +7,9 @@ const envSchema = z.object({
   DISCORD_BOT_TOKEN: z.string().min(1),
   NEYNAR_API_KEY: z.string().min(1),
   WEBHOOK_SECRET: z.string().min(1),
-  DATABASE_URL: z.string().url(),
+  DATABASE_URL: z.string().url().optional(),
+  BACKEND_URL: z.string().url().optional(),
+  FARCASTER_REFERRAL_CODE: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

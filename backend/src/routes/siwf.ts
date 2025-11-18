@@ -426,4 +426,43 @@ router.delete("/signer", async (req, res) => {
   }
 });
 
+// Endpoint for Mini App connection (called from Mini App)
+router.post("/miniapp-connect", async (req, res) => {
+  try {
+    const { userId, platform, fid, username, custodyAddress, verifiedAddresses, signerPrivateKey, signerPublicKey } = req.body;
+
+    if (!userId || !platform || !fid) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const key = `${platform}:${userId}`;
+    
+    // Store the connection
+    verifiedConnections.set(key, {
+      fid,
+      username: username || "",
+      custodyAddress: custodyAddress || "",
+      verifiedAddresses: verifiedAddresses || [],
+      platform,
+      signerPrivateKey,
+      signerPublicKey,
+    });
+
+    logger.info(`Mini App connection stored for user ${userId} (FID: ${fid})`);
+
+    return res.json({
+      success: true,
+      message: "Successfully connected to bot",
+      connection: {
+        fid,
+        username,
+        custodyAddress,
+      },
+    });
+  } catch (error: any) {
+    logger.error("Failed to store Mini App connection:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export const siwfRouter = router;

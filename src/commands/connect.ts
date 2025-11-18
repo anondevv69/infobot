@@ -74,36 +74,29 @@ export async function handleConnectCommand(
     // Don't return - continue to show the SIWF button below
   }
 
-  // Generate SIWF URL with proper callback
-  const challenge = generateSIWFChallenge(userId, "discord");
-  const siwfUrl = generateSIWFUrl(
-    challenge.challenge,
-    userId,
-    "discord",
-    env.backendUrl,
-    env.farcasterReferralCode,
-  );
-
-  // Store pending verification in backend
-  await storePendingVerificationInBackend(challenge.challenge, userId, "discord", env.backendUrl);
+  // Use Mini App URL for better UX (QR code support, native Farcaster experience)
+  const miniappUrl = new URL(env.miniappUrl);
+  miniappUrl.searchParams.set("userId", userId);
+  miniappUrl.searchParams.set("platform", "discord");
+  miniappUrl.searchParams.set("backendUrl", env.backendUrl);
 
   const embed = new EmbedBuilder()
     .setTitle("🔗 Connect Farcaster")
     .setDescription(
       `To securely connect your Farcaster account:\n\n` +
-      `**Step 1:** Click the button below to open Warpcast\n` +
-      `**Step 2:** Sign in to your Farcaster account (or sign up if new - referral: ${env.farcasterReferralCode})\n` +
-      `**Step 3:** Approve the connection request\n` +
-      `**Step 4:** You'll be redirected back and your account will be securely linked!\n\n` +
-      `🔒 **Security:** This method verifies you own the Farcaster account by requiring you to sign in with your account.\n\n` +
-      `💡 **New to Farcaster?** Sign up using the link below (referral: ${env.farcasterReferralCode})`
+      `**Step 1:** Click the button below to open the Mini App in Warpcast\n` +
+      `**Step 2:** Scan the QR code with your phone (or sign in on desktop)\n` +
+      `**Step 3:** Approve the connection in the Mini App\n` +
+      `**Step 4:** Return here and you'll be connected!\n\n` +
+      `🔒 **Security:** This method verifies you own the Farcaster account.\n\n` +
+      `💡 **Better UX:** Mini App provides QR code login and native Farcaster experience!`
     )
     .setColor(0x8a63d2)
-    .setFooter({ text: `Referral code: ${env.farcasterReferralCode} - Secure account linking via SIWF` });
+    .setFooter({ text: `Referral code: ${env.farcasterReferralCode} - Secure account linking via Mini App` });
 
   const connectButton = new ButtonBuilder()
-    .setLabel("🔐 Connect with Farcaster")
-    .setURL(siwfUrl)
+    .setLabel("🔐 Open Mini App to Connect")
+    .setURL(miniappUrl.toString())
     .setStyle(ButtonStyle.Link);
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(connectButton);

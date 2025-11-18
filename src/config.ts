@@ -25,6 +25,7 @@ export const env = {
   oneinchApiKey: process.env.ONEINCH_API_KEY, // Optional: for 1inch DEX aggregator (better rate limits)
   farcasterReferralCode: process.env.FARCASTER_REFERRAL_CODE ?? "2ORGMS",
   backendUrl: process.env.BACKEND_URL || "https://infobot-production-f74e.up.railway.app", // Backend URL for SIWF callbacks
+  miniappUrl: process.env.MINIAPP_URL || "https://your-miniapp-domain.com", // Mini App URL for Farcaster authentication
   signerEncryptionKey: process.env.SIGNER_ENCRYPTION_KEY, // Encryption key for signer private keys (REQUIRED in production)
   brandName: process.env.BRAND_NAME ?? "InfoBot",
   brandIconUrl:

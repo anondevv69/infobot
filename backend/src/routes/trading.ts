@@ -1,43 +1,73 @@
 import { Router } from "express";
 import { logger } from "../utils/logger";
-import { getEncryptedSigner } from "./siwf";
-import crypto from "crypto";
+import { getConnection } from "./siwf";
+import {
+  getOrCreateSnapchainWallet,
+  getStoredWallet,
+  storeWallet,
+  executeSnapchainTransaction,
+} from "../services/snapchain";
 
 const router = Router();
 
-// Encryption utilities (duplicated from bot for backend use)
-const ALGORITHM = "aes-256-gcm";
-const IV_LENGTH = 16;
-const SALT_LENGTH = 64;
-const TAG_LENGTH = 16;
-const TAG_POSITION = SALT_LENGTH + IV_LENGTH;
-const ENCRYPTED_POSITION = TAG_POSITION + TAG_LENGTH;
-
-function deriveKey(salt: Buffer): Buffer {
-  const ENCRYPTION_KEY = process.env.SIGNER_ENCRYPTION_KEY || "dev-key-change-in-production-32chars!!";
-  return crypto.pbkdf2Sync(ENCRYPTION_KEY, salt, 100000, 32, "sha512");
-}
-
-function decryptSigner(encryptedKey: string): string {
+// Endpoint to create/get Snapchain wallet for a user
+router.post("/wallet", async (req, res) => {
   try {
-    const data = Buffer.from(encryptedKey, "base64");
-    const salt = data.subarray(0, SALT_LENGTH);
-    const iv = data.subarray(SALT_LENGTH, TAG_POSITION);
-    const tag = data.subarray(TAG_POSITION, ENCRYPTED_POSITION);
-    const encrypted = data.subarray(ENCRYPTED_POSITION);
-    const key = deriveKey(salt);
-    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-    decipher.setAuthTag(tag);
-    let decrypted = decipher.update(encrypted);
-    decrypted = Buffer.concat([decrypted, decipher.final()]);
-    return decrypted.toString("utf8");
-  } catch (error: any) {
-    logger.error("Failed to decrypt signer:", error);
-    throw new Error("Failed to decrypt signer private key");
-  }
-}
+    const { userId, platform } = req.body;
 
-// Endpoint to execute a trade transaction
+    if (!userId || !platform) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Get user's Farcaster connection (from SIWF)
+    const connection = getConnection(userId, platform);
+    if (!connection) {
+      return res.status(404).json({
+        error: "User not connected to Farcaster. Use /connect first.",
+      });
+    }
+
+    // Check if wallet already exists in cache
+    let wallet = getStoredWallet(userId, platform);
+    if (wallet) {
+      return res.json({
+        success: true,
+        wallet: {
+          address: wallet.address,
+          walletId: wallet.walletId,
+          network: wallet.network,
+        },
+      });
+    }
+
+    // Create or get Snapchain wallet for this FID
+    wallet = await getOrCreateSnapchainWallet(connection.fid, "base");
+
+    // Store wallet in cache
+    storeWallet(userId, platform, wallet);
+
+    logger.info(
+      `Snapchain wallet created/retrieved for user ${userId} (FID: ${connection.fid})`
+    );
+
+    return res.json({
+      success: true,
+      wallet: {
+        address: wallet.address,
+        walletId: wallet.walletId,
+        network: wallet.network,
+      },
+    });
+  } catch (error: any) {
+    logger.error("Failed to create/get Snapchain wallet:", error);
+    return res.status(500).json({
+      error: "Failed to create/get wallet",
+      message: error.message,
+    });
+  }
+});
+
+// Endpoint to execute a trade transaction using Snapchain
 router.post("/execute", async (req, res) => {
   try {
     const { userId, platform, transaction, chainId } = req.body;
@@ -46,79 +76,59 @@ router.post("/execute", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // Get encrypted signer
-    const encryptedSigner = getEncryptedSigner(userId, platform);
-    if (!encryptedSigner) {
-      return res.status(404).json({ error: "No signer found for user" });
+    // Get user's Farcaster connection
+    const connection = getConnection(userId, platform);
+    if (!connection) {
+      return res.status(404).json({
+        error: "User not connected to Farcaster. Use /connect first.",
+      });
     }
 
-    // Decrypt signer
-    let privateKey: string;
-    try {
-      privateKey = decryptSigner(encryptedSigner);
-    } catch (error: any) {
-      logger.error("Failed to decrypt signer:", error);
-      return res.status(500).json({ error: "Failed to decrypt signer" });
+    // Get or create Snapchain wallet
+    let wallet = getStoredWallet(userId, platform);
+    if (!wallet) {
+      wallet = await getOrCreateSnapchainWallet(connection.fid, "base");
+      storeWallet(userId, platform, wallet);
     }
 
-    // Execute transaction using ethers
-    try {
-      const { Wallet, JsonRpcProvider } = require("ethers");
+    // Map chainId to network (Snapchain primarily supports Base)
+    // For now, we'll use Base for all transactions
+    const network = chainId === 8453 ? "base" : "base-sepolia";
 
-      // Get RPC URL for chain
-      const rpcUrls: Record<number, string> = {
-        1: process.env.QUICKNODE_API_KEY
-          ? `https://eth-mainnet.quiknode.pro/${process.env.QUICKNODE_API_KEY}/`
-          : "https://eth.llamarpc.com",
-        8453: process.env.QUICKNODE_API_KEY
-          ? `https://base-mainnet.quiknode.pro/${process.env.QUICKNODE_API_KEY}/`
-          : "https://mainnet.base.org",
-        42161: process.env.QUICKNODE_API_KEY
-          ? `https://arbitrum-mainnet.quiknode.pro/${process.env.QUICKNODE_API_KEY}/`
-          : "https://arb1.arbitrum.io/rpc",
-        10: process.env.QUICKNODE_API_KEY
-          ? `https://optimism-mainnet.quiknode.pro/${process.env.QUICKNODE_API_KEY}/`
-          : "https://mainnet.optimism.io",
-        137: process.env.QUICKNODE_API_KEY
-          ? `https://polygon-mainnet.quiknode.pro/${process.env.QUICKNODE_API_KEY}/`
-          : "https://polygon-rpc.com",
-      };
-
-      const rpcUrl = rpcUrls[chainId] || rpcUrls[1];
-      const provider = new JsonRpcProvider(rpcUrl);
-      const wallet = new Wallet(privateKey, provider);
-
-      // Send transaction
-      const tx = await wallet.sendTransaction({
+    // Execute transaction via Snapchain
+    const result = await executeSnapchainTransaction(
+      wallet.walletId,
+      {
         to: transaction.to,
         data: transaction.data,
         value: transaction.value || "0",
         gasLimit: transaction.gasLimit,
         gasPrice: transaction.gasPrice,
-      });
+      },
+      network
+    );
 
-      logger.info(`Transaction sent: ${tx.hash} for user ${userId} on chain ${chainId}`);
+    logger.info(
+      `Snapchain transaction executed: ${result.transactionHash} for user ${userId} (FID: ${connection.fid})`
+    );
 
-      return res.json({
-        success: true,
-        txHash: tx.hash,
-        tx: {
-          hash: tx.hash,
-          from: tx.from,
-          to: tx.to,
-          value: tx.value.toString(),
-        },
-      });
-    } catch (error: any) {
-      logger.error("Failed to execute transaction:", error);
-      return res.status(500).json({
-        error: "Transaction execution failed",
-        message: error.message,
-      });
-    }
+    return res.json({
+      success: true,
+      txHash: result.transactionHash,
+      tx: {
+        hash: result.transactionHash,
+        from: result.from,
+        to: result.to,
+        value: result.value,
+        status: result.status,
+      },
+    });
   } catch (error: any) {
     logger.error("Trading execute error:", error);
-    return res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({
+      error: "Transaction execution failed",
+      message: error.message,
+    });
   }
 });
 
