@@ -4,8 +4,6 @@ import {
   generateSIWFUrl,
   getSIWFSession,
   clearSIWFSession,
-  verifyUserByUsernameOrWallet,
-  storeSIWFSession,
   storePendingVerificationInBackend,
 } from "../../../services/siwf";
 import { env } from "../../../config";
@@ -17,6 +15,7 @@ import {
   getSwapTransaction,
   parseTokenAmount,
 } from "../../../services/dex";
+import { validatePrivateKey, testSigner, encryptSigner } from "../../../utils/signerEncryption";
 
 export async function handleTelegramConnect(
   bot: TelegramBot,
@@ -218,6 +217,35 @@ export async function handleTelegramTrade(
     return;
   }
 
+  // Check if user has a signer for trading
+  let signerInfo: { address: string; hasSigner: boolean } | null = null;
+  try {
+    const signerResponse = await fetch(`${env.backendUrl}/api/siwf/signer?userId=${userId}&platform=telegram`);
+    if (signerResponse.ok) {
+      const signerData = await signerResponse.json();
+      signerInfo = {
+        address: signerData.signerAddress || "",
+        hasSigner: !!signerData.signerAddress,
+      };
+    }
+  } catch (error) {
+    console.error("[Telegram Trade] Failed to check signer:", error);
+  }
+
+  if (!signerInfo?.hasSigner) {
+    await bot.sendMessage(
+      chatId,
+      `❌ <b>No Trading Signer</b>\n\n` +
+        `You need to connect a trading signer to execute trades!\n\n` +
+        `Step 1: Connect your Farcaster account: /connect ✅\n` +
+        `Step 2: Add a trading signer: /connect-signer &lt;private_key&gt;\n\n` +
+        `The signer allows the bot to execute trades on your behalf.\n` +
+        `Your private key will be encrypted and stored securely.`,
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
   const chain = chainId || 8453; // Default to Base
 
   try {
@@ -301,27 +329,83 @@ export async function handleTelegramTrade(
       return;
     }
 
+    // Execute transaction using signer
+    let txHash: string | null = null;
+    try {
+      const executeResponse = await fetch(`${env.backendUrl}/api/trading/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          platform: "telegram",
+          transaction: {
+            to: swapTx.tx.to,
+            data: swapTx.tx.data,
+            value: swapTx.tx.value || "0",
+            gasLimit: swapTx.tx.gas || "300000",
+            gasPrice: swapTx.tx.gasPrice || undefined,
+          },
+          chainId: chain,
+        }),
+      });
+
+      if (executeResponse.ok) {
+        const result = await executeResponse.json();
+        txHash = result.txHash;
+      } else {
+        const error = await executeResponse.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(error.error || "Transaction execution failed");
+      }
+    } catch (error: any) {
+      console.error("[Telegram Trade] Failed to execute transaction:", error);
+      // Fall through to show quote only
+    }
+
     const toAmountFormatted = formatTokenAmount(quote.toAmount, toTokenInfo.decimals);
     const fromAmountFormatted = formatTokenAmount(quote.fromAmount, fromTokenInfo.decimals);
     const chainName = getChainName(chain);
 
-    await bot.sendMessage(
-      chatId,
-      `💱 <b>Swap Quote</b>\n\n` +
-        `From: <b>${fromAmountFormatted} ${fromTokenInfo.symbol}</b>\n` +
-        `To: <b>~${toAmountFormatted} ${toTokenInfo.symbol}</b>\n` +
-        `Estimated Gas: ${formatTokenAmount(quote.estimatedGas, 18)} ETH\n` +
-        `Slippage: 1%\n` +
-        `Chain: ${chainName}\n\n` +
-        `⚠️ <b>Important:</b> You must sign this transaction with your wallet.\n` +
-        `The bot provides the transaction data, but you need to execute it using a wallet interface.\n\n` +
-        `Transaction Data:\n` +
-        `<code>To: ${swapTx.tx.to}\n` +
-        `Data: ${swapTx.tx.data.slice(0, 66)}...\n` +
-        `Value: ${swapTx.tx.value}</code>\n\n` +
-        `Your Wallet: <code>${session.custodyAddress}</code>`,
-      { parse_mode: "HTML" },
-    );
+    const chainExplorerMap: Record<number, string> = {
+      1: "https://etherscan.io/tx/",
+      56: "https://bscscan.com/tx/",
+      137: "https://polygonscan.com/tx/",
+      8453: "https://basescan.org/tx/",
+      42161: "https://arbiscan.io/tx/",
+      10: "https://optimistic.etherscan.io/tx/",
+      43114: "https://snowtrace.io/tx/",
+      250: "https://ftmscan.com/tx/",
+    };
+
+    const explorerUrl = chainExplorerMap[chain] || "https://etherscan.io/tx/";
+
+    if (txHash) {
+      // Transaction executed successfully
+      await bot.sendMessage(
+        chatId,
+        `✅ <b>Transaction Executed!</b>\n\n` +
+          `From: <b>${fromAmountFormatted} ${fromTokenInfo.symbol}</b>\n` +
+          `To: <b>~${toAmountFormatted} ${toTokenInfo.symbol}</b>\n` +
+          `Transaction Hash: <a href="${explorerUrl}${txHash}">${txHash.slice(0, 10)}...${txHash.slice(-8)}</a>\n\n` +
+          `✅ Your trade has been submitted to the blockchain!\n` +
+          `Click the transaction hash to view it on the explorer.`,
+        { parse_mode: "HTML" },
+      );
+    } else {
+      // Show quote only (execution failed)
+      await bot.sendMessage(
+        chatId,
+        `💱 <b>Swap Quote</b>\n\n` +
+          `From: <b>${fromAmountFormatted} ${fromTokenInfo.symbol}</b>\n` +
+          `To: <b>~${toAmountFormatted} ${toTokenInfo.symbol}</b>\n` +
+          `Estimated Gas: ${formatTokenAmount(quote.estimatedGas, 18)} ETH\n` +
+          `Slippage: 1%\n` +
+          `Chain: ${chainName}\n\n` +
+          `⚠️ <b>Transaction execution failed.</b>\n` +
+          `Please try again or contact support if the issue persists.\n\n` +
+          `Signer Address: <code>${signerInfo.address}</code>`,
+        { parse_mode: "HTML" },
+      );
+    }
   } catch (error: any) {
     console.error("[Telegram Trade] Error:", error);
     await bot.sendMessage(chatId, `❌ Error: ${error.message || "Unknown error"}`);

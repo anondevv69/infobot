@@ -26,6 +26,8 @@ import {
   handleTelegramDisconnect,
   handleTelegramBalance,
   handleTelegramTrade,
+  handleTelegramConnectSigner,
+  handleTelegramDisconnectSigner,
 } from "./trading";
 
 export async function handleTelegramCommand(

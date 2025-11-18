@@ -337,4 +337,93 @@ router.get("/callback", async (req, res) => {
   }
 });
 
+// Store signers (userId -> encrypted signer info)
+// In production, use database
+const signers = new Map<string, {
+  encryptedSigner: string;
+  signerAddress: string;
+  signerPublicKey: string;
+  platform: "discord" | "telegram";
+  createdAt: number;
+}>();
+
+// Endpoint to store signer
+router.post("/signer", async (req, res) => {
+  try {
+    const { userId, platform, encryptedSigner, signerAddress, signerPublicKey } = req.body;
+
+    if (!userId || !platform || !encryptedSigner || !signerAddress) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const key = `${platform}:${userId}`;
+    signers.set(key, {
+      encryptedSigner,
+      signerAddress,
+      signerPublicKey: signerPublicKey || "",
+      platform,
+      createdAt: Date.now(),
+    });
+
+    return res.json({ success: true });
+  } catch (error: any) {
+    logger.error("Failed to store signer:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Endpoint to get signer (returns address only, not private key)
+router.get("/signer", async (req, res) => {
+  try {
+    const { userId, platform } = req.query;
+
+    if (!userId || !platform) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const key = `${platform}:${userId}`;
+    const signer = signers.get(key);
+
+    if (!signer) {
+      return res.status(404).json({ error: "Signer not found" });
+    }
+
+    // Return address and public key only (not the encrypted private key)
+    return res.json({
+      signerAddress: signer.signerAddress,
+      signerPublicKey: signer.signerPublicKey,
+      createdAt: signer.createdAt,
+    });
+  } catch (error: any) {
+    logger.error("Failed to get signer:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Endpoint to get encrypted signer (for transaction signing - backend only)
+export function getEncryptedSigner(userId: string, platform: "discord" | "telegram"): string | null {
+  const key = `${platform}:${userId}`;
+  const signer = signers.get(key);
+  return signer ? signer.encryptedSigner : null;
+}
+
+// Endpoint to delete signer
+router.delete("/signer", async (req, res) => {
+  try {
+    const { userId, platform } = req.body;
+
+    if (!userId || !platform) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const key = `${platform}:${userId}`;
+    signers.delete(key);
+
+    return res.json({ success: true });
+  } catch (error: any) {
+    logger.error("Failed to delete signer:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export const siwfRouter = router;

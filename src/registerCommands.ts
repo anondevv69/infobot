@@ -162,6 +162,18 @@ async function registerCommands(): Promise<void> {
     new SlashCommandBuilder()
       .setName("debug")
       .setDescription("Debug SIWF URL generation and check deployment status."),
+    new SlashCommandBuilder()
+      .setName("connect-signer")
+      .setDescription("Connect a trading signer to enable automated trading.")
+      .addStringOption((option) =>
+        option
+          .setName("private_key")
+          .setDescription("Your private key (will be encrypted and stored securely)")
+          .setRequired(true),
+      ),
+    new SlashCommandBuilder()
+      .setName("disconnect-signer")
+      .setDescription("Remove your trading signer."),
   ].map((command) => command.toJSON());
 
   const rest = new REST({ version: "10" }).setToken(token);

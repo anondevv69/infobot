@@ -17,6 +17,20 @@ export async function handleConnectCommand(
   // Check if user is already connected
   const existingSession = await getSIWFSession(userId, "discord", env.backendUrl);
   if (existingSession) {
+    // Check if user has a signer
+    let hasSigner = false;
+    let signerAddress = "";
+    try {
+      const signerResponse = await fetch(`${env.backendUrl}/api/siwf/signer?userId=${userId}&platform=discord`);
+      if (signerResponse.ok) {
+        const signerData = await signerResponse.json();
+        hasSigner = !!signerData.signerAddress;
+        signerAddress = signerData.signerAddress || "";
+      }
+    } catch (error) {
+      console.error("[Connect] Failed to check signer:", error);
+    }
+
     const embed = new EmbedBuilder()
       .setTitle("✅ Already Connected")
       .setDescription(
@@ -24,9 +38,13 @@ export async function handleConnectCommand(
         `**Farcaster ID:** ${existingSession.fid}\n` +
         `**Username:** ${existingSession.username || "N/A"}\n` +
         `**Custody Wallet:** \`${existingSession.custodyAddress}\`\n\n` +
+        (hasSigner
+          ? `✅ **Trading Signer:** Connected (\`${signerAddress.slice(0, 10)}...${signerAddress.slice(-8)}\`)\n\n`
+          : `⚠️ **Trading Signer:** Not connected\n\n` +
+            `To enable trading, run \`/connect-signer <private_key>\`\n\n`) +
         `Use \`/disconnect\` to disconnect your account.`
       )
-      .setColor(0x00ff00);
+      .setColor(hasSigner ? 0x00ff00 : 0xff9900);
 
     await interaction.reply({ embeds: [embed], ephemeral: true });
     return;

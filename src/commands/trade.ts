@@ -91,6 +91,37 @@ async function handleTrade(
     return;
   }
 
+  // Check if user has a signer for trading
+  let signerInfo: { address: string; hasSigner: boolean } | null = null;
+  try {
+    const signerResponse = await fetch(`${env.backendUrl}/api/siwf/signer?userId=${userId}&platform=discord`);
+    if (signerResponse.ok) {
+      const signerData = await signerResponse.json();
+      signerInfo = {
+        address: signerData.signerAddress || "",
+        hasSigner: !!signerData.signerAddress,
+      };
+    }
+  } catch (error) {
+    console.error("[Trade] Failed to check signer:", error);
+  }
+
+  if (!signerInfo?.hasSigner) {
+    const embed = new EmbedBuilder()
+      .setTitle("❌ No Trading Signer")
+      .setDescription(
+        `You need to connect a trading signer to execute trades!\n\n` +
+        `**Step 1:** Connect your Farcaster account: \`/connect\` ✅\n` +
+        `**Step 2:** Add a trading signer: \`/connect-signer <private_key>\`\n\n` +
+        `The signer allows the bot to execute trades on your behalf.\n` +
+        `Your private key will be encrypted and stored securely.`
+      )
+      .setColor(0xff9900);
+
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+    return;
+  }
+
   await interaction.deferReply({ ephemeral: true });
 
   try {
@@ -187,36 +218,42 @@ async function handleTrade(
       return;
     }
 
-    // Display quote and transaction
+    // Execute transaction using signer
+    let txHash: string | null = null;
+    try {
+      const executeResponse = await fetch(`${env.backendUrl}/api/trading/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          platform: "discord",
+          transaction: {
+            to: swapTx.tx.to,
+            data: swapTx.tx.data,
+            value: swapTx.tx.value || "0",
+            gasLimit: swapTx.tx.gas || "300000",
+            gasPrice: swapTx.tx.gasPrice || undefined,
+          },
+          chainId: params.chainId,
+        }),
+      });
+
+      if (executeResponse.ok) {
+        const result = await executeResponse.json();
+        txHash = result.txHash;
+      } else {
+        const error = await executeResponse.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(error.error || "Transaction execution failed");
+      }
+    } catch (error: any) {
+      console.error("[Trade] Failed to execute transaction:", error);
+      // Fall through to show quote only
+    }
+
+    // Display quote and transaction result
     const toAmountFormatted = formatTokenAmount(quote.toAmount, toTokenInfo.decimals);
     const fromAmountFormatted = formatTokenAmount(quote.fromAmount, fromTokenInfo.decimals);
 
-    const embed = new EmbedBuilder()
-      .setTitle("💱 Swap Quote")
-      .setDescription(
-        `**From:** ${fromAmountFormatted} ${fromTokenInfo.symbol}\n` +
-        `**To:** ~${toAmountFormatted} ${toTokenInfo.symbol}\n` +
-        `**Estimated Gas:** ${formatTokenAmount(quote.estimatedGas, 18)} ETH\n` +
-        `**Slippage:** 1%\n\n` +
-        `⚠️ **You need to sign this transaction with your wallet.**\n` +
-        `The bot cannot execute transactions on your behalf for security reasons.`
-      )
-      .addFields(
-        {
-          name: "Transaction Data",
-          value: `\`\`\`\nTo: ${swapTx.tx.to}\nData: ${swapTx.tx.data.slice(0, 66)}...\nValue: ${swapTx.tx.value}\`\`\``,
-          inline: false,
-        },
-        {
-          name: "Your Wallet",
-          value: `\`${session.custodyAddress}\``,
-          inline: false,
-        }
-      )
-      .setColor(0x8a63d2)
-      .setFooter({ text: "Copy the transaction data and sign it with your wallet" });
-
-    // Create button to view transaction on explorer
     const chainExplorerMap: Record<number, string> = {
       1: "https://etherscan.io/tx/",
       56: "https://bscscan.com/tx/",
@@ -230,10 +267,50 @@ async function handleTrade(
 
     const explorerUrl = chainExplorerMap[params.chainId] || "https://etherscan.io/tx/";
 
-    await interaction.editReply({
-      embeds: [embed],
-      content: `⚠️ **Important:** You must sign this transaction with your wallet. The bot provides the transaction data, but you need to execute it using a wallet interface like MetaMask, WalletConnect, or Warpcast.`,
-    });
+    if (txHash) {
+      // Transaction executed successfully
+      const embed = new EmbedBuilder()
+        .setTitle("✅ Transaction Executed!")
+        .setDescription(
+          `**From:** ${fromAmountFormatted} ${fromTokenInfo.symbol}\n` +
+          `**To:** ~${toAmountFormatted} ${toTokenInfo.symbol}\n` +
+          `**Transaction Hash:** [\`${txHash.slice(0, 10)}...${txHash.slice(-8)}\`](${explorerUrl}${txHash})\n\n` +
+          `✅ Your trade has been submitted to the blockchain!\n` +
+          `Click the transaction hash to view it on the explorer.`
+        )
+        .setColor(0x00ff00)
+        .setFooter({ text: "Transaction is being processed on-chain" });
+
+      await interaction.editReply({ embeds: [embed] });
+    } else {
+      // Show quote only (execution failed or not attempted)
+      const embed = new EmbedBuilder()
+        .setTitle("💱 Swap Quote")
+        .setDescription(
+          `**From:** ${fromAmountFormatted} ${fromTokenInfo.symbol}\n` +
+          `**To:** ~${toAmountFormatted} ${toTokenInfo.symbol}\n` +
+          `**Estimated Gas:** ${formatTokenAmount(quote.estimatedGas, 18)} ETH\n` +
+          `**Slippage:** 1%\n\n` +
+          `⚠️ **Transaction execution failed or was not attempted.**\n` +
+          `Please try again or contact support if the issue persists.`
+        )
+        .addFields(
+          {
+            name: "Transaction Data",
+            value: `\`\`\`\nTo: ${swapTx.tx.to}\nData: ${swapTx.tx.data.slice(0, 66)}...\nValue: ${swapTx.tx.value}\`\`\``,
+            inline: false,
+          },
+          {
+            name: "Signer Address",
+            value: `\`${signerInfo.address}\``,
+            inline: false,
+          }
+        )
+        .setColor(0xff9900)
+        .setFooter({ text: "Transaction could not be executed automatically" });
+
+      await interaction.editReply({ embeds: [embed] });
+    }
   } catch (error: any) {
     console.error("[Trade] Error:", error);
     await interaction.editReply({
