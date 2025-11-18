@@ -407,6 +407,16 @@ Just send:
         break;
       }
 
+      case "connect-signer": {
+        await handleTelegramConnectSigner(bot, msg, query || undefined);
+        break;
+      }
+
+      case "disconnect-signer": {
+        await handleTelegramDisconnectSigner(bot, msg);
+        break;
+      }
+
       default:
         await bot.sendMessage(chatId, "Unknown command. Use /help to see available commands.");
     }

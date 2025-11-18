@@ -427,3 +427,179 @@ function getChainName(chainId: number): string {
   return chainMap[chainId] || `Chain ${chainId}`;
 }
 
+export async function handleTelegramConnectSigner(
+  bot: TelegramBot,
+  msg: TelegramBot.Message,
+  privateKey?: string,
+): Promise<void> {
+  const chatId = msg.chat.id;
+  const userId = msg.from?.id.toString() || "";
+
+  if (!userId) {
+    await bot.sendMessage(chatId, "❌ Could not identify user.");
+    return;
+  }
+
+  if (!privateKey) {
+    await bot.sendMessage(
+      chatId,
+      `❌ <b>Missing Private Key</b>\n\n` +
+        `You must provide a private key to enable trading.\n\n` +
+        `Usage: <code>/connect-signer &lt;private_key&gt;</code>\n\n` +
+        `Security Note: This key will be encrypted and stored securely.\n` +
+        `It will be used to sign trading transactions on your behalf.\n\n` +
+        `⚠️ <b>Only provide a key you trust this bot with!</b>`,
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  try {
+    // Check if user is connected via SIWF
+    const session = await getSIWFSession(userId, "telegram", env.backendUrl);
+    if (!session) {
+      await bot.sendMessage(
+        chatId,
+        `❌ <b>Not Connected</b>\n\n` +
+          `You must connect your Farcaster account first!\n\n` +
+          `Step 1: Run /connect to connect your Farcaster account\n` +
+          `Step 2: Then run /connect-signer to add a trading signer\n\n` +
+          `This ensures your signer is linked to your Farcaster identity.`,
+        { parse_mode: "HTML" },
+      );
+      return;
+    }
+
+    // Validate private key
+    if (!validatePrivateKey(privateKey)) {
+      await bot.sendMessage(
+        chatId,
+        `❌ <b>Invalid Private Key</b>\n\n` +
+          `The private key you provided is invalid.\n\n` +
+          `Valid format: 64 hex characters (with or without 0x prefix)\n` +
+          `Example: <code>0x1234567890abcdef...</code> (64 hex chars)\n\n` +
+          `Please check your private key and try again.`,
+        { parse_mode: "HTML" },
+      );
+      return;
+    }
+
+    // Test the signer
+    let signerAddress: string;
+    let signerPublicKey: string;
+    try {
+      const testResult = await testSigner(privateKey);
+      signerAddress = testResult.address;
+      signerPublicKey = testResult.publicKey;
+    } catch (error: any) {
+      await bot.sendMessage(
+        chatId,
+        `❌ <b>Signer Validation Failed</b>\n\n` +
+          `The private key you provided could not be validated.\n\n` +
+          `Error: ${error.message || "Unknown error"}\n\n` +
+          `Please check your private key and try again.`,
+        { parse_mode: "HTML" },
+      );
+      return;
+    }
+
+    // Encrypt the signer
+    const encryptedKey = encryptSigner(privateKey);
+
+    // Store the signer in backend
+    const response = await fetch(`${env.backendUrl}/api/siwf/signer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId,
+        platform: "telegram",
+        encryptedSigner: encryptedKey,
+        signerAddress,
+        signerPublicKey,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: "Unknown error" }));
+      throw new Error(error.error || "Failed to store signer");
+    }
+
+    await bot.sendMessage(
+      chatId,
+      `✅ <b>Signer Connected!</b>\n\n` +
+        `Your trading signer has been successfully connected!\n\n` +
+        `Farcaster Account: @${session.username || "N/A"} (FID: ${session.fid})\n` +
+        `Signer Address: <code>${signerAddress}</code>\n` +
+        `Custody Address: <code>${session.custodyAddress}</code>\n\n` +
+        `🔒 <b>Security:</b> Your signer private key is encrypted and stored securely.\n\n` +
+        `✅ <b>You can now use trading commands:</b>\n` +
+        `• /buy - Buy tokens\n` +
+        `• /sell - Sell tokens\n` +
+        `• /swap - Swap tokens\n\n` +
+        `Use /disconnect-signer to remove your signer.`,
+      { parse_mode: "HTML" },
+    );
+  } catch (error: any) {
+    console.error("[Telegram ConnectSigner] Error:", error);
+    await bot.sendMessage(
+      chatId,
+      `❌ <b>Error</b>\n\nAn unexpected error occurred: ${error.message || "Unknown error"}`,
+      { parse_mode: "HTML" },
+    );
+  }
+}
+
+export async function handleTelegramDisconnectSigner(
+  bot: TelegramBot,
+  msg: TelegramBot.Message,
+): Promise<void> {
+  const chatId = msg.chat.id;
+  const userId = msg.from?.id.toString() || "";
+
+  if (!userId) {
+    await bot.sendMessage(chatId, "❌ Could not identify user.");
+    return;
+  }
+
+  try {
+    const session = await getSIWFSession(userId, "telegram", env.backendUrl);
+    if (!session) {
+      await bot.sendMessage(
+        chatId,
+        `❌ <b>Not Connected</b>\n\nYou're not connected to Farcaster. Use /connect to connect.`,
+        { parse_mode: "HTML" },
+      );
+      return;
+    }
+
+    const response = await fetch(`${env.backendUrl}/api/siwf/signer`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId,
+        platform: "telegram",
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: "Unknown error" }));
+      throw new Error(error.error || "Failed to remove signer");
+    }
+
+    await bot.sendMessage(
+      chatId,
+      `✅ <b>Signer Disconnected</b>\n\n` +
+        `Your trading signer has been removed.\n\n` +
+        `You can no longer use trading commands until you add a new signer with /connect-signer.`,
+      { parse_mode: "HTML" },
+    );
+  } catch (error: any) {
+    console.error("[Telegram DisconnectSigner] Error:", error);
+    await bot.sendMessage(
+      chatId,
+      `❌ <b>Error</b>\n\nAn unexpected error occurred: ${error.message || "Unknown error"}`,
+      { parse_mode: "HTML" },
+    );
+  }
+}
+
