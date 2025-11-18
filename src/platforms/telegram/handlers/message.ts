@@ -269,10 +269,25 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           // Fetch creator address and detect factory for this chain
           const { getContractCreation, getContractCreationTx } = await import("../../../services/contractCreation");
           const { env } = await import("../../../config");
+          console.log(`[Telegram] Fetching creator info for ${address} on chain ${multiChainTokenData.chainId} (${multiChainTokenData.chainName})`);
           const [contractCreation, creationTx] = await Promise.all([
-            getContractCreation(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
-            getContractCreationTx(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
+            getContractCreation(address, multiChainTokenData.chainId, env.basescanApiKey).catch((err) => {
+              console.error(`[Telegram] Failed to get contract creation for ${address} on ${multiChainTokenData.chainId}:`, err);
+              return null;
+            }),
+            getContractCreationTx(address, multiChainTokenData.chainId, env.basescanApiKey).catch((err) => {
+              console.error(`[Telegram] Failed to get creation tx for ${address} on ${multiChainTokenData.chainId}:`, err);
+              return null;
+            }),
           ]);
+          
+          console.log(`[Telegram] Creator lookup result for ${address}:`, {
+            hasCreator: !!contractCreation?.contractCreator,
+            creator: contractCreation?.contractCreator,
+            hasTxHash: !!contractCreation?.txHash,
+            txHash: contractCreation?.txHash,
+            chainId: multiChainTokenData.chainId,
+          });
 
           // Detect factory: if creationTx.to exists, that's the factory address
           let factoryName: string | null = null;

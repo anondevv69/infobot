@@ -310,6 +310,8 @@ export async function getContractCreation(
         const firstTx = txData.result[0];
         // If the "to" field is empty, it's a contract creation transaction
         // Also check if contractAddress matches (for contracts created via factory)
+        // For factory-deployed contracts, the first transaction's "to" is the factory,
+        // and the contractAddress field should match our contract
         const isContractCreation = 
           !firstTx.to || 
           firstTx.to === "" || 
@@ -327,9 +329,16 @@ export async function getContractCreation(
           };
           // Cache the result
           creatorCache.set(cacheKey, result);
+          console.log(`[ContractCreation] ✅ Found creator for ${contractAddress} on ${chainId}: ${firstTx.from}`);
           return result;
+        } else {
+          console.warn(`[ContractCreation] First transaction for ${contractAddress} on ${chainId} doesn't appear to be creation tx. to=${firstTx.to}, contractAddress=${firstTx.contractAddress}`);
         }
+      } else {
+        console.warn(`[ContractCreation] No transactions found for ${contractAddress} on ${chainId}. Status: ${txData.status}, Result type: ${typeof txData.result}`);
       }
+    } else {
+      console.warn(`[ContractCreation] API request failed for ${contractAddress} on ${chainId}: ${txResponse.status} ${txResponse.statusText}`);
     }
 
     // Method 2: Try the contract creation endpoint (may be deprecated but worth trying for non-Base chains)
@@ -390,7 +399,10 @@ export async function getContractCreation(
         };
         // Cache the result
         creatorCache.set(cacheKey, result);
+        console.log(`[ContractCreation] ✅ Found creator via contract creation endpoint for ${contractAddress} on ${chainId}: ${apiResult.contractCreator}`);
         return result;
+      } else if (data.status === "0") {
+        console.warn(`[ContractCreation] Contract creation endpoint returned status 0 for ${contractAddress} on ${chainId}: ${data.message || "Unknown error"}`);
       }
     }
 
