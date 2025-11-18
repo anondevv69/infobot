@@ -264,6 +264,8 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       if (multiChainTokenData) {
         tokenFound = true;  // ✅ TOKEN FOUND
         const chainIdLower = multiChainTokenData.chainId.toLowerCase();
+        console.log(`[Telegram] Multi-chain token found: ${multiChainTokenData.chainName} (chainId: ${multiChainTokenData.chainId}, normalized: ${chainIdLower})`);
+        // Handle all non-Base chains (including BSC, Mantle, etc.)
         if (chainIdLower !== "base" && multiChainTokenData.chainId !== "8453") {
           console.log(`[Telegram] ✅ Showing ${multiChainTokenData.chainName} token for ${address} (chainId: ${multiChainTokenData.chainId})`);
           // Fetch creator address and detect factory for this chain
@@ -300,17 +302,28 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           multiChainTokenData.createdAt = contractCreation?.createdAt ?? null;
           multiChainTokenData.creationTxHash = contractCreation?.txHash ?? null;
 
-          const { embed } = await buildMultiChainTokenEmbed(address, multiChainTokenData);
-          const messages = embedsToTelegram([embed]);
-          await bot.sendMessage(chatId, `${multiChainTokenData.chainName} token detected for <code>${address}</code>.`, {
-            parse_mode: "HTML",
-            disable_web_page_preview: true,
-          });
-          await bot.sendMessage(chatId, messages[0], {
-            parse_mode: "HTML",
-            disable_web_page_preview: true,
-          });
-          return;  // EXIT
+          try {
+            const { embed } = await buildMultiChainTokenEmbed(address, multiChainTokenData);
+            const messages = embedsToTelegram([embed]);
+            await bot.sendMessage(chatId, `${multiChainTokenData.chainName} token detected for <code>${address}</code>.`, {
+              parse_mode: "HTML",
+              disable_web_page_preview: true,
+            });
+            await bot.sendMessage(chatId, messages[0], {
+              parse_mode: "HTML",
+              disable_web_page_preview: true,
+            });
+            return;  // EXIT
+          } catch (embedError) {
+            console.error(`[Telegram] Failed to build/send embed for ${address} on ${multiChainTokenData.chainId}:`, embedError);
+            // Fallback: send basic token info without creator profiles
+            const basicMessage = `🪙 ${multiChainTokenData.tokenSymbol || "Token"} • ${multiChainTokenData.tokenName || "Unknown"}\n🔗 Chain: ${multiChainTokenData.chainName}\n🔑 Address: <code>${address}</code>`;
+            await bot.sendMessage(chatId, basicMessage, {
+              parse_mode: "HTML",
+              disable_web_page_preview: true,
+            });
+            return;
+          }
         }
       }
 
@@ -1038,8 +1051,15 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
     // If we get here and it's a private chat, don't send anything (silent failure for auto-detection)
     // In groups, we already filtered out non-mentions above
   } catch (error) {
-    console.error("Error handling Telegram message:", error);
-    // Don't send error to user for auto-detection failures
+    console.error(`[Telegram] Error in processMessage:`, error);
+    // Try to send a generic error message to the user
+    try {
+      await bot.sendMessage(chatId, "❌ An error occurred while processing your request. Please try again.", {
+        parse_mode: "HTML",
+      });
+    } catch (sendError) {
+      console.error(`[Telegram] Failed to send error message:`, sendError);
+    }
   }
 }
 

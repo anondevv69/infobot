@@ -185,11 +185,21 @@ export async function buildMultiChainTokenEmbed(
       creatorInfo.push(`🔗 [View Contract](${explorerUrl})`);
     }
     
-    // Check for Farcaster and Zora accounts
+    // Check for Farcaster and Zora accounts (with timeout to prevent hanging)
     try {
-      const [farcasterUser, zoraSummary] = await Promise.all([
+      // Add timeout to prevent hanging (10 seconds max)
+      const profileLookupPromise = Promise.all([
         findUserByWallet(creatorAddress).catch(() => null),
         findBestZoraSummary([creatorAddress.toLowerCase()]).catch(() => null),
+      ]);
+      
+      const timeoutPromise = new Promise<[null, null]>((resolve) => {
+        setTimeout(() => resolve([null, null]), 10000); // 10 second timeout
+      });
+      
+      const [farcasterUser, zoraSummary] = await Promise.race([
+        profileLookupPromise,
+        timeoutPromise,
       ]);
       
       // Farcaster account
