@@ -32,6 +32,7 @@ import { handleConnectCommand } from "./commands/connect";
 import { handleDisconnectCommand } from "./commands/disconnect";
 import { handleBalanceCommand } from "./commands/balance";
 import { handleBuyCommand, handleSellCommand, handleSwapCommand } from "./commands/trade";
+import { handleDebugCommand } from "./commands/debug";
 import { parsePaginationButton } from "./utils/pagination";
 import { handleGeneralPagination } from "./handlers/pagination";
 import { showDiscordTypingIndicator, showDiscordCommandTyping } from "./utils/typingIndicator";
@@ -176,6 +177,9 @@ async function handleChatCommand(
       break;
     case "swap":
       await handleSwapCommand(interaction);
+      break;
+    case "debug":
+      await handleDebugCommand(interaction);
       break;
     default:
       await interaction.reply({

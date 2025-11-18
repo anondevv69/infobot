@@ -159,6 +159,9 @@ async function registerCommands(): Promise<void> {
           .setDescription("Chain ID (1=Ethereum, 8453=Base, etc.). Default: 8453 (Base)")
           .setRequired(false),
       ),
+    new SlashCommandBuilder()
+      .setName("debug")
+      .setDescription("Debug SIWF URL generation and check deployment status."),
   ].map((command) => command.toJSON());
 
   const rest = new REST({ version: "10" }).setToken(token);

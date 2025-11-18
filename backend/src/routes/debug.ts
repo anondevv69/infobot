@@ -1,0 +1,96 @@
+import { Router } from "express";
+import { logger } from "../utils/logger";
+
+const router = Router();
+
+// Debug endpoint to check SIWF URL generation
+router.get("/siwf", async (req, res) => {
+  try {
+    const { challenge, userId, platform, backendUrl, referralCode } = req.query;
+
+    // Simulate the URL generation logic from src/services/siwf.ts
+    const testChallenge = challenge as string || "test-challenge-123";
+    const testUserId = userId as string || "test-user-123";
+    const testPlatform = (platform as "discord" | "telegram") || "discord";
+    const testBackendUrl = backendUrl as string || process.env.BACKEND_URL || "https://infobot-production-f74e.up.railway.app";
+    const testReferralCode = referralCode as string || process.env.FARCASTER_REFERRAL_CODE || "2ORGMS";
+
+    // Replicate the exact logic from generateSIWFUrl
+    const callbackUrl = `${testBackendUrl}/api/siwf/callback?challenge=${testChallenge}&userId=${testUserId}&platform=${testPlatform}`;
+    const baseUrl = "https://warpcast.com/~/signin";
+    const params = new URLSearchParams({
+      challenge: testChallenge,
+      redirect_uri: callbackUrl,
+    });
+
+    if (testReferralCode) {
+      params.append("ref", testReferralCode);
+    }
+
+    const generatedUrl = `${baseUrl}?${params.toString()}`;
+
+    // Check for any old farcaster.xyz references
+    const hasOldUrl = generatedUrl.includes("farcaster.xyz");
+    const hasCorrectUrl = generatedUrl.includes("warpcast.com");
+
+    return res.json({
+      status: "ok",
+      debug: {
+        generatedUrl,
+        baseUrl,
+        hasOldUrl,
+        hasCorrectUrl,
+        environment: {
+          BACKEND_URL: process.env.BACKEND_URL,
+          FARCASTER_REFERRAL_CODE: process.env.FARCASTER_REFERRAL_CODE,
+          NODE_ENV: process.env.NODE_ENV,
+        },
+        testParams: {
+          challenge: testChallenge,
+          userId: testUserId,
+          platform: testPlatform,
+          backendUrl: testBackendUrl,
+          referralCode: testReferralCode,
+        },
+        callbackUrl,
+        timestamp: new Date().toISOString(),
+        deployment: {
+          commitHash: process.env.RAILWAY_GIT_COMMIT_SHA || "unknown",
+          serviceId: process.env.RAILWAY_SERVICE_ID || "unknown",
+        },
+      },
+      health: {
+        urlGeneration: hasCorrectUrl && !hasOldUrl ? "✅ CORRECT" : "❌ INCORRECT",
+        recommendation: hasOldUrl
+          ? "❌ URL contains farcaster.xyz - check Railway deployment and environment variables"
+          : hasCorrectUrl
+            ? "✅ URL correctly uses warpcast.com"
+            : "⚠️ URL format unexpected",
+      },
+    });
+  } catch (error: any) {
+    logger.error("Debug SIWF error:", error);
+    return res.status(500).json({
+      status: "error",
+      error: error.message,
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+    });
+  }
+});
+
+// Health check endpoint
+router.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    service: "backend",
+    environment: process.env.NODE_ENV || "unknown",
+    deployment: {
+      commitHash: process.env.RAILWAY_GIT_COMMIT_SHA || "unknown",
+      serviceId: process.env.RAILWAY_SERVICE_ID || "unknown",
+    },
+  });
+});
+
+export const debugRouter = router;
+
