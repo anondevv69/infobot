@@ -611,12 +611,27 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
       return false;
     }
     
-    // Try ERC-20 token detection for tokens not on DEXes
+    // Try ERC-20 token detection for tokens not on DEXes (with timeout)
+    console.log(`[Discord] Attempting token detection for ${address}`);
     try {
       const { detectTokenContract } = await import("../services/tokenDetection");
-      const tokenInfo = await detectTokenContract(address).catch(() => null);
+      
+      // Add timeout to prevent hanging (15 seconds max)
+      const tokenDetectionPromise = detectTokenContract(address);
+      const timeoutPromise = new Promise<null>((resolve) => {
+        setTimeout(() => {
+          console.log(`[Discord] Token detection timeout for ${address}`);
+          resolve(null);
+        }, 15000);
+      });
+      
+      const tokenInfo = await Promise.race([tokenDetectionPromise, timeoutPromise]).catch((err) => {
+        console.error(`[Discord] Token detection error:`, err);
+        return null;
+      });
       
       if (tokenInfo && tokenInfo.isToken) {
+        console.log(`[Discord] Detected token: ${tokenInfo.name || tokenInfo.symbol} on ${tokenInfo.chainName}`);
         // It's a token but not on DEX - show basic token info
         const tokenInfoText = [
           `🪙 **Token Contract Detected**`,
@@ -641,12 +656,26 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
       console.error(`[Discord] Token detection failed:`, error);
     }
     
-    // Fallback to basic address lookup
+    // Fallback to basic address lookup (with timeout)
+    console.log(`[Discord] Attempting address lookup for ${address}`);
     try {
       const { lookupAddress } = await import("../services/addressLookup");
-      const addressInfo = await lookupAddress(address).catch(() => null);
+      
+      const addressLookupPromise = lookupAddress(address);
+      const timeoutPromise = new Promise<null>((resolve) => {
+        setTimeout(() => {
+          console.log(`[Discord] Address lookup timeout for ${address}`);
+          resolve(null);
+        }, 10000);
+      });
+      
+      const addressInfo = await Promise.race([addressLookupPromise, timeoutPromise]).catch((err) => {
+        console.error(`[Discord] Address lookup error:`, err);
+        return null;
+      });
       
       if (addressInfo && addressInfo.length > 0) {
+        console.log(`[Discord] Found address info on ${addressInfo[0].chainName}`);
         const info = addressInfo[0];
         const addressInfoText = [
           `🔍 **Address found on ${info.chainName}**`,
@@ -666,6 +695,8 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
       console.error(`[Discord] Address lookup failed:`, error);
     }
     
+    // Always send a response, even if nothing found
+    console.log(`[Discord] No token/wallet found for ${address} - sending not found message`);
     await message.reply({
       content: `We're continuing to add more wallet tracking systems and cannot connect \`${address}\` to any wallet or contract at this time.`,
     });
