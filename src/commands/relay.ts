@@ -33,7 +33,16 @@ export async function handleRelayCommand(
     }
 
     // Detect source chain from link if possible
-    const sourceChainId = detectChainFromLink(input);
+    // Try advanced detection first (checks Relay API for all chains), fallback to basic
+    const { detectChainFromLinkAdvanced } = await import("../services/relay");
+    let sourceChainId: number | null = null;
+    try {
+      sourceChainId = await detectChainFromLinkAdvanced(input);
+    } catch (error) {
+      // Fallback to basic detection
+      const { detectChainFromLink } = await import("../services/relay");
+      sourceChainId = detectChainFromLink(input);
+    }
 
     // Fetch transaction data from Relay.link
     const transaction = await fetchRelayTransaction(txHash, sourceChainId || undefined);

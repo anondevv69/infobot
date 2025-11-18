@@ -116,7 +116,15 @@ Just send:
           }
 
           // Detect source chain from link if possible
-          const sourceChainId = detectChainFromLink(query);
+          // Try advanced detection first (checks Relay API for all chains), fallback to basic
+          let sourceChainId: number | null = null;
+          try {
+            const { detectChainFromLinkAdvanced } = await import("../../../services/relay");
+            sourceChainId = await detectChainFromLinkAdvanced(query);
+          } catch (error) {
+            // Fallback to basic detection
+            sourceChainId = detectChainFromLink(query);
+          }
 
           // Fetch transaction data from Relay.link
           const transaction = await fetchRelayTransaction(txHash, sourceChainId || undefined);

@@ -24,56 +24,95 @@ export interface RelayTransaction {
   timestamp?: number;
 }
 
-const CHAIN_ID_TO_NAME: Record<number, string> = {
-  1: "Ethereum",
-  8453: "Base",
-  42161: "Arbitrum",
-  10: "Optimism",
-  137: "Polygon",
-  43114: "Avalanche",
-  56: "BSC",
-  250: "Fantom",
-  100: "Gnosis",
-  42220: "Celo",
-  1313161554: "Aurora",
-  1666600000: "Harmony",
-  25: "Cronos",
-  1284: "Moonbeam",
-  1285: "Moonriver",
-  128: "Heco",
-  66: "OKExChain",
-  321: "KCC",
-  1088: "Metis",
-  288: "Boba",
-  106: "Velas",
-  1287: "Moonbase",
-  40: "Telos",
-  57: "Syscoin",
-  122: "Fuse",
-  246: "Energy Web",
-  10000: "SmartBCH",
-  32659: "Fusion",
-  361: "Theta",
-  70: "Hoo",
-  199: "BitTorrent",
-  88: "TomoChain",
-  50: "XDC",
-  333999: "Polis",
-  336: "Shiden",
-  592: "Astar",
-  4689: "IoTeX",
-  534352: "Scroll",
-  5000: "Mantle",
-  59144: "Linea",
-  1101: "Polygon zkEVM",
-  324: "zkSync Era",
-  81457: "Blast",
-  999: "Hyperliquid",
-  7777777: "Zora Network",
-};
+// Cache for chain data from Relay API
+let chainCache: { chains: Record<number, { name: string; displayName: string; explorerUrl?: string; explorerName?: string }>; lastFetched: number } | null = null;
+const CACHE_DURATION = 1000 * 60 * 60; // 1 hour
 
-function getChainName(chainId: number): string {
-  return CHAIN_ID_TO_NAME[chainId] || `Chain ${chainId}`;
+/**
+ * Fetch all supported chains from Relay API
+ * Reference: https://docs.relay.link/references/api/get-chains
+ */
+async function fetchRelayChains(): Promise<Record<number, { name: string; displayName: string; explorerUrl?: string; explorerName?: string }>> {
+  // Return cached data if still valid
+  if (chainCache && Date.now() - chainCache.lastFetched < CACHE_DURATION) {
+    return chainCache.chains;
+  }
+
+  try {
+    const response = await fetch("https://api.relay.link/chains", {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      console.warn(`Failed to fetch chains from Relay API: ${response.status}`);
+      // Return empty object if fetch fails, will fall back to chain ID
+      return {};
+    }
+
+    const data = await response.json();
+    const chains: Record<number, { name: string; displayName: string; explorerUrl?: string; explorerName?: string }> = {};
+
+    if (data.chains && Array.isArray(data.chains)) {
+      for (const chain of data.chains) {
+        if (chain.id && chain.displayName) {
+          chains[chain.id] = {
+            name: chain.name || chain.displayName,
+            displayName: chain.displayName,
+            explorerUrl: chain.explorerUrl,
+            explorerName: chain.explorerName,
+          };
+        }
+      }
+    }
+
+    // Update cache
+    chainCache = {
+      chains,
+      lastFetched: Date.now(),
+    };
+
+    console.log(`Fetched ${Object.keys(chains).length} chains from Relay API`);
+    return chains;
+  } catch (error) {
+    console.error("Error fetching chains from Relay API:", error);
+    return {};
+  }
+}
+
+/**
+ * Get chain name, fetching from Relay API if needed
+ */
+async function getChainName(chainId: number): Promise<string> {
+  const chains = await fetchRelayChains();
+  if (chains[chainId]) {
+    return chains[chainId].displayName || chains[chainId].name;
+  }
+  return `Chain ${chainId}`;
+}
+
+/**
+ * Detect chain ID from transaction link by checking against Relay's supported chains
+ */
+export async function detectChainFromLinkAdvanced(link: string): Promise<number | null> {
+  const chains = await fetchRelayChains();
+  const lowerLink = link.toLowerCase();
+
+  // Check each chain's explorer URL patterns
+  for (const [chainIdStr, chainInfo] of Object.entries(chains)) {
+    const chainId = parseInt(chainIdStr);
+    if (chainInfo.explorerUrl && lowerLink.includes(chainInfo.explorerUrl.toLowerCase().replace("https://", "").replace("http://", "").split("/")[0])) {
+      return chainId;
+    }
+    if (chainInfo.explorerName && lowerLink.includes(chainInfo.explorerName.toLowerCase())) {
+      return chainId;
+    }
+  }
+
+  // Fallback to basic detection for common chains
+  return detectChainFromLink(link);
 }
 
 /**
@@ -139,7 +178,7 @@ export function extractTransactionHash(input: string): string | null {
 }
 
 /**
- * Detect chain ID from transaction link
+ * Detect chain ID from transaction link (basic fallback)
  * Returns null for Solana transactions (they don't use chain IDs)
  */
 export function detectChainFromLink(link: string): number | null {
@@ -150,6 +189,7 @@ export function detectChainFromLink(link: string): number | null {
     return null; // Solana doesn't use chain IDs
   }
   
+  // Common chain patterns (fallback if API fetch fails)
   if (lowerLink.includes("basescan") || lowerLink.includes("base")) {
     return 8453;
   }
@@ -383,7 +423,15 @@ export async function fetchRelayTransaction(
   walletAddress?: string,
 ): Promise<RelayTransaction | null> {
   try {
-    const chainIdToUse = sourceChainId || 8453; // Default to Base
+    // If no chainId provided, try to detect from common patterns or use advanced detection
+    let chainIdToUse = sourceChainId;
+    if (!chainIdToUse) {
+      // Try advanced detection if we have a URL pattern (but we only have hash here)
+      // Default to Base for EVM chains, null for Solana
+      const isSolanaTx = !txHash.startsWith("0x") && txHash.length >= 87;
+      chainIdToUse = isSolanaTx ? undefined : 8453; // Default to Base for EVM
+    }
+    
     const isRelayTxId = txHash.startsWith("0x") && txHash.length === 66; // Relay transaction IDs are 0x + 64 hex chars
 
     // Query Relay API using the official /requests/v2 endpoint
@@ -656,11 +704,15 @@ export async function fetchRelayTransaction(
 
     // Fallback to user/recipient if wallet addresses are missing
     if (!sourceChain?.wallet && req.user) {
-      sourceChain = sourceChain || { chainId: chainIdToUse, wallet: "" };
+      if (!sourceChain) {
+        sourceChain = { chainId: chainIdToUse || 8453, wallet: "" };
+      }
       sourceChain.wallet = req.user;
     }
     if (!destinationChain?.wallet && req.recipient) {
-      destinationChain = destinationChain || { chainId: 0, wallet: "" };
+      if (!destinationChain) {
+        destinationChain = { chainId: 0, wallet: "" };
+      }
       destinationChain.wallet = req.recipient;
     }
 
@@ -669,16 +721,28 @@ export async function fetchRelayTransaction(
       return null;
     }
 
+    // Ensure chainIds are valid numbers
+    if (!sourceChain.chainId || !destinationChain.chainId) {
+      console.warn("Missing chain IDs:", { sourceChain, destinationChain });
+      return null;
+    }
+
+    // Get chain names asynchronously
+    const [sourceChainName, destChainName] = await Promise.all([
+      getChainName(sourceChain.chainId),
+      getChainName(destinationChain.chainId),
+    ]);
+
     const transaction: RelayTransaction = {
       txHash: matchingInTx?.hash || matchingOutTx?.hash || txHash,
       sourceChain: {
         chainId: sourceChain.chainId,
-        chainName: getChainName(sourceChain.chainId),
+        chainName: sourceChainName,
         wallet: sourceChain.wallet,
       },
       destinationChain: {
         chainId: destinationChain.chainId,
-        chainName: getChainName(destinationChain.chainId),
+        chainName: destChainName,
         wallet: destinationChain.wallet,
       },
       amount: amount,
