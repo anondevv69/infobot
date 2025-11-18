@@ -83,3 +83,4 @@ Even without QuickNode endpoints configured, the bot will:
 
 QuickNode is an **optimization**, not a requirement!
 
+

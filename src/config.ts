@@ -22,6 +22,7 @@ export const env = {
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
   basescanApiKey: process.env.BASESCAN_API_KEY, // Optional: for better rate limits
   quicknodeApiKey: process.env.QUICKNODE_API_KEY, // Optional: for premium RPC endpoints
+  oneinchApiKey: process.env.ONEINCH_API_KEY, // Optional: for 1inch DEX aggregator (better rate limits)
   farcasterReferralCode: process.env.FARCASTER_REFERRAL_CODE ?? "2ORGMS",
   brandName: process.env.BRAND_NAME ?? "InfoBot",
   brandIconUrl:

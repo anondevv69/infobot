@@ -181,3 +181,4 @@ CoinGecko Terminal is CoinGecko's **professional API service** that provides:
 
 **Bottom line**: Stick with DexScreener (free) + implement caching + get explorer API keys. This will give you better performance at a fraction of the cost.
 
+

@@ -21,6 +21,12 @@ import {
   extractTransactionHash,
   detectChainFromLink,
 } from "../../../services/relay";
+import {
+  handleTelegramConnect,
+  handleTelegramDisconnect,
+  handleTelegramBalance,
+  handleTelegramTrade,
+} from "./trading";
 
 export async function handleTelegramCommand(
   bot: TelegramBot,
@@ -42,6 +48,14 @@ export async function handleTelegramCommand(
 <code>/clanker &lt;query&gt;</code> - Search Clanker deployments
 <code>/casts &lt;keyword&gt;</code> - Search Farcaster casts by keyword
 <code>/relay &lt;transaction&gt;</code> - Get cross-chain transaction details from Relay.link
+
+<b>Trading Commands:</b>
+<code>/connect</code> - Connect your Farcaster account for trading
+<code>/disconnect</code> - Disconnect your Farcaster account
+<code>/balance [token] [chain]</code> - Check your wallet balance
+<code>/buy &lt;token&gt; &lt;amount&gt; [chain]</code> - Buy tokens with ETH
+<code>/sell &lt;token&gt; &lt;amount&gt; [chain]</code> - Sell tokens for ETH
+<code>/swap &lt;from&gt; &lt;to&gt; &lt;amount&gt; [chain]</code> - Swap between tokens
 
 <b>Auto-Detection:</b>
 Just send:

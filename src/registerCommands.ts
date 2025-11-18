@@ -10,7 +10,7 @@ async function registerCommands(): Promise<void> {
   const commands = [
     new SlashCommandBuilder()
       .setName("search")
-      .setDescription("Search wallets, contracts, Farcaster profiles, Zora accounts, or transactions across multiple chains.")
+      .setDescription("Search wallets, contracts, Farcaster profiles, Zora accounts, or transactions.")
       .addStringOption((option) =>
         option
           .setName("query")
@@ -56,12 +56,102 @@ async function registerCommands(): Promise<void> {
       ),
     new SlashCommandBuilder()
       .setName("relay")
-      .setDescription("Get cross-chain transaction details from Relay.link. Provide a full transaction link from a block explorer.")
+      .setDescription("Get cross-chain transaction details from Relay.link. Provide a transaction link.")
       .addStringOption((option) =>
         option
           .setName("transaction")
           .setDescription("Full transaction link (e.g., https://basescan.org/tx/0x...) or transaction hash")
           .setRequired(true),
+      ),
+    new SlashCommandBuilder()
+      .setName("connect")
+      .setDescription("Connect your Farcaster account to enable trading."),
+    new SlashCommandBuilder()
+      .setName("disconnect")
+      .setDescription("Disconnect your Farcaster account."),
+    new SlashCommandBuilder()
+      .setName("balance")
+      .setDescription("Check your wallet balance for a token.")
+      .addStringOption((option) =>
+        option
+          .setName("token")
+          .setDescription("Token address (0x...) or 'native' for ETH. Default: native")
+          .setRequired(false),
+      )
+      .addIntegerOption((option) =>
+        option
+          .setName("chain")
+          .setDescription("Chain ID (1=Ethereum, 8453=Base, etc.). Default: 8453 (Base)")
+          .setRequired(false),
+      ),
+    new SlashCommandBuilder()
+      .setName("buy")
+      .setDescription("Buy tokens with ETH/native token.")
+      .addStringOption((option) =>
+        option
+          .setName("token")
+          .setDescription("Token address to buy (0x...)")
+          .setRequired(true),
+      )
+      .addStringOption((option) =>
+        option
+          .setName("amount")
+          .setDescription("Amount of ETH/native token to spend (e.g., 0.1)")
+          .setRequired(true),
+      )
+      .addIntegerOption((option) =>
+        option
+          .setName("chain")
+          .setDescription("Chain ID (1=Ethereum, 8453=Base, etc.). Default: 8453 (Base)")
+          .setRequired(false),
+      ),
+    new SlashCommandBuilder()
+      .setName("sell")
+      .setDescription("Sell tokens for ETH/native token.")
+      .addStringOption((option) =>
+        option
+          .setName("token")
+          .setDescription("Token address to sell (0x...)")
+          .setRequired(true),
+      )
+      .addStringOption((option) =>
+        option
+          .setName("amount")
+          .setDescription("Amount of tokens to sell (e.g., 100)")
+          .setRequired(true),
+      )
+      .addIntegerOption((option) =>
+        option
+          .setName("chain")
+          .setDescription("Chain ID (1=Ethereum, 8453=Base, etc.). Default: 8453 (Base)")
+          .setRequired(false),
+      ),
+    new SlashCommandBuilder()
+      .setName("swap")
+      .setDescription("Swap between two tokens.")
+      .addStringOption((option) =>
+        option
+          .setName("from")
+          .setDescription("Token address to swap from (0x...) or 'native' for ETH")
+          .setRequired(true),
+      )
+      .addStringOption((option) =>
+        option
+          .setName("to")
+          .setDescription("Token address to swap to (0x...) or 'native' for ETH")
+          .setRequired(true),
+      )
+      .addStringOption((option) =>
+        option
+          .setName("amount")
+          .setDescription("Amount to swap (e.g., 0.1)")
+          .setRequired(true),
+      )
+      .addIntegerOption((option) =>
+        option
+          .setName("chain")
+          .setDescription("Chain ID (1=Ethereum, 8453=Base, etc.). Default: 8453 (Base)")
+          .setRequired(false),
       ),
   ].map((command) => command.toJSON());
 
