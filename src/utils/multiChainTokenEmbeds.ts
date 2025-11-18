@@ -185,16 +185,16 @@ export async function buildMultiChainTokenEmbed(
       creatorInfo.push(`🔗 [View Contract](${explorerUrl})`);
     }
     
-    // Check for Farcaster and Zora accounts (with timeout to prevent hanging)
+    // Check for Farcaster and Zora accounts (with shorter timeout for speed)
     try {
-      // Add timeout to prevent hanging (10 seconds max)
+      // Reduced timeout to 3 seconds for faster response
       const profileLookupPromise = Promise.all([
         findUserByWallet(creatorAddress).catch(() => null),
         findBestZoraSummary([creatorAddress.toLowerCase()]).catch(() => null),
       ]);
       
       const timeoutPromise = new Promise<[null, null]>((resolve) => {
-        setTimeout(() => resolve([null, null]), 10000); // 10 second timeout
+        setTimeout(() => resolve([null, null]), 3000); // 3 second timeout (reduced from 10)
       });
       
       const [farcasterUser, zoraSummary] = await Promise.race([
@@ -284,7 +284,7 @@ export async function buildMultiChainTokenEmbed(
     });
   }
 
-  // Trading Activity
+  // Trading Activity (compact - all in one row, matching Base token layout)
   if (tokenData.trades24h) {
     const trades = tokenData.trades24h;
     const buys = trades.buys ?? 0;
@@ -294,7 +294,7 @@ export async function buildMultiChainTokenEmbed(
     if (total > 0) {
       embed.addFields({
         name: "24H Activity",
-        value: `🟢 Buys: ${buys.toLocaleString()}\n🔴 Sells: ${sells.toLocaleString()}\n📊 Total: ${total.toLocaleString()}`,
+        value: `🟢 Buys: ${buys.toLocaleString()} • 🔴 Sells: ${sells.toLocaleString()} • 📊 Total: ${total.toLocaleString()}`,
         inline: false,
       });
     }
@@ -303,5 +303,6 @@ export async function buildMultiChainTokenEmbed(
   applyBranding(embed, `${tokenData.chainName.toLowerCase()} token`);
   return { embed, components: [] };
 }
+
 
 

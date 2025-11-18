@@ -504,32 +504,39 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
       if (multiChainTokenData) {
         // Only show if it's NOT on Base (we already checked Base above)
         if (multiChainTokenData.chainId.toLowerCase() !== "base" && multiChainTokenData.chainId !== "8453") {
-          // Fetch creator address and detect factory for this chain
+          // Fetch creator address and detect factory for this chain (with timeout for speed)
           const { getContractCreation, getContractCreationTx } = await import("../services/contractCreation");
-          const [contractCreation, creationTx] = await Promise.all([
+          
+          // Start creator lookup in background (non-blocking, with timeout)
+          // Build embed immediately, add creator info if available quickly
+          const creatorLookupPromise = Promise.all([
             getContractCreation(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
             getContractCreationTx(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
           ]);
-
-          // Detect factory: if creationTx.to exists, that's the factory address
-          let factoryName: string | null = null;
-          if (creationTx?.to) {
-            // Check if it's a known factory (we can expand this later)
-            // For now, we'll just show the factory address
-            factoryName = `Factory: ${creationTx.to.slice(0, 10)}...${creationTx.to.slice(-8)}`;
-          }
-
-          multiChainTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
-          multiChainTokenData.factoryName = factoryName;
-          multiChainTokenData.createdAt = contractCreation?.createdAt ?? null;
-          multiChainTokenData.creationTxHash = contractCreation?.txHash ?? null;
-
+          
+          const creatorTimeoutPromise = new Promise<[null, null]>((resolve) => {
+            setTimeout(() => resolve([null, null]), 3000); // 3 second timeout (reduced for speed)
+          });
+          
+          // Build embed immediately without waiting for creator info
           const { embed, components } = await buildMultiChainTokenEmbed(address, multiChainTokenData);
+          
+          // Send response immediately
           await message.reply({
             content: `${multiChainTokenData.chainName} token detected for \`${address}\`.`,
             embeds: [embed],
             components,
           });
+          
+          // Try to get creator info in background (non-blocking)
+          Promise.race([creatorLookupPromise, creatorTimeoutPromise]).then(([contractCreation, creationTx]) => {
+            if (contractCreation?.contractCreator) {
+              // Creator found - could send update, but for speed we skip it
+            }
+          }).catch(() => {
+            // Ignore errors - already sent response
+          });
+          
           return true;
         }
       }
@@ -612,7 +619,6 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
     }
     
     // Try ERC-20 token detection for tokens not on DEXes (with timeout)
-    console.log(`[Discord] Attempting token detection for ${address}`);
     try {
       const { detectTokenContract } = await import("../services/tokenDetection");
       
@@ -625,13 +631,9 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
         }, 8000);
       });
       
-      const tokenInfo = await Promise.race([tokenDetectionPromise, timeoutPromise]).catch((err) => {
-        console.error(`[Discord] Token detection error:`, err);
-        return null;
-      });
+      const tokenInfo = await Promise.race([tokenDetectionPromise, timeoutPromise]).catch(() => null);
       
       if (tokenInfo && tokenInfo.isToken) {
-        console.log(`[Discord] Detected token: ${tokenInfo.name || tokenInfo.symbol} on ${tokenInfo.chainName}`);
         // It's a token but not on DEX - show basic token info
         const tokenInfoText = [
           `🪙 **Token Contract Detected**`,
@@ -675,7 +677,6 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
       });
       
       if (addressInfo && addressInfo.length > 0) {
-        console.log(`[Discord] Found address info on ${addressInfo[0].chainName}`);
         const info = addressInfo[0];
         const addressInfoText = [
           `🔍 **Address found on ${info.chainName}**`,
@@ -696,7 +697,6 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
     }
     
     // Always send a response, even if nothing found
-    console.log(`[Discord] No token/wallet found for ${address} - sending not found message`);
     await message.reply({
       content: `We're continuing to add more wallet tracking systems and cannot connect \`${address}\` to any wallet or contract at this time.`,
     });

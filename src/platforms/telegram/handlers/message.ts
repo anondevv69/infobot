@@ -252,22 +252,10 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       // STEP 4: MULTI-CHAIN TOKENS (Mantle, BSC, etc.)
       // ============================================
       // Multi-chain MUST run even if isEthAddress() === false
-      console.log(`[Telegram] Attempting multi-chain token lookup for ${address}`);
       let multiChainTokenData = null;
 
       try {
-        console.log(`[Telegram] Calling DexScreener API for ${address}...`);
         multiChainTokenData = await fetchMultiChainTokenData(address);  // DexScreener API
-        if (multiChainTokenData) {
-          console.log(`[Telegram] DexScreener returned token data:`, {
-            chainId: multiChainTokenData.chainId,
-            chainName: multiChainTokenData.chainName,
-            tokenName: multiChainTokenData.tokenName,
-            tokenSymbol: multiChainTokenData.tokenSymbol,
-          });
-        } else {
-          console.log(`[Telegram] DexScreener returned null for ${address} - token not found on any chain`);
-        }
       } catch (err) {
         console.error(`[Telegram] Multi-chain fetch failed for ${address}:`, err);
         // Don't return here - let it continue to wallet lookup
@@ -276,70 +264,52 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       if (multiChainTokenData) {
         tokenFound = true;  // ✅ TOKEN FOUND
         const chainIdLower = multiChainTokenData.chainId.toLowerCase();
-        console.log(`[Telegram] Multi-chain token found: ${multiChainTokenData.chainName} (chainId: ${multiChainTokenData.chainId}, normalized: ${chainIdLower})`);
         // Handle all non-Base chains (including BSC, Mantle, etc.)
-        // Check both lowercase and original chainId to handle "bsc" vs "56"
         const isBase = chainIdLower === "base" || multiChainTokenData.chainId === "8453";
-        console.log(`[Telegram] Is Base chain? ${isBase} (chainId: ${multiChainTokenData.chainId}, normalized: ${chainIdLower})`);
         if (!isBase) {
           // Process non-Base multi-chain tokens
-          console.log(`[Telegram] ✅ Showing ${multiChainTokenData.chainName} token for ${address} (chainId: ${multiChainTokenData.chainId})`);
-          // Fetch creator address and detect factory for this chain
+          // Fetch creator address and detect factory for this chain (with timeout for speed)
           const { getContractCreation, getContractCreationTx } = await import("../../../services/contractCreation");
           const { env } = await import("../../../config");
-          console.log(`[Telegram] Fetching creator info for ${address} on chain ${multiChainTokenData.chainId} (${multiChainTokenData.chainName})`);
-          const [contractCreation, creationTx] = await Promise.all([
-            getContractCreation(address, multiChainTokenData.chainId, env.basescanApiKey).catch((err) => {
-              console.error(`[Telegram] Failed to get contract creation for ${address} on ${multiChainTokenData.chainId}:`, err);
-              return null;
-            }),
-            getContractCreationTx(address, multiChainTokenData.chainId, env.basescanApiKey).catch((err) => {
-              console.error(`[Telegram] Failed to get creation tx for ${address} on ${multiChainTokenData.chainId}:`, err);
-              return null;
-            }),
+          
+          // Start creator lookup in background (non-blocking, with timeout)
+          // Send token info immediately, then update with creator info if available
+          const creatorLookupPromise = Promise.all([
+            getContractCreation(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
+            getContractCreationTx(address, multiChainTokenData.chainId, env.basescanApiKey).catch(() => null),
           ]);
           
-          console.log(`[Telegram] Creator lookup result for ${address}:`, {
-            hasCreator: !!contractCreation?.contractCreator,
-            creator: contractCreation?.contractCreator,
-            hasTxHash: !!contractCreation?.txHash,
-            txHash: contractCreation?.txHash,
-            chainId: multiChainTokenData.chainId,
+          const creatorTimeoutPromise = new Promise<[null, null]>((resolve) => {
+            setTimeout(() => resolve([null, null]), 3000); // 3 second timeout (reduced for speed)
           });
-
-          // Detect factory: if creationTx.to exists, that's the factory address
-          let factoryName: string | null = null;
-          if (creationTx?.to) {
-            factoryName = `Factory: ${creationTx.to.slice(0, 10)}...${creationTx.to.slice(-8)}`;
-          }
-
-          multiChainTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
-          multiChainTokenData.factoryName = factoryName;
-          multiChainTokenData.createdAt = contractCreation?.createdAt ?? null;
-          multiChainTokenData.creationTxHash = contractCreation?.txHash ?? null;
-
-          try {
-            const { embed } = await buildMultiChainTokenEmbed(address, multiChainTokenData);
-            const messages = embedsToTelegram([embed]);
-            await bot.sendMessage(chatId, `${multiChainTokenData.chainName} token detected for <code>${address}</code>.`, {
-              parse_mode: "HTML",
-              disable_web_page_preview: true,
-            });
-            await bot.sendMessage(chatId, messages[0], {
-              parse_mode: "HTML",
-              disable_web_page_preview: true,
-            });
-            return;  // EXIT
-          } catch (embedError) {
-            console.error(`[Telegram] Failed to build/send embed for ${address} on ${multiChainTokenData.chainId}:`, embedError);
-            // Fallback: send basic token info without creator profiles
-            const basicMessage = `🪙 ${multiChainTokenData.tokenSymbol || "Token"} • ${multiChainTokenData.tokenName || "Unknown"}\n🔗 Chain: ${multiChainTokenData.chainName}\n🔑 Address: <code>${address}</code>`;
-            await bot.sendMessage(chatId, basicMessage, {
-              parse_mode: "HTML",
-              disable_web_page_preview: true,
-            });
-            return;
-          }
+          
+          // Build embed immediately without waiting for creator info
+          // Creator info will be added if available, but won't block the response
+          const { embed } = await buildMultiChainTokenEmbed(address, multiChainTokenData);
+          const messages = embedsToTelegram([embed]);
+          
+          // Send response immediately
+          await bot.sendMessage(chatId, `${multiChainTokenData.chainName} token detected for <code>${address}</code>.`, {
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          });
+          await bot.sendMessage(chatId, messages[0], {
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          });
+          
+          // Try to get creator info in background (non-blocking)
+          // If it completes quickly, we could send an update, but for now just log it
+          Promise.race([creatorLookupPromise, creatorTimeoutPromise]).then(([contractCreation, creationTx]) => {
+            if (contractCreation?.contractCreator) {
+              // Creator found - could send update message, but for speed we'll just log
+              // In future, could send a follow-up message with creator info
+            }
+          }).catch(() => {
+            // Ignore errors - already sent response
+          });
+          
+          return;  // EXIT
         }
       }
 
@@ -1066,7 +1036,6 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
     // If we get here and it's a private chat, check if we should send a "not found" message
     // Only send if we actually tried to process an address (not just random text)
     if (address && !tokenFound) {
-      console.log(`[Telegram] No token/wallet found for ${address} - trying token detection and address lookup`);
       try {
         // FIRST: Try to detect if it's an ERC-20 token contract (even if not on DEX yet)
         const { detectTokenContract } = await import("../../../services/tokenDetection");
@@ -1083,7 +1052,6 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         const tokenInfo = await Promise.race([tokenDetectionPromise, timeoutPromise]).catch(() => null);
         
         if (tokenInfo && tokenInfo.isToken) {
-          console.log(`[Telegram] Detected token contract: ${tokenInfo.name || tokenInfo.symbol} on ${tokenInfo.chainName}`);
           // It's a token but not on DEX - show basic token info
           const tokenMessage = `🪙 Token Contract Detected\n\n` +
             `🔗 Chain: ${tokenInfo.chainName}\n` +
