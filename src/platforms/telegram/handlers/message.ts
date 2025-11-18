@@ -908,19 +908,20 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
 
           if (!hasZoraCoinData) {
             // Show Zora wallet profile (we already checked for coins above, so this is just a profile)
-          const associated = isSummaryAssociatedWithAddress(zoraSummaryFromAddress, address)
-            ? zoraSummaryFromAddress
-            : null;
+            const associated = isSummaryAssociatedWithAddress(zoraSummaryFromAddress, address)
+              ? zoraSummaryFromAddress
+              : null;
 
-          const zoraResponse = buildZoraWalletProfileResponse({
-            wallet: address,
-            summary: associated ?? zoraSummaryFromAddress,
-            returnAllPages: true,
-          });
+            const zoraResponse = buildZoraWalletProfileResponse({
+              wallet: address,
+              summary: associated ?? zoraSummaryFromAddress,
+              returnAllPages: true,
+            });
 
-          const identifier = `zora_wallet_${address.toLowerCase()}`;
-          await sendPaginatedTelegramMessage(bot, chatId, zoraResponse.embeds, identifier);
-          return;
+            const identifier = `zora_wallet_${address.toLowerCase()}`;
+            await sendPaginatedTelegramMessage(bot, chatId, zoraResponse.embeds, identifier);
+            return;
+          }
         }
 
         // No results
