@@ -59,10 +59,11 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
     // Send typing indicator for any search operation
     await bot.sendChatAction(chatId, "typing");
     
-    // Check if it's an Ethereum address
-    if (isEthAddress(text)) {
-      const address = extractFirstAddress(text);
-      if (address) {
+    // Extract address first (works for any EVM address format)
+    const address = extractFirstAddress(text);
+    if (address) {
+      // Check if it's an Ethereum address format (for Base token checks)
+      const isEthFormat = isEthAddress(address);
         // Check Zora/Clanker FIRST (they have creator info, so we don't need Basescan API)
         // Only use Basescan API for Base tokens that are NOT Zora/Clanker
         
@@ -154,99 +155,101 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         const { embedsToTelegram } = await import("../adapters/telegramAdapter");
         
         // First check if it's a Base token (DexScreener - no rate limits)
-        const [baseTokenData, factory] = await Promise.all([
-          fetchBaseTokenData(address),
-          detectTokenFactory(address),
-        ]);
-
-        if (baseTokenData) {
-          tokenFound = true;
-          // Fetch creator address and detect factory for Base tokens
-          const { getContractCreation } = await import("../../../services/basescan");
-          const { getContractCreationTx } = await import("../../../services/contractCreation");
-          const { env } = await import("../../../config");
-          
-          const [contractCreation, creationTx] = await Promise.all([
-            getContractCreation(address).catch(() => null),
-            getContractCreationTx(address, "base", env.basescanApiKey).catch(() => null),
+        // Only check Base if it's an ETH address format (Base is an EVM chain)
+        if (isEthFormat) {
+          const [baseTokenData, factory] = await Promise.all([
+            fetchBaseTokenData(address),
+            detectTokenFactory(address),
           ]);
 
-          // Detect TOKEN factory: Get the transaction details to find the token factory address
-          // The TOKEN factory is the "to" field in the creation transaction (NOT the pool/DEX factory)
-          let detectedFactoryName: string | null = null;
-          let detectedFactory: any = null;
-          
-          if (contractCreation?.txHash) {
-            try {
-              // Use Base RPC directly to get transaction details (more reliable than deprecated Basescan API)
-              const BASE_RPC_URL = "https://mainnet.base.org";
-              const rpcResponse = await fetch(BASE_RPC_URL, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  jsonrpc: "2.0",
-                  method: "eth_getTransactionByHash",
-                  params: [contractCreation.txHash],
-                  id: 1,
-                }),
-              });
-              
-              if (rpcResponse.ok) {
-                const rpcData = (await rpcResponse.json()) as { result?: { from?: string; to?: string | null } };
-                if (rpcData.result?.to) {
-                  // The "to" field is the TOKEN factory address (Fey, ApeStore, KLIK, etc.)
-                  const tokenFactoryAddress = rpcData.result.to.toLowerCase();
-                  const { getTokenFactoryName, createTokenFactory } = await import("../../../services/baseFactories");
-                  const tokenFactoryName = getTokenFactoryName(tokenFactoryAddress);
-                  if (tokenFactoryName) {
-                    detectedFactory = createTokenFactory(tokenFactoryAddress);
-                    detectedFactoryName = tokenFactoryName;
-                  } else {
-                    detectedFactoryName = `Factory: ${tokenFactoryAddress.slice(0, 10)}...${tokenFactoryAddress.slice(-8)}`;
+          if (baseTokenData) {
+            tokenFound = true;
+            // Fetch creator address and detect factory for Base tokens
+            const { getContractCreation } = await import("../../../services/basescan");
+            const { getContractCreationTx } = await import("../../../services/contractCreation");
+            const { env } = await import("../../../config");
+            
+            const [contractCreation, creationTx] = await Promise.all([
+              getContractCreation(address).catch(() => null),
+              getContractCreationTx(address, "base", env.basescanApiKey).catch(() => null),
+            ]);
+
+            // Detect TOKEN factory: Get the transaction details to find the token factory address
+            // The TOKEN factory is the "to" field in the creation transaction (NOT the pool/DEX factory)
+            let detectedFactoryName: string | null = null;
+            let detectedFactory: any = null;
+            
+            if (contractCreation?.txHash) {
+              try {
+                // Use Base RPC directly to get transaction details (more reliable than deprecated Basescan API)
+                const BASE_RPC_URL = "https://mainnet.base.org";
+                const rpcResponse = await fetch(BASE_RPC_URL, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    method: "eth_getTransactionByHash",
+                    params: [contractCreation.txHash],
+                    id: 1,
+                  }),
+                });
+                
+                if (rpcResponse.ok) {
+                  const rpcData = (await rpcResponse.json()) as { result?: { from?: string; to?: string | null } };
+                  if (rpcData.result?.to) {
+                    // The "to" field is the TOKEN factory address (Fey, ApeStore, KLIK, etc.)
+                    const tokenFactoryAddress = rpcData.result.to.toLowerCase();
+                    const { getTokenFactoryName, createTokenFactory } = await import("../../../services/baseFactories");
+                    const tokenFactoryName = getTokenFactoryName(tokenFactoryAddress);
+                    if (tokenFactoryName) {
+                      detectedFactory = createTokenFactory(tokenFactoryAddress);
+                      detectedFactoryName = tokenFactoryName;
+                    } else {
+                      detectedFactoryName = `Factory: ${tokenFactoryAddress.slice(0, 10)}...${tokenFactoryAddress.slice(-8)}`;
+                    }
                   }
                 }
+              } catch (error) {
+                console.error(`[Base Token] Failed to get transaction details for factory detection:`, error);
               }
-            } catch (error) {
-              console.error(`[Base Token] Failed to get transaction details for factory detection:`, error);
             }
+
+            // Add creator, factory, and creation date to token data
+            baseTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
+            // Use detected token factory name (not DEX factory)
+            baseTokenData.factoryName = detectedFactoryName ?? null;
+            baseTokenData.createdAt = contractCreation?.createdAt ?? null;
+
+            const { embed } = await buildBaseTokenEmbed(
+              address,
+              baseTokenData?.tokenName ?? null, // Token name from DexScreener
+              baseTokenData?.tokenSymbol ?? null, // Token symbol from DexScreener
+              baseTokenData,
+              detectedFactory, // Use detected token factory (not DEX factory)
+              contractCreation?.contractCreator ?? null,
+              contractCreation?.createdAt ?? null, // Creation timestamp
+              contractCreation?.txHash ?? null, // Creation transaction hash
+            );
+
+            const factoryDisplayName = factory ? ` (${factory.name})` : "";
+            const messages = embedsToTelegram([embed]);
+            await bot.sendMessage(chatId, `Base token detected${factoryDisplayName} for <code>${address}</code>.`, {
+              parse_mode: "HTML",
+              disable_web_page_preview: true,
+            });
+            await bot.sendMessage(chatId, messages[0], {
+              parse_mode: "HTML",
+              disable_web_page_preview: true,
+            });
+            return;
           }
-
-          // Add creator, factory, and creation date to token data
-          baseTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
-          // Use detected token factory name (not DEX factory)
-          baseTokenData.factoryName = detectedFactoryName ?? null;
-          baseTokenData.createdAt = contractCreation?.createdAt ?? null;
-
-          const { embed } = await buildBaseTokenEmbed(
-            address,
-            baseTokenData?.tokenName ?? null, // Token name from DexScreener
-            baseTokenData?.tokenSymbol ?? null, // Token symbol from DexScreener
-            baseTokenData,
-            detectedFactory, // Use detected token factory (not DEX factory)
-            contractCreation?.contractCreator ?? null,
-            contractCreation?.createdAt ?? null, // Creation timestamp
-            contractCreation?.txHash ?? null, // Creation transaction hash
-          );
-
-          const factoryDisplayName = factory ? ` (${factory.name})` : "";
-          const messages = embedsToTelegram([embed]);
-          await bot.sendMessage(chatId, `Base token detected${factoryDisplayName} for <code>${address}</code>.`, {
-            parse_mode: "HTML",
-            disable_web_page_preview: true,
-          });
-          await bot.sendMessage(chatId, messages[0], {
-            parse_mode: "HTML",
-            disable_web_page_preview: true,
-          });
-          return;
         }
 
-        // Check for tokens on OTHER EVM chains (BSC, Ethereum, Polygon, Mantle, etc.)
-        // BEFORE treating it as a wallet to avoid showing wrong information
-        // This MUST happen before Zora profile check to match Discord behavior
-        // CRITICAL: Do NOT swallow errors - if fetch fails, return early to prevent Zora fallback
+        // CRITICAL: Multi-chain token check MUST ALWAYS RUN (not behind ETH guard)
+        // This matches Discord behavior - multi-chain check runs regardless of isEthAddress result
+        // DexScreener accepts any EVM address format, so we should check even if isEthAddress() fails
         let multiChainTokenData;
         try {
           multiChainTokenData = await fetchMultiChainTokenData(address);
