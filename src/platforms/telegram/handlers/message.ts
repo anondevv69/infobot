@@ -1066,9 +1066,33 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
     // If we get here and it's a private chat, check if we should send a "not found" message
     // Only send if we actually tried to process an address (not just random text)
     if (address && !tokenFound) {
-      console.log(`[Telegram] No token/wallet found for ${address} - sending not found message`);
+      console.log(`[Telegram] No token/wallet found for ${address} - trying token detection and address lookup`);
       try {
-        // Try basic address lookup as final fallback
+        // FIRST: Try to detect if it's an ERC-20 token contract (even if not on DEX yet)
+        const { detectTokenContract } = await import("../../../services/tokenDetection");
+        const tokenInfo = await detectTokenContract(address).catch(() => null);
+        
+        if (tokenInfo && tokenInfo.isToken) {
+          console.log(`[Telegram] Detected token contract: ${tokenInfo.name || tokenInfo.symbol} on ${tokenInfo.chainName}`);
+          // It's a token but not on DEX - show basic token info
+          const tokenMessage = `🪙 Token Contract Detected\n\n` +
+            `🔗 Chain: ${tokenInfo.chainName}\n` +
+            (tokenInfo.name ? `🏠 Name: ${tokenInfo.name}\n` : "") +
+            (tokenInfo.symbol ? `🔖 Symbol: ${tokenInfo.symbol}\n` : "") +
+            (tokenInfo.decimals !== null ? `🔢 Decimals: ${tokenInfo.decimals}\n` : "") +
+            (tokenInfo.totalSupply ? `📊 Total Supply: ${tokenInfo.totalSupply}\n` : "") +
+            `🔑 Address: <code>${address}</code>\n\n` +
+            `⚠️ This token is not yet listed on any DEX tracked by DexScreener.\n` +
+            `It may be a new token that hasn't created a liquidity pool yet.`;
+          
+          await bot.sendMessage(chatId, tokenMessage, {
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          });
+          return;
+        }
+        
+        // SECOND: Try basic address lookup as fallback
         const { lookupAddress } = await import("../../../services/addressLookup");
         const addressInfo = await lookupAddress(address).catch(() => null);
         
@@ -1089,6 +1113,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           await bot.sendMessage(chatId, `❌ No token or wallet information found for <code>${address}</code>.\n\n` +
             `This address may not be:\n` +
             `• Listed on any DEX tracked by DexScreener\n` +
+            `• A token contract (ERC-20)\n` +
             `• A known wallet with Farcaster/Zora profiles\n` +
             `• Active on supported chains\n\n` +
             `Try searching for a different address or check the address on a block explorer.`, {
@@ -1097,7 +1122,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           });
         }
       } catch (fallbackError) {
-        console.error(`[Telegram] Fallback address lookup failed:`, fallbackError);
+        console.error(`[Telegram] Fallback lookup failed:`, fallbackError);
         // Send basic not found message
         await bot.sendMessage(chatId, `❌ No information found for <code>${address}</code>.`, {
           parse_mode: "HTML",
