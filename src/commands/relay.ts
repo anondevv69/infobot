@@ -23,11 +23,34 @@ export async function handleRelayCommand(
   await interaction.reply("👁️ Processing...");
 
   try {
+    // Check if input is a wallet address (Ethereum or Solana)
+    const { isEthAddress, isSolAddress } = await import("../utils/address");
+    const isWalletAddress = isEthAddress(input) || isSolAddress(input);
+    
+    if (isWalletAddress) {
+      // Query by wallet address to get the most recent transaction
+      const { fetchRelayTransactionByWallet } = await import("../services/relay");
+      const transaction = await fetchRelayTransactionByWallet(input);
+      
+      if (!transaction) {
+        await interaction.editReply({
+          content: `❌ No Relay transactions found for wallet \`${input}\`.\n\n**Possible reasons:**\n• This wallet has not made any Relay cross-chain transactions\n• The wallet address format is incorrect`,
+        });
+        return;
+      }
+      
+      const embed = buildRelayTransactionEmbed(transaction);
+      await interaction.editReply({
+        embeds: [embed],
+      });
+      return;
+    }
+
     // Extract transaction hash from input
     const txHash = extractTransactionHash(input);
     if (!txHash) {
       await interaction.editReply({
-        content: "❌ Could not extract a valid transaction hash from the provided input. Please provide:\n• An Ethereum-style transaction hash (0x...)\n• A Solana transaction signature\n• A transaction link from a block explorer (Ethereum, Base, Solana, etc.)",
+        content: "❌ Could not extract a valid transaction hash from the provided input. Please provide:\n• An Ethereum-style transaction hash (0x...)\n• A Solana transaction signature\n• A transaction link from a block explorer (Ethereum, Base, Solana, etc.)\n• A wallet address (0x... or Solana address) to find the most recent transaction",
       });
       return;
     }
@@ -91,12 +114,12 @@ function buildRelayTransactionEmbed(transaction: RelayTransaction): EmbedBuilder
     .addFields(
       {
         name: "📤 Source",
-        value: `**Chain:** ${transaction.sourceChain.chainName} (${transaction.sourceChain.chainId})\n**Wallet:** \`${transaction.sourceChain.wallet}\``,
+        value: `**Chain:** ${transaction.sourceChain.chainName}\n**Wallet:** \`${transaction.sourceChain.wallet}\``,
         inline: false,
       },
       {
         name: "📥 Destination",
-        value: `**Chain:** ${transaction.destinationChain.chainName} (${transaction.destinationChain.chainId})\n**Wallet:** \`${transaction.destinationChain.wallet}\``,
+        value: `**Chain:** ${transaction.destinationChain.chainName}\n**Wallet:** \`${transaction.destinationChain.wallet}\``,
         inline: false,
       },
     )

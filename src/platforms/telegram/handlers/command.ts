@@ -108,10 +108,56 @@ Just send:
         await bot.sendChatAction(chatId, "typing");
         
         try {
+          // Check if input is a wallet address (Ethereum or Solana)
+          const isWalletAddress = isEthAddress(query) || isSolAddress(query);
+          
+          if (isWalletAddress) {
+            // Query by wallet address to get the most recent transaction
+            const { fetchRelayTransactionByWallet } = await import("../../../services/relay");
+            const transaction = await fetchRelayTransactionByWallet(query);
+            
+            if (!transaction) {
+              await bot.sendMessage(chatId, `❌ No Relay transactions found for wallet <code>${query}</code>.\n\n<b>Possible reasons:</b>\n• This wallet has not made any Relay cross-chain transactions\n• The wallet address format is incorrect`, { parse_mode: "HTML" });
+              return;
+            }
+            
+            // Build message with transaction details
+            let message = `<b>🌉 Relay Cross-Chain Transaction</b>\n\n`;
+            message += `<b>📤 Source:</b>\n`;
+            message += `Chain: ${transaction.sourceChain.chainName}\n`;
+            message += `Wallet: <code>${transaction.sourceChain.wallet}</code>\n\n`;
+            message += `<b>📥 Destination:</b>\n`;
+            message += `Chain: ${transaction.destinationChain.chainName}\n`;
+            message += `Wallet: <code>${transaction.destinationChain.wallet}</code>\n\n`;
+
+            if (transaction.amount) {
+              message += `<b>💰 Amount:</b> `;
+              if (transaction.token) {
+                message += `${transaction.amount} ${transaction.token.symbol}\n`;
+              } else {
+                message += `${transaction.amount}\n`;
+              }
+            }
+
+            if (transaction.token) {
+              message += `\n<b>🪙 Token:</b> ${transaction.token.symbol}\n`;
+              message += `<code>${transaction.token.address}</code>\n`;
+            }
+
+            if (transaction.status) {
+              message += `\n<b>📊 Status:</b> ${transaction.status}\n`;
+            }
+
+            message += `\n<b>Transaction Hash:</b>\n<code>${transaction.txHash}</code>`;
+
+            await bot.sendMessage(chatId, message, { parse_mode: "HTML" });
+            return;
+          }
+
           // Extract transaction hash from input
           const txHash = extractTransactionHash(query);
           if (!txHash) {
-            await bot.sendMessage(chatId, "❌ Could not extract a valid transaction hash from the provided input. Please provide:\n• An Ethereum-style transaction hash (0x...)\n• A Solana transaction signature\n• A transaction link from a block explorer (Ethereum, Base, Solana, etc.)", { parse_mode: "HTML" });
+            await bot.sendMessage(chatId, "❌ Could not extract a valid transaction hash from the provided input. Please provide:\n• An Ethereum-style transaction hash (0x...)\n• A Solana transaction signature\n• A transaction link from a block explorer (Ethereum, Base, Solana, etc.)\n• A wallet address (0x... or Solana address) to find the most recent transaction", { parse_mode: "HTML" });
             return;
           }
 

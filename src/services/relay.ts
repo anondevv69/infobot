@@ -413,6 +413,189 @@ async function getWalletFromTransaction(
 }
 
 /**
+ * Fetch transaction details from Relay.link by wallet address
+ * Returns the most recent transaction for the wallet
+ * Reference: https://docs.relay.link/references/api/get-requests
+ */
+export async function fetchRelayTransactionByWallet(
+  walletAddress: string,
+  limit: number = 1,
+): Promise<RelayTransaction | null> {
+  try {
+    console.log(`Querying Relay API for wallet: ${walletAddress}`);
+    const url = new URL("https://api.relay.link/requests/v2");
+    url.searchParams.set("user", walletAddress);
+    url.searchParams.set("limit", limit.toString());
+    url.searchParams.set("sortBy", "createdAt");
+    url.searchParams.set("sortDirection", "desc");
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.log(`No transactions found for wallet ${walletAddress}`);
+        return null;
+      }
+      const errorText = await response.text().catch(() => "");
+      console.error(`Relay API error: ${response.status} ${response.statusText} - ${errorText}`);
+      throw new Error(`Relay API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const requests = data.requests || [];
+
+    if (requests.length === 0) {
+      console.log(`No requests found for wallet ${walletAddress}`);
+      return null;
+    }
+
+    // Use the first (most recent) request
+    const req = requests[0];
+    return await parseRelayRequest(req, undefined);
+  } catch (error) {
+    console.error(`Error fetching Relay transaction for wallet ${walletAddress}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Parse a Relay API request object into a RelayTransaction
+ */
+async function parseRelayRequest(
+  req: any,
+  txHash: string | undefined,
+): Promise<RelayTransaction | null> {
+  const inTxs = req.data?.inTxs || [];
+  const outTxs = req.data?.outTxs || [];
+
+  // Find which transaction matches our hash (if provided)
+  const searchHash = txHash?.toLowerCase();
+  const matchingInTx = searchHash ? inTxs.find((tx: any) => tx.hash?.toLowerCase() === searchHash) : null;
+  const matchingOutTx = searchHash ? outTxs.find((tx: any) => tx.hash?.toLowerCase() === searchHash) : null;
+
+  // Determine source and destination
+  let sourceChain: { chainId: number; wallet: string } | null = null;
+  let destinationChain: { chainId: number; wallet: string } | null = null;
+  let amount: string | undefined;
+  let token: { symbol: string; address: string } | undefined;
+
+  if (matchingInTx) {
+    sourceChain = {
+      chainId: matchingInTx.chainId || 8453,
+      wallet: matchingInTx.data?.from || req.user || "",
+    };
+    if (outTxs.length > 0) {
+      destinationChain = {
+        chainId: outTxs[0].chainId || 0,
+        wallet: req.recipient || outTxs[0].data?.to || "",
+      };
+    }
+  } else if (matchingOutTx) {
+    destinationChain = {
+      chainId: matchingOutTx.chainId || 0,
+      wallet: req.recipient || matchingOutTx.data?.to || "",
+    };
+    if (inTxs.length > 0) {
+      sourceChain = {
+        chainId: inTxs[0].chainId || 8453,
+        wallet: req.user || inTxs[0].data?.from || "",
+      };
+    }
+  } else {
+    // Use first inTx and first outTx
+    if (inTxs.length > 0) {
+      sourceChain = {
+        chainId: inTxs[0].chainId || 8453,
+        wallet: req.user || inTxs[0].data?.from || "",
+      };
+    }
+    if (outTxs.length > 0) {
+      destinationChain = {
+        chainId: outTxs[0].chainId || 0,
+        wallet: req.recipient || outTxs[0].data?.to || "",
+      };
+    }
+  }
+
+  // Extract token information
+  if (req.data?.outputCurrency) {
+    const currency = req.data.outputCurrency.currency;
+    if (currency) {
+      token = {
+        symbol: currency.symbol || "",
+        address: currency.address || "",
+      };
+      if (req.data.outputCurrency.amountFormatted) {
+        const formattedAmount = req.data.outputCurrency.amountFormatted;
+        if (formattedAmount && formattedAmount !== "0" && formattedAmount !== "0.0" && formattedAmount !== "0.00") {
+          amount = formattedAmount;
+        }
+      } else if (req.data.outputCurrency.amount) {
+        const rawAmount = req.data.outputCurrency.amount;
+        if (rawAmount && rawAmount !== "0" && rawAmount !== "0x0") {
+          amount = rawAmount;
+        }
+      }
+    }
+  }
+
+  // Fallback to user/recipient
+  if (!sourceChain?.wallet && req.user) {
+    if (!sourceChain) {
+      sourceChain = { chainId: 8453, wallet: "" };
+    }
+    sourceChain.wallet = req.user;
+  }
+  if (!destinationChain?.wallet && req.recipient) {
+    if (!destinationChain) {
+      destinationChain = { chainId: 0, wallet: "" };
+    }
+    destinationChain.wallet = req.recipient;
+  }
+
+  if (!sourceChain || !destinationChain || !sourceChain.wallet || !destinationChain.wallet) {
+    console.warn("Incomplete transaction data:", { sourceChain, destinationChain, request: req });
+    return null;
+  }
+
+  if (!sourceChain.chainId || !destinationChain.chainId) {
+    console.warn("Missing chain IDs:", { sourceChain, destinationChain });
+    return null;
+  }
+
+  // Get chain names asynchronously
+  const [sourceChainName, destChainName] = await Promise.all([
+    getChainName(sourceChain.chainId),
+    getChainName(destinationChain.chainId),
+  ]);
+
+  const transaction: RelayTransaction = {
+    txHash: matchingInTx?.hash || matchingOutTx?.hash || txHash || inTxs[0]?.hash || outTxs[0]?.hash || "",
+    sourceChain: {
+      chainId: sourceChain.chainId,
+      chainName: sourceChainName,
+      wallet: sourceChain.wallet,
+    },
+    destinationChain: {
+      chainId: destinationChain.chainId,
+      chainName: destChainName,
+      wallet: destinationChain.wallet,
+    },
+    amount: amount,
+    token: token,
+    status: req.status || "unknown",
+    timestamp: matchingInTx?.timestamp || matchingOutTx?.timestamp || inTxs[0]?.timestamp || outTxs[0]?.timestamp || new Date(req.createdAt || req.updatedAt).getTime() / 1000,
+  };
+
+  return transaction;
+}
+
+/**
  * Fetch transaction details from Relay.link by transaction hash
  * Uses the official /requests/v2 API endpoint with hash query parameter
  * Reference: https://docs.relay.link/references/api/get-requests
@@ -423,12 +606,14 @@ export async function fetchRelayTransaction(
   walletAddress?: string,
 ): Promise<RelayTransaction | null> {
   try {
+    // Detect if this is a Solana transaction (base58, 87-88 chars, not starting with 0x)
+    const isSolanaTx = !txHash.startsWith("0x") && txHash.length >= 87 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(txHash);
+    
     // If no chainId provided, try to detect from common patterns or use advanced detection
     let chainIdToUse = sourceChainId;
     if (!chainIdToUse) {
-      // Try advanced detection if we have a URL pattern (but we only have hash here)
-      // Default to Base for EVM chains, null for Solana
-      const isSolanaTx = !txHash.startsWith("0x") && txHash.length >= 87;
+      // For Solana transactions, don't use chainId (Solana doesn't use chain IDs)
+      // For EVM chains, default to Base
       chainIdToUse = isSolanaTx ? undefined : 8453; // Default to Base for EVM
     }
     
@@ -437,13 +622,17 @@ export async function fetchRelayTransaction(
     // Query Relay API using the official /requests/v2 endpoint
     // Try by hash first (for source/destination transaction hashes)
     // If that fails and it looks like a Relay transaction ID, try by id parameter
-    console.log(`Querying Relay API for transaction: ${txHash}${isRelayTxId ? " (Relay transaction ID)" : ""}`);
+    console.log(`Querying Relay API for transaction: ${txHash}${isRelayTxId ? " (Relay transaction ID)" : isSolanaTx ? " (Solana)" : ""}`);
     
     let url = new URL("https://api.relay.link/requests/v2");
     url.searchParams.set("hash", txHash);
-    if (chainIdToUse) {
+    // Don't include chainId for Solana transactions (they don't use chain IDs)
+    // For Solana, we must query without chainId from the start
+    // Also don't include it if we're querying by wallet address
+    if (chainIdToUse && !isSolanaTx && !walletAddress) {
       url.searchParams.set("chainId", chainIdToUse.toString());
     }
+    // For Solana transactions, we already don't include chainId, so the query should work
 
     let response = await fetch(url.toString(), {
       method: "GET",
@@ -570,188 +759,7 @@ export async function fetchRelayTransaction(
     }
 
     console.log(`Found matching request!`);
-    console.log("Full request data:", JSON.stringify(matchingRequest, null, 2));
-
-    const req = matchingRequest;
-    const inTxs = req.data?.inTxs || [];
-    const outTxs = req.data?.outTxs || [];
-    
-    console.log(`Request user: ${req.user}, recipient: ${req.recipient}`);
-    console.log(`InTxs count: ${inTxs.length}, OutTxs count: ${outTxs.length}`);
-    if (inTxs.length > 0) {
-      console.log(`First inTx:`, JSON.stringify(inTxs[0], null, 2));
-    }
-    if (outTxs.length > 0) {
-      console.log(`First outTx:`, JSON.stringify(outTxs[0], null, 2));
-    }
-
-    // Find which transaction matches our hash
-    const matchingInTx = inTxs.find((tx: any) => tx.hash?.toLowerCase() === searchHash);
-    const matchingOutTx = outTxs.find((tx: any) => tx.hash?.toLowerCase() === searchHash);
-
-    // Determine source and destination based on which transaction matches
-    // Use req.user and req.recipient as primary sources (they're more reliable)
-    let sourceChain: { chainId: number; wallet: string } | null = null;
-    let destinationChain: { chainId: number; wallet: string } | null = null;
-    let amount: string | undefined;
-    let token: { symbol: string; address: string } | undefined;
-
-    if (matchingInTx) {
-      // The matching hash is an incoming transaction (source chain)
-      sourceChain = {
-        chainId: matchingInTx.chainId || chainIdToUse,
-        wallet: matchingInTx.data?.from || req.user || "",
-      };
-      // Destination is from the first outTx, but prefer req.recipient for wallet
-      if (outTxs.length > 0) {
-        destinationChain = {
-          chainId: outTxs[0].chainId || 0,
-          wallet: req.recipient || outTxs[0].data?.to || "",
-        };
-        // Don't set amount from raw transaction value - wait for outputCurrency
-      } else if (req.recipient) {
-        // If no outTxs but we have recipient, try to get chain from request data
-        const destChainId = req.data?.destinationChainId || req.destinationChainId || 0;
-        destinationChain = {
-          chainId: destChainId,
-          wallet: req.recipient,
-        };
-      }
-    } else if (matchingOutTx) {
-      // The matching hash is an outgoing transaction (destination chain)
-      // This is a deposit - the hash is on the destination chain
-      destinationChain = {
-        chainId: matchingOutTx.chainId || 0,
-        wallet: req.recipient || matchingOutTx.data?.to || "",
-      };
-      // Source is from the first inTx, but prefer req.user for wallet
-      if (inTxs.length > 0) {
-        sourceChain = {
-          chainId: inTxs[0].chainId || chainIdToUse,
-          wallet: req.user || inTxs[0].data?.from || "",
-        };
-      } else if (req.user) {
-        // If no inTxs but we have user, try to get chain from request data
-        const srcChainId = req.data?.originChainId || req.originChainId || chainIdToUse;
-        sourceChain = {
-          chainId: srcChainId,
-          wallet: req.user,
-        };
-      }
-      // Don't set amount from raw transaction value - wait for outputCurrency
-    } else {
-      // Fallback: use first inTx and first outTx, but prefer req.user/req.recipient
-      if (inTxs.length > 0) {
-        sourceChain = {
-          chainId: inTxs[0].chainId || chainIdToUse,
-          wallet: req.user || inTxs[0].data?.from || "",
-        };
-      } else if (req.user) {
-        const srcChainId = req.data?.originChainId || req.originChainId || chainIdToUse;
-        sourceChain = {
-          chainId: srcChainId,
-          wallet: req.user,
-        };
-      }
-      if (outTxs.length > 0) {
-        destinationChain = {
-          chainId: outTxs[0].chainId || 0,
-          wallet: req.recipient || outTxs[0].data?.to || "",
-        };
-        // Don't set amount from raw transaction value - wait for outputCurrency
-      } else if (req.recipient) {
-        const destChainId = req.data?.destinationChainId || req.destinationChainId || 0;
-        destinationChain = {
-          chainId: destChainId,
-          wallet: req.recipient,
-        };
-      }
-    }
-
-    // Extract token information from outputCurrency if available
-    // Only use amount from outputCurrency as it's the most reliable source
-    if (req.data?.outputCurrency) {
-      const currency = req.data.outputCurrency.currency;
-      if (currency) {
-        token = {
-          symbol: currency.symbol || "",
-          address: currency.address || "",
-        };
-        // Use amountFormatted if available, otherwise use amount
-        // Only set amount if we have a valid formatted value (not "0" or empty)
-        if (req.data.outputCurrency.amountFormatted) {
-          const formattedAmount = req.data.outputCurrency.amountFormatted;
-          if (formattedAmount && formattedAmount !== "0" && formattedAmount !== "0.0" && formattedAmount !== "0.00") {
-            amount = formattedAmount;
-          }
-        } else if (req.data.outputCurrency.amount) {
-          const rawAmount = req.data.outputCurrency.amount;
-          // Only use raw amount if it's not zero
-          if (rawAmount && rawAmount !== "0" && rawAmount !== "0x0") {
-            amount = rawAmount;
-          }
-        }
-      }
-    } else {
-      // If no outputCurrency, don't show amount (it's likely raw wei value)
-      amount = undefined;
-    }
-    
-    // Also clear amount if it was set from transaction value but is zero
-    if (amount === "0" || amount === "0x0" || amount === "0.0" || amount === "0.00") {
-      amount = undefined;
-    }
-
-    // Fallback to user/recipient if wallet addresses are missing
-    if (!sourceChain?.wallet && req.user) {
-      if (!sourceChain) {
-        sourceChain = { chainId: chainIdToUse || 8453, wallet: "" };
-      }
-      sourceChain.wallet = req.user;
-    }
-    if (!destinationChain?.wallet && req.recipient) {
-      if (!destinationChain) {
-        destinationChain = { chainId: 0, wallet: "" };
-      }
-      destinationChain.wallet = req.recipient;
-    }
-
-    if (!sourceChain || !destinationChain || !sourceChain.wallet || !destinationChain.wallet) {
-      console.warn("Incomplete transaction data:", { sourceChain, destinationChain, request: req });
-      return null;
-    }
-
-    // Ensure chainIds are valid numbers
-    if (!sourceChain.chainId || !destinationChain.chainId) {
-      console.warn("Missing chain IDs:", { sourceChain, destinationChain });
-      return null;
-    }
-
-    // Get chain names asynchronously
-    const [sourceChainName, destChainName] = await Promise.all([
-      getChainName(sourceChain.chainId),
-      getChainName(destinationChain.chainId),
-    ]);
-
-    const transaction: RelayTransaction = {
-      txHash: matchingInTx?.hash || matchingOutTx?.hash || txHash,
-      sourceChain: {
-        chainId: sourceChain.chainId,
-        chainName: sourceChainName,
-        wallet: sourceChain.wallet,
-      },
-      destinationChain: {
-        chainId: destinationChain.chainId,
-        chainName: destChainName,
-        wallet: destinationChain.wallet,
-      },
-      amount: amount,
-      token: token,
-      status: req.status || "unknown",
-      timestamp: matchingInTx?.timestamp || matchingOutTx?.timestamp || new Date(req.createdAt || req.updatedAt).getTime() / 1000,
-    };
-
-    return transaction;
+    return await parseRelayRequest(matchingRequest, txHash);
   } catch (error) {
     console.error(`Error fetching Relay transaction ${txHash}:`, error);
     throw error;
