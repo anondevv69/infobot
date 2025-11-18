@@ -1,3 +1,4 @@
+// Add at the top with other imports
 import { Router } from "express";
 import { env } from "../config";
 import { logger } from "../utils/logger";
@@ -32,6 +33,127 @@ const verifiedConnections = new Map<string, {
   signerPublicKey?: string;
   signerFid?: number;
 }>();
+
+// DEBUG: Test SIWF URL generation
+router.get("/test-url", async (req, res) => {
+  try {
+    const testChallenge = "test-challenge-123";
+    const testUserId = "test-user-123";
+    const testPlatform = "discord";
+    const testBackendUrl = process.env.BACKEND_URL || "https://infobot-production-f74e.up.railway.app";
+    const testReferralCode = process.env.FARCASTER_REFERRAL_CODE || "2ORGMS";
+
+    // Generate callback URL
+    const callbackUrl = `${testBackendUrl}/api/siwf/callback?challenge=${testChallenge}&userId=${testUserId}&platform=${testPlatform}`;
+    
+    // Test different URL formats
+    const formats = {
+      format1: {
+        name: "Format 1: farcaster.xyz/~/signin",
+        url: `https://farcaster.xyz/~/signin?challenge=${testChallenge}&redirect_uri=${encodeURIComponent(callbackUrl)}&ref=${testReferralCode}`,
+      },
+      format2: {
+        name: "Format 2: warpcast.com/~/signin",
+        url: `https://warpcast.com/~/signin?challenge=${testChallenge}&redirect_uri=${encodeURIComponent(callbackUrl)}&ref=${testReferralCode}`,
+      },
+      format3: {
+        name: "Format 3: farcaster.xyz/~/siwf",
+        url: `https://farcaster.xyz/~/siwf?challenge=${testChallenge}&redirect_uri=${encodeURIComponent(callbackUrl)}&ref=${testReferralCode}`,
+      },
+      format4: {
+        name: "Format 4: warpcast.com/~/siwf",
+        url: `https://warpcast.com/~/siwf?challenge=${testChallenge}&redirect_uri=${encodeURIComponent(callbackUrl)}&ref=${testReferralCode}`,
+      },
+    };
+
+    return res.json({
+      status: "ok",
+      test: {
+        challenge: testChallenge,
+        userId: testUserId,
+        platform: testPlatform,
+        callbackUrl,
+        backendUrl: testBackendUrl,
+        referralCode: testReferralCode,
+      },
+      urlFormats: formats,
+      instructions: {
+        step1: "Click each URL format above to test which one works",
+        step2: "Check browser console/network tab for errors",
+        step3: "See which format successfully redirects to callback",
+        step4: "Report back which format works (or what error you see)",
+      },
+    });
+  } catch (error: any) {
+    logger.error("SIWF test URL error:", error);
+    return res.status(500).json({ error: "Internal server error", message: error.message });
+  }
+});
+
+// DEBUG: Check callback endpoint accessibility
+router.get("/test-callback", async (req, res) => {
+  try {
+    const { challenge, userId, platform } = req.query;
+    
+    return res.json({
+      status: "ok",
+      message: "Callback endpoint is accessible!",
+      received: {
+        challenge: challenge || "not provided",
+        userId: userId || "not provided",
+        platform: platform || "not provided",
+      },
+      test: {
+        url: `${process.env.BACKEND_URL || "https://infobot-production-f74e.up.railway.app"}/api/siwf/callback?challenge=test&userId=test&platform=discord`,
+        accessible: true,
+      },
+    });
+  } catch (error: any) {
+    logger.error("Callback test error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// DEBUG: Check pending verifications
+router.get("/pending", async (req, res) => {
+  try {
+    const pendingList = Array.from(pendingVerifications.entries()).map(([challenge, data]) => ({
+      challenge,
+      ...data,
+      age: Date.now() - data.timestamp,
+    }));
+
+    return res.json({
+      status: "ok",
+      count: pendingVerifications.size,
+      pending: pendingList,
+    });
+  } catch (error: any) {
+    logger.error("Pending verifications error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// DEBUG: Check verified connections
+router.get("/connections", async (req, res) => {
+  try {
+    const connectionsList = Array.from(verifiedConnections.entries()).map(([key, data]) => ({
+      key,
+      fid: data.fid,
+      username: data.username,
+      platform: data.platform,
+    }));
+
+    return res.json({
+      status: "ok",
+      count: verifiedConnections.size,
+      connections: connectionsList,
+    });
+  } catch (error: any) {
+    logger.error("Connections error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // Endpoint to store pending verification (called from bot)
 router.post("/pending", async (req, res) => {
@@ -113,14 +235,21 @@ router.post("/connection", async (req, res) => {
   }
 });
 
-// SIWF callback endpoint - receives redirect from Warpcast
+// SIWF callback endpoint
 router.get("/callback", async (req, res) => {
   try {
-    // Get challenge, userId, platform, and signed message from query params
+    // Log all query parameters for debugging
+    logger.info("[SIWF Callback] Received request:", {
+      query: req.query,
+      headers: req.headers,
+      url: req.url,
+    });
+
     // Warpcast should send: challenge, message (signed), fid, custodyAddress
     const { challenge, userId, platform, message, signature, fid, custodyAddress } = req.query;
 
     if (!challenge || !userId || !platform) {
+      logger.warn("[SIWF Callback] Missing required parameters:", { challenge, userId, platform });
       return res.status(400).send(`
         <!DOCTYPE html>
         <html>
@@ -128,6 +257,7 @@ router.get("/callback", async (req, res) => {
           <body>
             <h1>❌ Missing Parameters</h1>
             <p>Missing required parameters. Please try connecting again from Discord/Telegram.</p>
+            <p>Received: challenge=${challenge || "none"}, userId=${userId || "none"}, platform=${platform || "none"}</p>
           </body>
         </html>
       `);
@@ -140,6 +270,11 @@ router.get("/callback", async (req, res) => {
     // Verify the challenge exists and hasn't expired
     const pending = pendingVerifications.get(verificationChallenge);
     if (!pending || Date.now() - pending.timestamp > 10 * 60 * 1000) {
+      logger.warn("[SIWF Callback] Challenge expired or not found:", {
+        challenge: verificationChallenge,
+        exists: !!pending,
+        age: pending ? Date.now() - pending.timestamp : "N/A",
+      });
       return res.status(400).send(`
         <!DOCTYPE html>
         <html>
@@ -161,7 +296,7 @@ router.get("/callback", async (req, res) => {
         const providedAddress = (custodyAddress as string).toLowerCase();
         
         if (recoveredAddress.toLowerCase() !== providedAddress) {
-          logger.warn(`Signature verification failed: ${recoveredAddress} !== ${providedAddress}`);
+          logger.warn(`[SIWF Callback] Signature verification failed: ${recoveredAddress} !== ${providedAddress}`);
           return res.status(400).send(`
             <!DOCTYPE html>
             <html>
@@ -259,7 +394,7 @@ router.get("/callback", async (req, res) => {
           </html>
         `);
       } catch (error: any) {
-        logger.error("Failed to verify signature or lookup user:", error);
+        logger.error("[SIWF Callback] Failed to verify signature or lookup user:", error);
         // Fall through to show instructions
       }
     }
@@ -267,6 +402,7 @@ router.get("/callback", async (req, res) => {
     // If no signature provided (Warpcast doesn't send it automatically),
     // show instructions for user to complete connection
     // This is a fallback for when Warpcast doesn't send signed messages
+    logger.warn("[SIWF Callback] No signature provided - showing fallback instructions");
     return res.send(`
       <!DOCTYPE html>
       <html>
@@ -294,12 +430,24 @@ router.get("/callback", async (req, res) => {
             .step { background: #f5f5f5; padding: 20px; border-radius: 10px; margin: 15px 0; text-align: left; }
             .step strong { color: #667eea; display: block; margin-bottom: 10px; }
             code { background: #e0e0e0; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+            .debug { background: #fff3cd; padding: 15px; border-radius: 10px; margin: 15px 0; text-align: left; font-size: 12px; color: #856404; }
           </style>
         </head>
         <body>
           <div class="card">
             <h1>🔗 Complete Your Connection</h1>
-            <p>You've signed in to Warpcast! Now complete the connection:</p>
+            <p>You've signed in to Warpcast! However, we didn't receive a signed message.</p>
+            
+            <div class="debug">
+              <strong>Debug Info:</strong><br>
+              Challenge: ${verificationChallenge}<br>
+              User ID: ${verificationUserId}<br>
+              Platform: ${verificationPlatform}<br>
+              Signature: ${signature ? "✅ Provided" : "❌ Missing"}<br>
+              Message: ${message ? "✅ Provided" : "❌ Missing"}<br>
+              FID: ${fid || "Not provided"}<br>
+              Custody Address: ${custodyAddress || "Not provided"}
+            </div>
             
             <div class="step">
               <strong>Step 1:</strong> Go back to ${verificationPlatform === "discord" ? "Discord" : "Telegram"}
@@ -323,7 +471,7 @@ router.get("/callback", async (req, res) => {
       </html>
     `);
   } catch (error: any) {
-    logger.error("SIWF callback error:", error);
+    logger.error("[SIWF Callback] Error:", error);
     res.status(500).send(`
       <!DOCTYPE html>
       <html>
@@ -331,9 +479,49 @@ router.get("/callback", async (req, res) => {
         <body>
           <h1>❌ Server Error</h1>
           <p>An error occurred processing your request.</p>
+          <p>Error: ${error.message}</p>
         </body>
       </html>
     `);
+  }
+});
+
+// Endpoint for Mini App connection (called from Mini App)
+router.post("/miniapp-connect", async (req, res) => {
+  try {
+    const { userId, platform, fid, username, custodyAddress, verifiedAddresses, signerPrivateKey, signerPublicKey } = req.body;
+
+    if (!userId || !platform || !fid) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const key = `${platform}:${userId}`;
+    
+    // Store the connection
+    verifiedConnections.set(key, {
+      fid,
+      username: username || "",
+      custodyAddress: custodyAddress || "",
+      verifiedAddresses: verifiedAddresses || [],
+      platform,
+      signerPrivateKey,
+      signerPublicKey,
+    });
+
+    logger.info(`Mini App connection stored for user ${userId} (FID: ${fid})`);
+
+    return res.json({
+      success: true,
+      message: "Successfully connected to bot",
+      connection: {
+        fid,
+        username,
+        custodyAddress,
+      },
+    });
+  } catch (error: any) {
+    logger.error("Failed to store Mini App connection:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -422,45 +610,6 @@ router.delete("/signer", async (req, res) => {
     return res.json({ success: true });
   } catch (error: any) {
     logger.error("Failed to delete signer:", error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// Endpoint for Mini App connection (called from Mini App)
-router.post("/miniapp-connect", async (req, res) => {
-  try {
-    const { userId, platform, fid, username, custodyAddress, verifiedAddresses, signerPrivateKey, signerPublicKey } = req.body;
-
-    if (!userId || !platform || !fid) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
-    const key = `${platform}:${userId}`;
-    
-    // Store the connection
-    verifiedConnections.set(key, {
-      fid,
-      username: username || "",
-      custodyAddress: custodyAddress || "",
-      verifiedAddresses: verifiedAddresses || [],
-      platform,
-      signerPrivateKey,
-      signerPublicKey,
-    });
-
-    logger.info(`Mini App connection stored for user ${userId} (FID: ${fid})`);
-
-    return res.json({
-      success: true,
-      message: "Successfully connected to bot",
-      connection: {
-        fid,
-        username,
-        custodyAddress,
-      },
-    });
-  } catch (error: any) {
-    logger.error("Failed to store Mini App connection:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
