@@ -24,6 +24,7 @@ export const env = {
   quicknodeApiKey: process.env.QUICKNODE_API_KEY, // Optional: for premium RPC endpoints
   oneinchApiKey: process.env.ONEINCH_API_KEY, // Optional: for 1inch DEX aggregator (better rate limits)
   farcasterReferralCode: process.env.FARCASTER_REFERRAL_CODE ?? "2ORGMS",
+  backendUrl: process.env.BACKEND_URL || "https://infobot-production-f74e.up.railway.app", // Backend URL for SIWF callbacks
   brandName: process.env.BRAND_NAME ?? "InfoBot",
   brandIconUrl:
     process.env.BRAND_ICON_URL ??

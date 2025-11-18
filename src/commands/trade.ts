@@ -6,6 +6,7 @@ import {
   ActionRowBuilder,
 } from "discord.js";
 import { getSIWFSession } from "../services/siwf";
+import { env } from "../config";
 import {
   getSwapQuote,
   getSwapTransaction,
@@ -76,7 +77,7 @@ async function handleTrade(
   const userId = interaction.user.id;
 
   // Check if user is connected
-  const session = getSIWFSession(userId, "discord");
+  const session = await getSIWFSession(userId, "discord", env.backendUrl);
   if (!session) {
     const embed = new EmbedBuilder()
       .setTitle("❌ Not Connected")

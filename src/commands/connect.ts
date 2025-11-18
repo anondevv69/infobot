@@ -5,7 +5,7 @@ import {
   ButtonStyle,
   ActionRowBuilder,
 } from "discord.js";
-import { generateSIWFChallenge, generateSIWFUrl, getSIWFSession, verifyUserByUsernameOrWallet, storeSIWFSession } from "../services/siwf";
+import { generateSIWFChallenge, generateSIWFUrl, getSIWFSession, verifyUserByUsernameOrWallet, storeSIWFSession, storePendingVerificationInBackend } from "../services/siwf";
 import { findUserByWallet, findUserByUsername } from "../services/neynar";
 import { env } from "../config";
 
@@ -16,7 +16,7 @@ export async function handleConnectCommand(
   const usernameOrWallet = interaction.options.getString("username_or_wallet");
   
   // Check if user is already connected
-  const existingSession = getSIWFSession(userId, "discord");
+  const existingSession = await getSIWFSession(userId, "discord", env.backendUrl);
   if (existingSession) {
     const embed = new EmbedBuilder()
       .setTitle("✅ Already Connected")
@@ -60,7 +60,7 @@ export async function handleConnectCommand(
       }
 
       // Store the session
-      storeSIWFSession(userId, "discord", verification);
+      await storeSIWFSession(userId, "discord", verification, env.backendUrl);
 
       const embed = new EmbedBuilder()
         .setTitle("✅ Connected Successfully!")
@@ -89,36 +89,41 @@ export async function handleConnectCommand(
     }
   }
 
-  // Generate signup URL with referral code
-  const signupUrl = `https://warpcast.com/~/signup?ref=${env.farcasterReferralCode}`;
-  const signinUrl = "https://warpcast.com/~/signin";
+  // Generate SIWF URL with proper callback
+  const challenge = generateSIWFChallenge(userId, "discord");
+  const siwfUrl = generateSIWFUrl(
+    challenge.challenge,
+    userId,
+    "discord",
+    env.backendUrl,
+    env.farcasterReferralCode,
+  );
+
+  // Store pending verification in backend
+  await storePendingVerificationInBackend(challenge.challenge, userId, "discord", env.backendUrl);
 
   const embed = new EmbedBuilder()
     .setTitle("🔗 Connect Farcaster")
     .setDescription(
       `To connect your Farcaster account:\n\n` +
-      `**Quick Connect (Recommended):**\n` +
+      `**Option 1: Quick Connect (Recommended)**\n` +
       `Run: \`/connect @yourusername\` or \`/connect 0xwallet\`\n\n` +
-      `**Or sign up/sign in first:**\n` +
+      `**Option 2: Sign In with Farcaster (SIWF)**\n` +
       `1. Click the button below to open Warpcast\n` +
-      `2. Sign up (new users) or sign in (existing users)\n` +
-      `3. Then run \`/connect @yourusername\` to verify\n\n` +
-      `💡 <b>Tip:</b> If you don't have Farcaster, sign up using the link below (referral: ${env.farcasterReferralCode})`
+      `2. Sign in (or sign up if you don't have an account)\n` +
+      `3. Approve the connection\n` +
+      `4. You'll be redirected back and your account will be linked!\n\n` +
+      `💡 <b>New to Farcaster?</b> Sign up using the link (referral: ${env.farcasterReferralCode})`
     )
     .setColor(0x8a63d2)
-    .setFooter({ text: `Referral code: ${env.farcasterReferralCode} - Sign up to get started!` });
+    .setFooter({ text: `Referral code: ${env.farcasterReferralCode}` });
 
-  const signupButton = new ButtonBuilder()
-    .setLabel("Sign Up on Warpcast")
-    .setURL(signupUrl)
+  const connectButton = new ButtonBuilder()
+    .setLabel("🔐 Connect with Farcaster")
+    .setURL(siwfUrl)
     .setStyle(ButtonStyle.Link);
 
-  const signinButton = new ButtonBuilder()
-    .setLabel("Sign In on Warpcast")
-    .setURL(signinUrl)
-    .setStyle(ButtonStyle.Link);
-
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(signupButton, signinButton);
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(connectButton);
 
   await interaction.reply({
     embeds: [embed],

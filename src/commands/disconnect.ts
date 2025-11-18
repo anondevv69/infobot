@@ -1,12 +1,13 @@
 import { ChatInputCommandInteraction, EmbedBuilder } from "discord.js";
 import { clearSIWFSession, getSIWFSession } from "../services/siwf";
+import { env } from "../config";
 
 export async function handleDisconnectCommand(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
   const userId = interaction.user.id;
 
-  const session = getSIWFSession(userId, "discord");
+  const session = await getSIWFSession(userId, "discord", env.backendUrl);
   if (!session) {
     const embed = new EmbedBuilder()
       .setTitle("❌ Not Connected")

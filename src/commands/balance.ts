@@ -1,5 +1,6 @@
 import { ChatInputCommandInteraction, EmbedBuilder } from "discord.js";
 import { getSIWFSession } from "../services/siwf";
+import { env } from "../config";
 import { getTokenBalance, formatTokenAmount, getTokenInfo } from "../services/dex";
 
 export async function handleBalanceCommand(
@@ -10,7 +11,7 @@ export async function handleBalanceCommand(
   const chainId = interaction.options.getInteger("chain") || 8453; // Default to Base
 
   // Check if user is connected
-  const session = getSIWFSession(userId, "discord");
+  const session = await getSIWFSession(userId, "discord", env.backendUrl);
   if (!session) {
     const embed = new EmbedBuilder()
       .setTitle("❌ Not Connected")

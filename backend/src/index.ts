@@ -5,6 +5,7 @@ import { ensureSchema } from "./db";
 import { logger } from "./utils/logger";
 import { subscriptionRouter } from "./routes/subscriptions";
 import { webhookRouter } from "./routes/webhooks";
+import { siwfRouter } from "./routes/siwf";
 
 async function bootstrap(): Promise<void> {
   await ensureSchema();
@@ -19,6 +20,7 @@ async function bootstrap(): Promise<void> {
 
   app.use("/api/subscriptions", subscriptionRouter);
   app.use("/webhooks", webhookRouter);
+  app.use("/api/siwf", siwfRouter);
 
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     logger.error("Unhandled error", err);

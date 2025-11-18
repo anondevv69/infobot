@@ -61,20 +61,39 @@ export function getSIWFChallenge(userId: string, platform: "discord" | "telegram
   return challenge;
 }
 
-// Generate signup/signin URL for Farcaster with referral code
-// Note: SIWF requires a web callback, so for bots we use a simpler flow:
-// 1. User clicks link to sign up/sign in on Warpcast
-// 2. User creates account or signs in (with referral code)
-// 3. User comes back and runs /connect @username to verify
-export function generateSIWFUrl(challenge: string, redirectUrl?: string, referralCode?: string): string {
-  // For bots, we'll use the Warpcast app URL which opens the app or web
-  // If referral code provided, use signup URL, otherwise signin
+// Generate SIWF URL for Warpcast with callback
+// This implements the proper SIWF flow:
+// 1. User clicks link to Warpcast with challenge and callback URL
+// 2. User signs in/up in Warpcast (with referral code for new users)
+// 3. Warpcast redirects to callback URL with signed message
+// 4. Backend verifies and links accounts
+export function generateSIWFUrl(
+  challenge: string,
+  userId: string,
+  platform: "discord" | "telegram",
+  backendUrl: string,
+  referralCode?: string,
+): string {
+  // Encode user info in the challenge for the callback to identify the user
+  // The challenge already contains this, but we'll also pass it in the callback URL
+  const callbackUrl = `${backendUrl}/api/siwf/callback?challenge=${challenge}&userId=${userId}&platform=${platform}`;
+  
+  // Store pending verification in backend (we'll need to call an API)
+  // For now, the backend will handle this via the callback
+  
+  // Generate Warpcast signin URL with challenge and callback
+  const baseUrl = "https://warpcast.com/~/signin";
+  const params = new URLSearchParams({
+    challenge,
+    redirect_uri: callbackUrl,
+  });
+
+  // Add referral code for new signups
   if (referralCode) {
-    // Signup URL with referral code
-    return `https://warpcast.com/~/signup?ref=${referralCode}`;
+    params.append("ref", referralCode);
   }
-  // Signin URL
-  return "https://warpcast.com/~/signin";
+
+  return `${baseUrl}?${params.toString()}`;
 }
 
 // Alternative: Generate Farcaster signup URL with referral
@@ -83,6 +102,25 @@ export function generateFarcasterSignupUrl(referralCode?: string): string {
     return `https://warpcast.com/~/signup?ref=${referralCode}`;
   }
   return "https://warpcast.com/~/signup";
+}
+
+// Store pending verification in backend
+export async function storePendingVerificationInBackend(
+  challenge: string,
+  userId: string,
+  platform: "discord" | "telegram",
+  backendUrl: string,
+): Promise<void> {
+  try {
+    await fetch(`${backendUrl}/api/siwf/pending`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challenge, userId, platform }),
+    });
+  } catch (error) {
+    console.error("[SIWF] Failed to store pending verification:", error);
+    // Continue anyway - the callback will handle it
+  }
 }
 
 // Verify SIWF signature and get user info from Neynar
@@ -176,23 +214,78 @@ export async function verifyUserByUsernameOrWallet(
   }
 }
 
-// Store verified session
-export function storeSIWFSession(
+// Store verified session (stores both locally and in backend)
+export async function storeSIWFSession(
   userId: string,
   platform: "discord" | "telegram",
   verification: SIWFVerification,
-): void {
+  backendUrl?: string,
+): Promise<void> {
   const key = `${platform}:${userId}`;
   sessions.set(key, verification);
+
+  // Also store in backend if URL provided
+  if (backendUrl) {
+    try {
+      await fetch(`${backendUrl}/api/siwf/connection`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          platform,
+          fid: verification.fid,
+          username: verification.username,
+          custodyAddress: verification.custodyAddress,
+          verifiedAddresses: verification.verifiedAddresses,
+        }),
+      });
+    } catch (error) {
+      console.error("[SIWF] Failed to store connection in backend:", error);
+      // Continue anyway - local storage is fine
+    }
+  }
 }
 
-// Get verified session
-export function getSIWFSession(
+// Get verified session (checks both local and backend)
+export async function getSIWFSession(
   userId: string,
   platform: "discord" | "telegram",
-): SIWFVerification | null {
+  backendUrl?: string,
+): Promise<SIWFVerification | null> {
   const key = `${platform}:${userId}`;
-  return sessions.get(key) || null;
+  
+  // Check local first
+  const localSession = sessions.get(key);
+  if (localSession) {
+    return localSession;
+  }
+
+  // Check backend if URL provided
+  if (backendUrl) {
+    try {
+      const response = await fetch(`${backendUrl}/api/siwf/connection?userId=${userId}&platform=${platform}`);
+      if (response.ok) {
+        const connection = await response.json();
+        if (connection) {
+          // Convert backend format to SIWFVerification format
+          const verification: SIWFVerification = {
+            fid: connection.fid,
+            custodyAddress: connection.custodyAddress,
+            verifiedAddresses: connection.verifiedAddresses || [],
+            username: connection.username,
+            signature: "", // Not stored in backend
+          };
+          // Cache locally
+          sessions.set(key, verification);
+          return verification;
+        }
+      }
+    } catch (error) {
+      console.error("[SIWF] Failed to get connection from backend:", error);
+    }
+  }
+
+  return null;
 }
 
 // Clear session

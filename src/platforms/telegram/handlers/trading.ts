@@ -6,6 +6,7 @@ import {
   clearSIWFSession,
   verifyUserByUsernameOrWallet,
   storeSIWFSession,
+  storePendingVerificationInBackend,
 } from "../../../services/siwf";
 import { env } from "../../../config";
 import {
@@ -31,7 +32,7 @@ export async function handleTelegramConnect(
   }
 
   // Check if already connected
-  const existingSession = getSIWFSession(userId, "telegram");
+  const existingSession = await getSIWFSession(userId, "telegram", env.backendUrl);
   if (existingSession) {
     await bot.sendMessage(
       chatId,
@@ -66,7 +67,7 @@ export async function handleTelegramConnect(
       }
 
       // Store the session
-      storeSIWFSession(userId, "telegram", verification);
+      await storeSIWFSession(userId, "telegram", verification, env.backendUrl);
 
       await bot.sendMessage(
         chatId,
@@ -86,23 +87,32 @@ export async function handleTelegramConnect(
     }
   }
 
-  // Generate signup/signin URLs
-  const signupUrl = `https://warpcast.com/~/signup?ref=${env.farcasterReferralCode}`;
-  const signinUrl = "https://warpcast.com/~/signin";
+  // Generate SIWF URL with proper callback
+  const challenge = generateSIWFChallenge(userId, "telegram");
+  const siwfUrl = generateSIWFUrl(
+    challenge.challenge,
+    userId,
+    "telegram",
+    env.backendUrl,
+    env.farcasterReferralCode,
+  );
+
+  // Store pending verification in backend
+  await storePendingVerificationInBackend(challenge.challenge, userId, "telegram", env.backendUrl);
 
   await bot.sendMessage(
     chatId,
     `🔗 <b>Connect Farcaster</b>\n\n` +
       `To connect your Farcaster account:\n\n` +
-      `<b>Quick Connect (Recommended):</b>\n` +
+      `<b>Option 1: Quick Connect (Recommended)</b>\n` +
       `Run: <code>/connect @yourusername</code> or <code>/connect 0xwallet</code>\n\n` +
-      `<b>Or sign up/sign in first:</b>\n` +
-      `1. Click a link below to open Warpcast\n` +
-      `2. Sign up (new) or sign in (existing)\n` +
-      `3. Then run: <code>/connect @yourusername</code>\n\n` +
-      `<a href="${signupUrl}">📝 Sign Up (Referral: ${env.farcasterReferralCode})</a>\n` +
-      `<a href="${signinUrl}">🔐 Sign In</a>\n\n` +
-      `💡 <i>Tip: Connect directly by providing your Farcaster username or wallet!</i>`,
+      `<b>Option 2: Sign In with Farcaster (SIWF)</b>\n` +
+      `1. Click the link below to open Warpcast\n` +
+      `2. Sign in (or sign up if new - referral: <code>${env.farcasterReferralCode}</code>)\n` +
+      `3. Approve the connection\n` +
+      `4. You'll be redirected back and linked!\n\n` +
+      `<a href="${siwfUrl}">🔐 Connect with Farcaster</a>\n\n` +
+      `💡 <i>Tip: Quick connect is faster - just provide your username!</i>`,
     {
       parse_mode: "HTML",
       disable_web_page_preview: false,
@@ -122,7 +132,7 @@ export async function handleTelegramDisconnect(
     return;
   }
 
-  const session = getSIWFSession(userId, "telegram");
+  const session = await getSIWFSession(userId, "telegram", env.backendUrl);
   if (!session) {
     await bot.sendMessage(chatId, "❌ You're not connected to Farcaster.");
     return;
@@ -146,7 +156,7 @@ export async function handleTelegramBalance(
     return;
   }
 
-  const session = getSIWFSession(userId, "telegram");
+  const session = await getSIWFSession(userId, "telegram", env.backendUrl);
   if (!session) {
     await bot.sendMessage(
       chatId,
@@ -220,7 +230,7 @@ export async function handleTelegramTrade(
     return;
   }
 
-  const session = getSIWFSession(userId, "telegram");
+  const session = await getSIWFSession(userId, "telegram", env.backendUrl);
   if (!session) {
     await bot.sendMessage(
       chatId,
