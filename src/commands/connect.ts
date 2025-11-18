@@ -79,7 +79,7 @@ export async function handleConnectCommand(
   let connectLabel: string;
   let description: string;
 
-  if (env.miniappUrl && !env.miniappUrl.includes("your-miniapp-domain.com")) {
+  if (env.miniappUrl && !env.miniappUrl.includes("your-miniapp-domain.com") && env.miniappUrl.includes("farcaster.xyz/miniapps")) {
     // Use Mini App (best option)
     const miniappUrl = new URL(env.miniappUrl);
     miniappUrl.searchParams.set("userId", userId);
