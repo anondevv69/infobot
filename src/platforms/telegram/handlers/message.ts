@@ -283,8 +283,9 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           multiChainTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
           multiChainTokenData.factoryName = factoryName;
           multiChainTokenData.createdAt = contractCreation?.createdAt ?? null;
+          multiChainTokenData.creationTxHash = contractCreation?.txHash ?? null;
 
-          const { embed } = buildMultiChainTokenEmbed(address, multiChainTokenData);
+          const { embed } = await buildMultiChainTokenEmbed(address, multiChainTokenData);
           const messages = embedsToTelegram([embed]);
           await bot.sendMessage(chatId, `${multiChainTokenData.chainName} token detected for <code>${address}</code>.`, {
             parse_mode: "HTML",
@@ -837,8 +838,9 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
               multiChainTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
               multiChainTokenData.factoryName = factoryName;
               multiChainTokenData.createdAt = contractCreation?.createdAt ?? null;
+              multiChainTokenData.creationTxHash = contractCreation?.txHash ?? null;
 
-              const { embed } = buildMultiChainTokenEmbed(address, multiChainTokenData);
+              const { embed } = await buildMultiChainTokenEmbed(address, multiChainTokenData);
               const messages = embedsToTelegram([embed]);
               await bot.sendMessage(chatId, `${multiChainTokenData.chainName} token detected for <code>${address}</code>.`, {
                 parse_mode: "HTML",

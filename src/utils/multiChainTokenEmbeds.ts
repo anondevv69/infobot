@@ -5,6 +5,8 @@ import {
 } from "discord.js";
 import { MultiChainTokenData } from "../services/dexscreener";
 import { applyBranding } from "./branding";
+import { findUserByWallet } from "../services/neynar";
+import { findBestZoraSummary } from "../services/zora";
 
 function formatCurrency(value?: number | null): string {
   if (value == null) return "N/A";
@@ -57,6 +59,32 @@ function getChainExplorerUrl(chainId: string, address: string): string {
   return explorerMap[chainId.toLowerCase()] ?? `https://etherscan.io/address/${address}`;
 }
 
+function getChainTxExplorerUrl(chainId: string, txHash: string): string {
+  const chainIdLower = chainId.toLowerCase();
+  const txExplorerMap: Record<string, string> = {
+    "1": `https://etherscan.io/tx/${txHash}`,
+    "eth": `https://etherscan.io/tx/${txHash}`,
+    "ethereum": `https://etherscan.io/tx/${txHash}`,
+    "56": `https://bscscan.com/tx/${txHash}`,
+    "bsc": `https://bscscan.com/tx/${txHash}`,
+    "137": `https://polygonscan.com/tx/${txHash}`,
+    "polygon": `https://polygonscan.com/tx/${txHash}`,
+    "42161": `https://arbiscan.io/tx/${txHash}`,
+    "arbitrum": `https://arbiscan.io/tx/${txHash}`,
+    "10": `https://optimistic.etherscan.io/tx/${txHash}`,
+    "optimism": `https://optimistic.etherscan.io/tx/${txHash}`,
+    "8453": `https://basescan.org/tx/${txHash}`,
+    "base": `https://basescan.org/tx/${txHash}`,
+    "43114": `https://snowtrace.io/tx/${txHash}`,
+    "avalanche": `https://snowtrace.io/tx/${txHash}`,
+    "250": `https://ftmscan.com/tx/${txHash}`,
+    "fantom": `https://ftmscan.com/tx/${txHash}`,
+    "5000": `https://explorer.mantle.xyz/tx/${txHash}`,
+    "mantle": `https://explorer.mantle.xyz/tx/${txHash}`,
+  };
+  return txExplorerMap[chainIdLower] ?? `https://etherscan.io/tx/${txHash}`;
+}
+
 function getChainColor(chainId: string): number {
   const colorMap: Record<string, number> = {
     "1": 0x627eea, // Ethereum blue
@@ -82,13 +110,13 @@ function getChainColor(chainId: string): number {
   return colorMap[chainId.toLowerCase()] ?? 0x627eea;
 }
 
-export function buildMultiChainTokenEmbed(
+export async function buildMultiChainTokenEmbed(
   contractAddress: string,
   tokenData: MultiChainTokenData,
-): {
+): Promise<{
   embed: EmbedBuilder;
   components: ActionRowBuilder<ButtonBuilder>[];
-} {
+}> {
   const title = tokenData.tokenSymbol && tokenData.tokenName
     ? `${tokenData.tokenSymbol} • ${tokenData.tokenName}`
     : tokenData.tokenName ?? tokenData.tokenSymbol ?? `${tokenData.chainName} Token`;
@@ -142,11 +170,55 @@ export function buildMultiChainTokenEmbed(
     });
   }
 
-  // Creator Address (if available)
-  if (tokenData.creatorAddress) {
+  // Creator Address and Profile Info (if available)
+  const creatorAddress = tokenData.creatorAddress;
+  if (creatorAddress) {
+    const creatorInfo: string[] = [];
+    creatorInfo.push(`🛠️ Dev: \`${creatorAddress}\``);
+    
+    // Add creation transaction link if we have the tx hash
+    if (tokenData.creationTxHash) {
+      const txExplorerUrl = getChainTxExplorerUrl(tokenData.chainId, tokenData.creationTxHash);
+      creatorInfo.push(`🔗 [Creation Transaction](${txExplorerUrl})`);
+    } else if (tokenData.createdAt) {
+      const explorerUrl = getChainExplorerUrl(tokenData.chainId, contractAddress);
+      creatorInfo.push(`🔗 [View Contract](${explorerUrl})`);
+    }
+    
+    // Check for Farcaster and Zora accounts
+    try {
+      const [farcasterUser, zoraSummary] = await Promise.all([
+        findUserByWallet(creatorAddress).catch(() => null),
+        findBestZoraSummary([creatorAddress.toLowerCase()]).catch(() => null),
+      ]);
+      
+      // Farcaster account
+      if (farcasterUser) {
+        const farcasterUrl = `https://farcaster.xyz/${farcasterUser.username}?ref=2ORGMS`;
+        creatorInfo.push(`📱 Farcaster: [@${farcasterUser.username}](${farcasterUrl})`);
+      } else {
+        creatorInfo.push(`📱 Farcaster: None`);
+      }
+      
+      // Zora account
+      if (zoraSummary && (zoraSummary.latestCoin?.coin || (zoraSummary.createdCoins ?? []).length > 0)) {
+        const zoraHandle = zoraSummary.profile.handle || zoraSummary.profile.farcasterHandle || "Profile";
+        const zoraUrl = zoraSummary.profile.handle 
+          ? `https://zora.co/${zoraSummary.profile.handle}`
+          : `https://zora.co/profile/${creatorAddress}`;
+        creatorInfo.push(`🎨 Zora: [${zoraHandle}](${zoraUrl})`);
+      } else {
+        creatorInfo.push(`🎨 Zora: None`);
+      }
+    } catch (error) {
+      console.error(`[Multi-Chain Token] Failed to check Farcaster/Zora for creator ${creatorAddress}:`, error);
+      creatorInfo.push(`📱 Farcaster: None`);
+      creatorInfo.push(`🎨 Zora: None`);
+    }
+    
     embed.addFields({
-      name: "🛠️ Dev",
-      value: `\`\`\`\n${tokenData.creatorAddress}\n\`\`\``,
+      name: "🛠️ Developer",
+      value: creatorInfo.join("\n"),
       inline: false,
     });
   }
@@ -221,4 +293,5 @@ export function buildMultiChainTokenEmbed(
   applyBranding(embed, `${tokenData.chainName.toLowerCase()} token`);
   return { embed, components: [] };
 }
+
 

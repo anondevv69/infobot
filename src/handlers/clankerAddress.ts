@@ -522,8 +522,9 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           multiChainTokenData.creatorAddress = contractCreation?.contractCreator ?? null;
           multiChainTokenData.factoryName = factoryName;
           multiChainTokenData.createdAt = contractCreation?.createdAt ?? null;
+          multiChainTokenData.creationTxHash = contractCreation?.txHash ?? null;
 
-          const { embed, components } = buildMultiChainTokenEmbed(address, multiChainTokenData);
+          const { embed, components } = await buildMultiChainTokenEmbed(address, multiChainTokenData);
           await message.reply({
             content: `${multiChainTokenData.chainName} token detected for \`${address}\`.`,
             embeds: [embed],

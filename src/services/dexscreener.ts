@@ -76,6 +76,7 @@ export interface MultiChainTokenData extends TokenMetrics {
   creatorAddress?: string | null;
   factoryName?: string | null;
   createdAt?: number | null; // Timestamp in seconds
+  creationTxHash?: string | null; // Creation transaction hash
 }
 
 /**
