@@ -3,6 +3,47 @@ import { logger } from "../utils/logger";
 
 const router = Router();
 
+// Log SIWF URL on startup
+(function logSIWFConfig() {
+  try {
+    const testChallenge = "startup-test";
+    const testUserId = "startup-test";
+    const testPlatform = "discord";
+    const testBackendUrl = process.env.BACKEND_URL || "https://infobot-production-f74e.up.railway.app";
+    const testReferralCode = process.env.FARCASTER_REFERRAL_CODE || "2ORGMS";
+
+    const callbackUrl = `${testBackendUrl}/api/siwf/callback?challenge=${testChallenge}&userId=${testUserId}&platform=${testPlatform}`;
+    const baseUrl = "https://warpcast.com/~/signin";
+    const params = new URLSearchParams({
+      challenge: testChallenge,
+      redirect_uri: callbackUrl,
+    });
+    if (testReferralCode) {
+      params.append("ref", testReferralCode);
+    }
+    const generatedUrl = `${baseUrl}?${params.toString()}`;
+
+    const hasOldUrl = generatedUrl.includes("farcaster.xyz");
+    const hasCorrectUrl = generatedUrl.includes("warpcast.com");
+
+    logger.info("=".repeat(60));
+    logger.info("[BACKEND STARTUP] SIWF Configuration Check:");
+    logger.info(`[BACKEND STARTUP] Base URL: ${baseUrl}`);
+    logger.info(`[BACKEND STARTUP] Generated URL: ${generatedUrl.substring(0, 100)}...`);
+    logger.info(`[BACKEND STARTUP] Contains warpcast.com: ${hasCorrectUrl ? "✅ YES" : "❌ NO"}`);
+    logger.info(`[BACKEND STARTUP] Contains farcaster.xyz: ${hasOldUrl ? "❌ YES (PROBLEM!)" : "✅ NO"}`);
+    logger.info(`[BACKEND STARTUP] Status: ${hasCorrectUrl && !hasOldUrl ? "✅ CORRECT" : "❌ INCORRECT"}`);
+    
+    if (hasOldUrl || !hasCorrectUrl) {
+      logger.error("[BACKEND STARTUP] 🚨 WARNING: SIWF URL generation is INCORRECT!");
+      logger.error("[BACKEND STARTUP] 🚨 Railway is likely running old cached code!");
+    }
+    logger.info("=".repeat(60));
+  } catch (error) {
+    logger.error("[BACKEND STARTUP] Failed to test SIWF URL generation:", error);
+  }
+})();
+
 // Debug endpoint to check SIWF URL generation
 router.get("/siwf", async (req, res) => {
   try {

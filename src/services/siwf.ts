@@ -78,11 +78,16 @@ export function generateSIWFUrl(
   // The challenge already contains this, but we'll also pass it in the callback URL
   const callbackUrl = `${backendUrl}/api/siwf/callback?challenge=${challenge}&userId=${userId}&platform=${platform}`;
   
-  // Store pending verification in backend (we'll need to call an API)
-  // For now, the backend will handle this via the callback
-  
-  // Generate Warpcast signin URL with challenge and callback
+  // CRITICAL: Must use warpcast.com, NOT farcaster.xyz
+  // Warpcast no longer supports farcaster.xyz URLs
   const baseUrl = "https://warpcast.com/~/signin";
+  
+  // Validate we're not accidentally using old URL
+  if (baseUrl.includes("farcaster.xyz")) {
+    console.error("[SIWF] ❌ ERROR: Using farcaster.xyz URL! This will fail!");
+    throw new Error("SIWF URL generation error: farcaster.xyz is not supported");
+  }
+  
   const params = new URLSearchParams({
     challenge,
     redirect_uri: callbackUrl,
@@ -93,7 +98,16 @@ export function generateSIWFUrl(
     params.append("ref", referralCode);
   }
 
-  return `${baseUrl}?${params.toString()}`;
+  const generatedUrl = `${baseUrl}?${params.toString()}`;
+  
+  // Log the generated URL for debugging (only first time to avoid spam)
+  if (!(global as any).__siwf_url_logged) {
+    console.log("[SIWF] ✅ Generated URL base:", baseUrl);
+    console.log("[SIWF] ✅ Full generated URL (first call):", generatedUrl.substring(0, 100) + "...");
+    (global as any).__siwf_url_logged = true;
+  }
+  
+  return generatedUrl;
 }
 
 // Alternative: Generate Farcaster signup URL with referral

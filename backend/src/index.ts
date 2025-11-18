@@ -23,6 +23,8 @@ async function bootstrap(): Promise<void> {
   app.use("/webhooks", webhookRouter);
   app.use("/api/siwf", siwfRouter);
   app.use("/debug", debugRouter);
+  // Alias for easier access (as mentioned in ChatGPT response)
+  app.use("/api/siwf/debug", debugRouter);
 
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     logger.error("Unhandled error", err);

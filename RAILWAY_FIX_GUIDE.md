@@ -43,16 +43,37 @@ Bot is generating SIWF URLs with `farcaster.xyz` instead of `warpcast.com`, caus
 
 ## 🧪 Testing
 
-### Test 1: Use the Debug Command
+### Test 1: Check Railway Logs (NEW - Easiest!)
+After redeploying, check Railway logs. You should see:
+
+**✅ CORRECT (what you want to see):**
+```
+[STARTUP] SIWF Configuration Check:
+[STARTUP] Generated URL: https://warpcast.com/~/signin?...
+[STARTUP] Contains warpcast.com: ✅ YES
+[STARTUP] Contains farcaster.xyz: ✅ NO
+[STARTUP] Status: ✅ CORRECT
+```
+
+**❌ INCORRECT (old code still running):**
+```
+[STARTUP] Contains warpcast.com: ❌ NO
+[STARTUP] Contains farcaster.xyz: ❌ YES (PROBLEM!)
+[STARTUP] Status: ❌ INCORRECT - Railway is running old code!
+🚨 WARNING: SIWF URL generation is INCORRECT!
+```
+
+### Test 2: Use the Debug Command
 1. In Discord, run: `/debug`
 2. Check the output:
    - ✅ Should show `warpcast.com` in the URL
    - ❌ If it shows `farcaster.xyz`, deployment failed
 
-### Test 2: Check Backend Debug Endpoint
-Visit in browser:
+### Test 3: Check Backend Debug Endpoint
+Visit in browser (either URL works):
 ```
 https://infobot-production-f74e.up.railway.app/debug/siwf
+https://infobot-production-f74e.up.railway.app/api/siwf/debug
 ```
 
 Expected response:
