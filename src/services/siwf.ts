@@ -61,8 +61,15 @@ export function getSIWFChallenge(userId: string, platform: "discord" | "telegram
   return challenge;
 }
 
-// Generate SIWF URL for Warpcast
-export function generateSIWFUrl(challenge: string, redirectUrl?: string): string {
+// Generate SIWF URL for Warpcast with referral code
+// For bots, we'll use a simplified flow:
+// 1. User clicks link to Warpcast sign-in page
+// 2. User signs in/up (with referral code)
+// 3. User comes back and provides their Farcaster username
+// 4. Bot verifies via Neynar API
+export function generateSIWFUrl(challenge: string, redirectUrl?: string, referralCode?: string): string {
+  // Use Warpcast sign-in URL
+  // Format: https://warpcast.com/~/signin?challenge=...&ref=CODE
   const baseUrl = "https://warpcast.com/~/signin";
   const params = new URLSearchParams({
     challenge,
@@ -72,7 +79,20 @@ export function generateSIWFUrl(challenge: string, redirectUrl?: string): string
     params.append("redirect_uri", redirectUrl);
   }
 
+  // Add referral code for new signups
+  if (referralCode) {
+    params.append("ref", referralCode);
+  }
+
   return `${baseUrl}?${params.toString()}`;
+}
+
+// Alternative: Generate Farcaster signup URL with referral
+export function generateFarcasterSignupUrl(referralCode?: string): string {
+  if (referralCode) {
+    return `https://warpcast.com/~/signup?ref=${referralCode}`;
+  }
+  return "https://warpcast.com/~/signup";
 }
 
 // Verify SIWF signature and get user info from Neynar
@@ -127,6 +147,45 @@ export async function verifySIWFSignature(
   }
 }
 
+// Simplified verification: Just verify user exists by username or wallet
+// This is for the bot flow where user provides their Farcaster username
+export async function verifyUserByUsernameOrWallet(
+  usernameOrWallet: string,
+): Promise<SIWFVerification | null> {
+  try {
+    const { findUserByWallet, findUserByUsername } = await import("./neynar");
+    
+    // Try username first
+    let user = null;
+    if (usernameOrWallet.startsWith("@")) {
+      user = await findUserByUsername(usernameOrWallet.slice(1));
+    } else if (usernameOrWallet.startsWith("0x")) {
+      user = await findUserByWallet(usernameOrWallet);
+    } else {
+      // Try as username without @
+      user = await findUserByUsername(usernameOrWallet);
+    }
+
+    if (!user) {
+      return null;
+    }
+
+    // Build verification object
+    const verification: SIWFVerification = {
+      fid: user.fid,
+      custodyAddress: user.custody_address || "",
+      verifiedAddresses: user.verified_addresses?.eth_addresses || [],
+      username: user.username,
+      signature: "", // No signature for simplified flow
+    };
+
+    return verification;
+  } catch (error) {
+    console.error("[SIWF] Failed to verify user:", error);
+    return null;
+  }
+}
+
 // Store verified session
 export function storeSIWFSession(
   userId: string,
@@ -157,4 +216,3 @@ export function clearSIWFSession(userId: string, platform: "discord" | "telegram
 export function getAllSessions(): Map<string, SIWFVerification> {
   return sessions;
 }
-

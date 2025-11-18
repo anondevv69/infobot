@@ -1,9 +1,7 @@
 import { REST, Routes, SlashCommandBuilder } from "discord.js";
-import { env, requireEnv, validateRequiredEnv } from "./config";
+import { env, requireEnv } from "./src/config";
 
-async function registerCommands(): Promise<void> {
-  validateRequiredEnv();
-
+async function registerGlobalCommands(): Promise<void> {
   const clientId = requireEnv(env.discordClientId, "DISCORD_CLIENT_ID");
   const token = requireEnv(env.discordToken, "DISCORD_TOKEN");
 
@@ -65,13 +63,7 @@ async function registerCommands(): Promise<void> {
       ),
     new SlashCommandBuilder()
       .setName("connect")
-      .setDescription("Connect your Farcaster account to enable trading.")
-      .addStringOption((option) =>
-        option
-          .setName("username_or_wallet")
-          .setDescription("Your Farcaster username (@username) or wallet address (0x...) - optional")
-          .setRequired(false),
-      ),
+      .setDescription("Connect your Farcaster account to enable trading."),
     new SlashCommandBuilder()
       .setName("disconnect")
       .setDescription("Disconnect your Farcaster account."),
@@ -163,37 +155,14 @@ async function registerCommands(): Promise<void> {
 
   const rest = new REST({ version: "10" }).setToken(token);
 
-  const guildIds = new Set<string>();
-
-  const addGuildIds = (value: string | undefined | null) => {
-    if (!value) {
-      return;
-    }
-    value
-      .split(",")
-      .map((part) => part.trim())
-      .filter((part) => part.length > 0)
-      .forEach((part) => guildIds.add(part));
-  };
-
-  addGuildIds(env.discordGuildIds);
-  addGuildIds(env.discordGuildId);
-
-  if (guildIds.size > 0) {
-    for (const guildId of guildIds) {
-      await rest.put(Routes.applicationGuildCommands(clientId, guildId), {
-        body: commands,
-      });
-      console.log(`Registered guild commands for guild ${guildId}`);
-    }
-  } else {
-    await rest.put(Routes.applicationCommands(clientId), { body: commands });
-    console.log("Registered global commands");
-  }
+  // Register globally (works for all servers)
+  await rest.put(Routes.applicationCommands(clientId), { body: commands });
+  console.log("✅ Registered global commands - they will work in ALL servers!");
+  console.log("⚠️ Note: Global commands can take up to 1 hour to propagate, but usually appear within minutes.");
 }
 
-registerCommands().catch((error) => {
-  console.error("Failed to register Discord commands:", error);
+registerGlobalCommands().catch((error) => {
+  console.error("Failed to register global Discord commands:", error);
   process.exitCode = 1;
 });
 

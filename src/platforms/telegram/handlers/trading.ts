@@ -4,7 +4,10 @@ import {
   generateSIWFUrl,
   getSIWFSession,
   clearSIWFSession,
+  verifyUserByUsernameOrWallet,
+  storeSIWFSession,
 } from "../../../services/siwf";
+import { env } from "../../../config";
 import {
   getTokenBalance,
   formatTokenAmount,
@@ -17,6 +20,7 @@ import {
 export async function handleTelegramConnect(
   bot: TelegramBot,
   msg: TelegramBot.Message,
+  usernameOrWallet?: string,
 ): Promise<void> {
   const chatId = msg.chat.id;
   const userId = msg.from?.id.toString() || "";
@@ -41,21 +45,64 @@ export async function handleTelegramConnect(
     return;
   }
 
-  // Generate SIWF challenge
+  // If username/wallet provided, try to connect directly
+  if (usernameOrWallet) {
+    try {
+      const verification = await verifyUserByUsernameOrWallet(usernameOrWallet);
+      
+      if (!verification) {
+        await bot.sendMessage(
+          chatId,
+          `❌ <b>Not Found</b>\n\n` +
+            `Could not find Farcaster account for: <code>${usernameOrWallet}</code>\n\n` +
+            `Make sure:\n` +
+            `• The username is correct (e.g., @username)\n` +
+            `• The wallet address is correct (0x...)\n` +
+            `• The account exists on Farcaster\n\n` +
+            `If you don't have Farcaster yet, use /connect to sign up!`,
+          { parse_mode: "HTML" },
+        );
+        return;
+      }
+
+      // Store the session
+      storeSIWFSession(userId, "telegram", verification);
+
+      await bot.sendMessage(
+        chatId,
+        `✅ <b>Connected Successfully!</b>\n\n` +
+          `Your Farcaster account is now connected!\n\n` +
+          `Farcaster ID: ${verification.fid}\n` +
+          `Username: @${verification.username || "N/A"}\n` +
+          `Custody Wallet: <code>${verification.custodyAddress}</code>\n\n` +
+          `You can now use trading commands like /buy, /sell, and /swap!`,
+        { parse_mode: "HTML" },
+      );
+      return;
+    } catch (error: any) {
+      console.error("[Telegram Connect] Error:", error);
+      await bot.sendMessage(chatId, `❌ Error: ${error.message || "Unknown error"}`);
+      return;
+    }
+  }
+
+  // Generate SIWF challenge with referral code
   const challenge = generateSIWFChallenge(userId, "telegram");
-  const siwfUrl = generateSIWFUrl(challenge.challenge);
+  const siwfUrl = generateSIWFUrl(challenge.challenge, undefined, env.farcasterReferralCode);
 
   await bot.sendMessage(
     chatId,
     `🔗 <b>Connect Farcaster</b>\n\n` +
       `To connect your Farcaster account:\n\n` +
-      `1. Click the link below\n` +
-      `2. Approve the connection in Warpcast\n` +
-      `3. You'll be able to trade using your Farcaster wallet!\n\n` +
-      `⚠️ <b>Note:</b> This is a simplified flow. In production, you'll need to implement proper SIWF verification.\n\n` +
-      `<a href="${siwfUrl}">Connect with Farcaster</a>\n\n` +
-      `Challenge: <code>${challenge.challenge.slice(0, 16)}...</code>\n` +
-      `Expires in: 5 minutes`,
+      `<b>Option 1: Direct Connection</b>\n` +
+      `Run: <code>/connect @yourusername</code> or <code>/connect 0xwallet</code>\n\n` +
+      `<b>Option 2: Sign Up/In</b>\n` +
+      `1. Click the link below to open Warpcast\n` +
+      `2. If you don't have Farcaster, sign up (referral: <code>${env.farcasterReferralCode}</code>)\n` +
+      `3. If you have Farcaster, sign in\n` +
+      `4. Then run: <code>/connect @yourusername</code>\n\n` +
+      `<a href="${siwfUrl}">🔐 Open Warpcast</a>\n\n` +
+      `💡 <i>Tip: You can connect directly by providing your Farcaster username or wallet!</i>`,
     {
       parse_mode: "HTML",
       disable_web_page_preview: false,
