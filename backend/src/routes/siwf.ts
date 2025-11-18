@@ -27,6 +27,11 @@ const verifiedConnections = new Map<string, {
   custodyAddress: string;
   verifiedAddresses: string[];
   platform: "discord" | "telegram";
+  // For trading - store signer information
+  signerPrivateKey?: string; // Delegated signer private key for transactions
+  signerPublicKey?: string; // Delegated signer public key
+  signerFid?: number; // Signer FID
+  connectedAt: number; // Timestamp when connected
 }>();
 
 // Endpoint to store pending verification (called from bot)
@@ -94,12 +99,18 @@ router.post("/connection", async (req, res) => {
     }
 
     const key = `${platform}:${userId}`;
+    const existing = verifiedConnections.get(key);
     verifiedConnections.set(key, {
       fid,
       username: username || "",
       custodyAddress: custodyAddress || "",
       verifiedAddresses: verifiedAddresses || [],
       platform,
+      // Preserve or set signer info
+      signerPrivateKey: req.body.signerPrivateKey || existing?.signerPrivateKey,
+      signerPublicKey: req.body.signerPublicKey || existing?.signerPublicKey,
+      signerFid: req.body.signerFid || existing?.signerFid || fid,
+      connectedAt: existing?.connectedAt || Date.now(),
     });
 
     return res.json({ success: true });
@@ -191,6 +202,9 @@ router.get("/callback", async (req, res) => {
         const user = response.user;
 
         // Store the verified connection
+        // NOTE: For trading, we need a delegated signer
+        // Farcaster SIWF typically provides a signer through the callback
+        // If Warpcast provides signer info in the callback, extract it here
         const key = `${verificationPlatform}:${verificationUserId}`;
         verifiedConnections.set(key, {
           fid: user.fid,
@@ -198,6 +212,13 @@ router.get("/callback", async (req, res) => {
           custodyAddress: user.custody_address || providedAddress,
           verifiedAddresses: user.verified_addresses?.eth_addresses || [],
           platform: verificationPlatform,
+          // Signer info - Warpcast may provide this in the callback
+          // For now, we'll use the custody address as the signer
+          // In production, you'd get a delegated signer from Farcaster
+          signerPrivateKey: undefined, // Will be set if provided by Farcaster
+          signerPublicKey: undefined,
+          signerFid: user.fid,
+          connectedAt: Date.now(),
         });
 
         // Clean up pending verification

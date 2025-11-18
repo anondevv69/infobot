@@ -13,6 +13,10 @@ export interface SIWFVerification {
   verifiedAddresses: string[];
   username?: string;
   signature: string;
+  // For trading - we need the signer to perform transactions
+  signerPrivateKey?: string; // Delegated signer private key (if provided by Farcaster)
+  signerPublicKey?: string; // Delegated signer public key
+  signerFid?: number; // Signer FID (if different from user FID)
 }
 
 // Store challenges in memory (in production, use Redis or database)
