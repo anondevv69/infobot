@@ -1,6 +1,6 @@
 /**
  * Multi-chain contract creation service
- * Supports Base, BSC, Ethereum, Polygon, Arbitrum, Optimism, Avalanche, Fantom
+ * Supports Base, BSC, Ethereum, Polygon, Arbitrum, Optimism, Avalanche, Fantom, Mantle
  */
 
 interface ContractCreation {
@@ -13,6 +13,155 @@ interface ContractCreation {
 
 // Cache creator addresses (they never change once a contract is deployed)
 const creatorCache = new Map<string, ContractCreation>();
+
+/**
+ * Get RPC URL for a chain
+ */
+function getRpcUrl(chainId: string): string | null {
+  const rpcMap: Record<string, string> = {
+    "5000": "https://rpc.mantle.xyz",
+    "mantle": "https://rpc.mantle.xyz",
+    "1": "https://eth.llamarpc.com",
+    "eth": "https://eth.llamarpc.com",
+    "ethereum": "https://eth.llamarpc.com",
+    "8453": "https://mainnet.base.org",
+    "base": "https://mainnet.base.org",
+    "137": "https://polygon-rpc.com",
+    "polygon": "https://polygon-rpc.com",
+    "42161": "https://arb1.arbitrum.io/rpc",
+    "arbitrum": "https://arb1.arbitrum.io/rpc",
+    "10": "https://mainnet.optimism.io",
+    "optimism": "https://mainnet.optimism.io",
+    "43114": "https://api.avax.network/ext/bc/C/rpc",
+    "avalanche": "https://api.avax.network/ext/bc/C/rpc",
+    "56": "https://bsc-dataseed.binance.org",
+    "bsc": "https://bsc-dataseed.binance.org",
+    "250": "https://rpc.ftm.tools",
+    "fantom": "https://rpc.ftm.tools",
+  };
+  return rpcMap[chainId.toLowerCase()] ?? null;
+}
+
+/**
+ * Get contract creation via RPC (for chains without explorer APIs)
+ */
+async function getContractCreationViaRPC(
+  contractAddress: string,
+  chainId: string,
+): Promise<ContractCreation | null> {
+  try {
+    const rpcUrl = getRpcUrl(chainId);
+    if (!rpcUrl) {
+      console.warn(`No RPC URL available for chain: ${chainId}`);
+      return null;
+    }
+
+    // First, verify it's a contract by checking if it has code
+    const codeResponse = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "eth_getCode",
+        params: [contractAddress, "latest"],
+        id: 1,
+      }),
+    });
+
+    if (!codeResponse.ok) return null;
+
+    const codeData = (await codeResponse.json()) as { result?: string };
+    if (!codeData.result || codeData.result === "0x") {
+      // Not a contract
+      return null;
+    }
+
+    // For Mantle, try to use a third-party indexing service or the explorer's GraphQL API
+    // Since direct RPC doesn't easily provide creation tx without the hash,
+    // we'll try using Blockscout-style API if available
+    if (chainId.toLowerCase() === "5000" || chainId.toLowerCase() === "mantle") {
+      // Try Mantle Blockscout API (many EVM explorers use Blockscout)
+      try {
+        const blockscoutUrl = `https://explorer.mantle.xyz/api?module=contract&action=getcontractcreation&contractaddresses=${contractAddress}`;
+        const response = await fetch(blockscoutUrl, {
+          headers: { Accept: "application/json" },
+        });
+
+        if (response.ok) {
+          const data = (await response.json()) as {
+            status?: string;
+            message?: string;
+            result?: Array<{
+              contractAddress: string;
+              contractCreator: string;
+              txHash: string;
+            }> | string;
+          };
+
+          if (data.status === "1" && Array.isArray(data.result) && data.result.length > 0) {
+            const result = data.result[0];
+            // Get timestamp from transaction
+            let createdAt: number | null = null;
+            try {
+              const txRpcResponse = await fetch(rpcUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  jsonrpc: "2.0",
+                  method: "eth_getTransactionByHash",
+                  params: [result.txHash],
+                  id: 1,
+                }),
+              });
+              if (txRpcResponse.ok) {
+                const txData = (await txRpcResponse.json()) as { result?: { blockNumber?: string } };
+                if (txData.result?.blockNumber) {
+                  const blockResponse = await fetch(rpcUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      jsonrpc: "2.0",
+                      method: "eth_getBlockByNumber",
+                      params: [txData.result.blockNumber, false],
+                      id: 1,
+                    }),
+                  });
+                  if (blockResponse.ok) {
+                    const blockData = (await blockResponse.json()) as { result?: { timestamp?: string } };
+                    if (blockData.result?.timestamp) {
+                      createdAt = parseInt(blockData.result.timestamp, 16);
+                    }
+                  }
+                }
+              }
+            } catch (error) {
+              // Ignore timestamp errors
+            }
+
+            const cacheKey = `${chainId}:${contractAddress.toLowerCase()}`;
+            const contractCreation: ContractCreation = {
+              contractAddress: result.contractAddress,
+              contractCreator: result.contractCreator,
+              txHash: result.txHash,
+              chainId: chainId,
+              createdAt,
+            };
+            creatorCache.set(cacheKey, contractCreation);
+            return contractCreation;
+          }
+        }
+      } catch (error) {
+        console.warn(`[ContractCreation] Mantle Blockscout API failed:`, error);
+      }
+    }
+
+    // For other chains without explorer APIs, return null
+    return null;
+  } catch (error) {
+    console.error(`[ContractCreation] RPC fallback failed for ${chainId}:`, error);
+    return null;
+  }
+}
 
 /**
  * Get the API base URL for a given chain
@@ -36,6 +185,8 @@ function getExplorerApiBase(chainId: string): string | null {
     "avalanche": "https://api.snowtrace.io/api",
     "250": "https://api.ftmscan.com/api",
     "fantom": "https://api.ftmscan.com/api",
+    "5000": "https://explorer.mantle.xyz/api", // Try Mantle explorer API
+    "mantle": "https://explorer.mantle.xyz/api",
   };
   return apiMap[chainId.toLowerCase()] ?? null;
 }
@@ -114,8 +265,8 @@ export async function getContractCreation(
 
     const apiBase = getExplorerApiBase(chainId);
     if (!apiBase) {
-      console.warn(`No explorer API available for chain: ${chainId}`);
-      return null;
+      // Try RPC fallback for chains without explorer APIs (e.g., Mantle)
+      return await getContractCreationViaRPC(contractAddress, chainId);
     }
 
     // Build API key parameter (optional, but improves rate limits)
@@ -131,6 +282,12 @@ export async function getContractCreation(
         Accept: "application/json",
       },
     });
+
+    // If the API returns 404 or the endpoint doesn't exist, try RPC fallback for Mantle
+    if (!txResponse.ok && (chainId.toLowerCase() === "5000" || chainId.toLowerCase() === "mantle")) {
+      console.log(`[ContractCreation] Mantle explorer API returned ${txResponse.status}, trying RPC fallback`);
+      return await getContractCreationViaRPC(contractAddress, chainId);
+    }
 
     if (txResponse.ok) {
       const txData = (await txResponse.json()) as {
@@ -256,6 +413,38 @@ export async function getContractCreationTx(
   try {
     const apiBase = getExplorerApiBase(chainId);
     if (!apiBase) {
+      // For Mantle, try Blockscout API
+      if (chainId.toLowerCase() === "5000" || chainId.toLowerCase() === "mantle") {
+        try {
+          const blockscoutUrl = `https://explorer.mantle.xyz/api?module=account&action=txlist&address=${contractAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc`;
+          const response = await fetch(blockscoutUrl, {
+            headers: { Accept: "application/json" },
+          });
+
+          if (response.ok) {
+            const data = (await response.json()) as {
+              status?: string;
+              message?: string;
+              result?: Array<{
+                hash: string;
+                from: string;
+                to: string;
+              }> | string;
+            };
+
+            if (data.status === "1" && Array.isArray(data.result) && data.result.length > 0) {
+              const firstTx = data.result[0];
+              return {
+                from: firstTx.from,
+                to: firstTx.to || null,
+                hash: firstTx.hash,
+              };
+            }
+          }
+        } catch (error) {
+          console.warn(`[ContractCreation] Mantle Blockscout API failed for getContractCreationTx:`, error);
+        }
+      }
       return null;
     }
 
@@ -267,6 +456,40 @@ export async function getContractCreationTx(
         Accept: "application/json",
       },
     });
+
+    // If the API returns 404 or the endpoint doesn't exist, try Blockscout for Mantle
+    if (!response.ok && (chainId.toLowerCase() === "5000" || chainId.toLowerCase() === "mantle")) {
+      try {
+        const blockscoutUrl = `https://explorer.mantle.xyz/api?module=account&action=txlist&address=${contractAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc`;
+        const blockscoutResponse = await fetch(blockscoutUrl, {
+          headers: { Accept: "application/json" },
+        });
+
+        if (blockscoutResponse.ok) {
+          const data = (await blockscoutResponse.json()) as {
+            status?: string;
+            message?: string;
+            result?: Array<{
+              hash: string;
+              from: string;
+              to: string;
+            }> | string;
+          };
+
+          if (data.status === "1" && Array.isArray(data.result) && data.result.length > 0) {
+            const firstTx = data.result[0];
+            return {
+              from: firstTx.from,
+              to: firstTx.to || null,
+              hash: firstTx.hash,
+            };
+          }
+        }
+      } catch (error) {
+        console.warn(`[ContractCreation] Mantle Blockscout fallback failed:`, error);
+      }
+      return null;
+    }
 
     if (response.ok) {
       const data = (await response.json()) as {
@@ -303,4 +526,5 @@ export async function getContractCreationTx(
     return null;
   }
 }
+
 
