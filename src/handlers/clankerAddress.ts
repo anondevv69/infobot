@@ -616,13 +616,13 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
     try {
       const { detectTokenContract } = await import("../services/tokenDetection");
       
-      // Add timeout to prevent hanging (15 seconds max)
+      // Add timeout to prevent hanging (8 seconds max - parallel checking is faster)
       const tokenDetectionPromise = detectTokenContract(address);
       const timeoutPromise = new Promise<null>((resolve) => {
         setTimeout(() => {
           console.log(`[Discord] Token detection timeout for ${address}`);
           resolve(null);
-        }, 15000);
+        }, 8000);
       });
       
       const tokenInfo = await Promise.race([tokenDetectionPromise, timeoutPromise]).catch((err) => {

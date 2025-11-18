@@ -118,24 +118,16 @@ function decodeUint256(hex: string): string | null {
 }
 
 /**
- * Detect if an address is an ERC-20 token by calling standard functions
+ * Check a single chain for token contract (with timeout)
  */
-export async function detectTokenContract(
+async function checkChainForToken(
+  chain: ChainRPC,
   address: string,
-  chainId?: number,
+  timeoutMs: number = 5000,
 ): Promise<TokenInfo | null> {
-  // Function selectors for ERC-20 standard functions
-  // name() -> 0x06fdde03
-  // symbol() -> 0x95d89b41
-  // decimals() -> 0x313ce567
-  // totalSupply() -> 0x18160ddd
-
-  const chainsToCheck = chainId
-    ? CHAIN_RPCS.filter((c) => c.chainId === chainId)
-    : CHAIN_RPCS;
-
-  for (const chain of chainsToCheck) {
-    try {
+  try {
+    // Add timeout to individual chain check
+    const checkPromise = (async () => {
       // First check if it's a contract (has code)
       const codeResponse = await fetch(chain.rpcUrl, {
         method: "POST",
@@ -148,28 +140,33 @@ export async function detectTokenContract(
         }),
       });
 
-      if (!codeResponse.ok) continue;
+      if (!codeResponse.ok) return null;
 
       const codeData = (await codeResponse.json()) as { result?: string };
       if (!codeData.result || codeData.result === "0x") {
-        continue; // Not a contract on this chain
+        return null; // Not a contract on this chain
       }
 
-      // Try to call token functions
-      const [nameResult, symbolResult, decimalsResult, totalSupplyResult] = await Promise.all([
+      // Try to call token functions (only name and symbol for speed)
+      const [nameResult, symbolResult] = await Promise.all([
         callContractFunction(chain.rpcUrl, address, "06fdde03"), // name()
         callContractFunction(chain.rpcUrl, address, "95d89b41"), // symbol()
-        callContractFunction(chain.rpcUrl, address, "313ce567"), // decimals()
-        callContractFunction(chain.rpcUrl, address, "18160ddd"), // totalSupply()
       ]);
 
       // If we got at least symbol or name, it's likely a token
       const name = nameResult ? decodeString(nameResult) : null;
       const symbol = symbolResult ? decodeString(symbolResult) : null;
-      const decimals = decimalsResult ? parseInt(decodeUint256(decimalsResult) || "0", 10) : null;
-      const totalSupply = totalSupplyResult ? decodeUint256(totalSupplyResult) : null;
 
       if (name || symbol) {
+        // Get decimals and totalSupply only if we found a token (to save time)
+        const [decimalsResult, totalSupplyResult] = await Promise.all([
+          callContractFunction(chain.rpcUrl, address, "313ce567"), // decimals()
+          callContractFunction(chain.rpcUrl, address, "18160ddd"), // totalSupply()
+        ]);
+
+        const decimals = decimalsResult ? parseInt(decodeUint256(decimalsResult) || "0", 10) : null;
+        const totalSupply = totalSupplyResult ? decodeUint256(totalSupplyResult) : null;
+
         return {
           address,
           chainId: chain.chainId,
@@ -181,9 +178,43 @@ export async function detectTokenContract(
           isToken: true,
         };
       }
-    } catch (error) {
-      console.error(`[TokenDetection] Failed to check ${chain.name}:`, error);
-      continue;
+
+      return null;
+    })();
+
+    const timeoutPromise = new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), timeoutMs);
+    });
+
+    return await Promise.race([checkPromise, timeoutPromise]);
+  } catch (error) {
+    console.error(`[TokenDetection] Failed to check ${chain.name}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Detect if an address is an ERC-20 token by calling standard functions
+ * Checks chains in parallel for speed, with individual timeouts
+ */
+export async function detectTokenContract(
+  address: string,
+  chainId?: number,
+): Promise<TokenInfo | null> {
+  const chainsToCheck = chainId
+    ? CHAIN_RPCS.filter((c) => c.chainId === chainId)
+    : CHAIN_RPCS;
+
+  // Check all chains in parallel (with 5 second timeout per chain)
+  // This is much faster than sequential checking
+  const results = await Promise.all(
+    chainsToCheck.map((chain) => checkChainForToken(chain, address, 5000)),
+  );
+
+  // Return the first successful result
+  for (const result of results) {
+    if (result && result.isToken) {
+      return result;
     }
   }
 

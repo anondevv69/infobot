@@ -1070,7 +1070,17 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       try {
         // FIRST: Try to detect if it's an ERC-20 token contract (even if not on DEX yet)
         const { detectTokenContract } = await import("../../../services/tokenDetection");
-        const tokenInfo = await detectTokenContract(address).catch(() => null);
+        
+        // Add timeout (8 seconds max - parallel checking is faster)
+        const tokenDetectionPromise = detectTokenContract(address);
+        const timeoutPromise = new Promise<null>((resolve) => {
+          setTimeout(() => {
+            console.log(`[Telegram] Token detection timeout for ${address}`);
+            resolve(null);
+          }, 8000);
+        });
+        
+        const tokenInfo = await Promise.race([tokenDetectionPromise, timeoutPromise]).catch(() => null);
         
         if (tokenInfo && tokenInfo.isToken) {
           console.log(`[Telegram] Detected token contract: ${tokenInfo.name || tokenInfo.symbol} on ${tokenInfo.chainName}`);
