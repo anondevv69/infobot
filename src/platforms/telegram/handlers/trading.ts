@@ -46,45 +46,23 @@ export async function handleTelegramConnect(
     return;
   }
 
-  // If username/wallet provided, try to connect directly
+  // SECURITY: Direct username connection is disabled for security
+  // Users must use SIWF flow to prove ownership of their Farcaster account
   if (usernameOrWallet) {
-    try {
-      const verification = await verifyUserByUsernameOrWallet(usernameOrWallet);
-      
-      if (!verification) {
-        await bot.sendMessage(
-          chatId,
-          `❌ <b>Not Found</b>\n\n` +
-            `Could not find Farcaster account for: <code>${usernameOrWallet}</code>\n\n` +
-            `Make sure:\n` +
-            `• The username is correct (e.g., @username)\n` +
-            `• The wallet address is correct (0x...)\n` +
-            `• The account exists on Farcaster\n\n` +
-            `If you don't have Farcaster yet, use /connect to sign up!`,
-          { parse_mode: "HTML" },
-        );
-        return;
-      }
-
-      // Store the session
-      await storeSIWFSession(userId, "telegram", verification, env.backendUrl);
-
-      await bot.sendMessage(
-        chatId,
-        `✅ <b>Connected Successfully!</b>\n\n` +
-          `Your Farcaster account is now connected!\n\n` +
-          `Farcaster ID: ${verification.fid}\n` +
-          `Username: @${verification.username || "N/A"}\n` +
-          `Custody Wallet: <code>${verification.custodyAddress}</code>\n\n` +
-          `You can now use trading commands like /buy, /sell, and /swap!`,
-        { parse_mode: "HTML" },
-      );
-      return;
-    } catch (error: any) {
-      console.error("[Telegram Connect] Error:", error);
-      await bot.sendMessage(chatId, `❌ Error: ${error.message || "Unknown error"}`);
-      return;
-    }
+    await bot.sendMessage(
+      chatId,
+      `🔒 <b>Security Notice</b>\n\n` +
+        `For security, you must verify ownership of your Farcaster account.\n\n` +
+        `Direct username connection is disabled to prevent account hijacking.\n\n` +
+        `Please use the SIWF flow:\n` +
+        `1. Click the link below to open Warpcast\n` +
+        `2. Sign in to your Farcaster account\n` +
+        `3. Approve the connection\n` +
+        `4. Your account will be securely linked!\n\n` +
+        `This ensures only you can connect your own Farcaster account.`,
+      { parse_mode: "HTML" },
+    );
+    // Continue to show SIWF link below
   }
 
   // Generate SIWF URL with proper callback
@@ -103,16 +81,14 @@ export async function handleTelegramConnect(
   await bot.sendMessage(
     chatId,
     `🔗 <b>Connect Farcaster</b>\n\n` +
-      `To connect your Farcaster account:\n\n` +
-      `<b>Option 1: Quick Connect (Recommended)</b>\n` +
-      `Run: <code>/connect @yourusername</code> or <code>/connect 0xwallet</code>\n\n` +
-      `<b>Option 2: Sign In with Farcaster (SIWF)</b>\n` +
-      `1. Click the link below to open Warpcast\n` +
-      `2. Sign in (or sign up if new - referral: <code>${env.farcasterReferralCode}</code>)\n` +
-      `3. Approve the connection\n` +
-      `4. You'll be redirected back and linked!\n\n` +
+      `To securely connect your Farcaster account:\n\n` +
+      `<b>Step 1:</b> Click the link below to open Warpcast\n` +
+      `<b>Step 2:</b> Sign in to your Farcaster account (or sign up if new - referral: <code>${env.farcasterReferralCode}</code>)\n` +
+      `<b>Step 3:</b> Approve the connection request\n` +
+      `<b>Step 4:</b> You'll be redirected back and your account will be securely linked!\n\n` +
+      `🔒 <b>Security:</b> This method verifies you own the Farcaster account by requiring you to sign in.\n\n` +
       `<a href="${siwfUrl}">🔐 Connect with Farcaster</a>\n\n` +
-      `💡 <i>Tip: Quick connect is faster - just provide your username!</i>`,
+      `💡 <i>New to Farcaster? Sign up using the link (referral: ${env.farcasterReferralCode})</i>`,
     {
       parse_mode: "HTML",
       disable_web_page_preview: false,
