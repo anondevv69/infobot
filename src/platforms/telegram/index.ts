@@ -3,6 +3,10 @@ import { env } from "../../config";
 import { handleTelegramMessage } from "./handlers/message";
 import { handleTelegramCommand } from "./handlers/command";
 import { showTelegramTypingIndicator } from "../../utils/typingIndicator";
+import { logger } from "../../utils/logger";
+
+// Track seen Telegram chats to detect new groups/channels
+const seenTelegramChats = new Set<number>();
 
 export async function startTelegramBot(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -27,6 +31,41 @@ export async function startTelegramBot(): Promise<void> {
   ]);
 
   bot.on("message", async (msg) => {
+    // Track new Telegram groups/channels
+    const chatId = msg.chat.id;
+    const chatType = msg.chat.type; // "private", "group", "supergroup", "channel"
+    
+    // Only track groups, supergroups, and channels (not private chats)
+    if ((chatType === "group" || chatType === "supergroup" || chatType === "channel") && !seenTelegramChats.has(chatId)) {
+      seenTelegramChats.add(chatId);
+      
+      try {
+        const chatTitle = msg.chat.title || "Unknown";
+        const chatUsername = msg.chat.username ? `@${msg.chat.username}` : "None";
+        const memberCount = msg.chat.type === "channel" ? "N/A (Channel)" : "Unknown";
+        
+        logger.system(
+          `🎉 **NEW TELEGRAM ${chatType.toUpperCase()}**\n` +
+          `**Name:** ${chatTitle}\n` +
+          `**ID:** ${chatId}\n` +
+          `**Username:** ${chatUsername}\n` +
+          `**Type:** ${chatType}\n` +
+          `**Members:** ${memberCount}`,
+          {
+            chatId: chatId.toString(),
+            chatTitle,
+            chatUsername,
+            chatType,
+          }
+        );
+      } catch (error) {
+        logger.error("Failed to log new Telegram chat", error, {
+          chatId: chatId.toString(),
+          chatType,
+        });
+      }
+    }
+    
     // Handle text messages (addresses, usernames, etc.) - NOT commands
     // Commands (starting with /) are handled by onText handlers below
     // Commands work in groups without mentioning the bot

@@ -103,6 +103,37 @@ async function main(): Promise<void> {
     logger.system("Clanker Watcher: Started monitoring Clanker deployments");
   });
 
+  // Track when bot is added to a new Discord server
+  client.on(Events.GuildCreate, async (guild) => {
+    try {
+      const memberCount = guild.memberCount || 0;
+      const ownerId = guild.ownerId || "Unknown";
+      const owner = await guild.fetchOwner().catch(() => null);
+      const ownerTag = owner?.user.tag || `ID: ${ownerId}`;
+      
+      logger.system(
+        `🎉 **NEW DISCORD SERVER**\n` +
+        `**Server:** ${guild.name}\n` +
+        `**ID:** ${guild.id}\n` +
+        `**Members:** ${memberCount}\n` +
+        `**Owner:** ${ownerTag}\n` +
+        `**Region:** ${guild.preferredLocale || "Unknown"}`,
+        {
+          guildId: guild.id,
+          guildName: guild.name,
+          memberCount,
+          ownerId,
+          ownerTag,
+        }
+      );
+    } catch (error) {
+      logger.error("Failed to log new Discord guild", error, {
+        guildId: guild.id,
+        guildName: guild.name,
+      });
+    }
+  });
+
   client.on(Events.InteractionCreate, handleInteraction);
   client.on(Events.MessageCreate, async (message) => {
     // Skip bot messages and DMs (only respond in guilds)

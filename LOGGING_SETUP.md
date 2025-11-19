@@ -8,7 +8,7 @@ The bot now sends logs to a Discord webhook instead of saving files.
 
 Your webhook URL:
 ```
-https://discord.com/api/webhooks/1440704802190393344/hETWchv2MZTwRfVuLLHk39im5HT3wEBOlD25nBExa6DvZAb7rOY43qVIzKeeG1Xm0eu3
+https://discord.com/api/webhooks/1440729780986318848/lgpcwCFeGN4nX0xYpeNjxth-ZID-KBPCb8kMV8rMNe0ILkHYrOYq0Q9ZM1Bya3qmsH5n
 ```
 
 ### Setup Instructions
@@ -16,14 +16,14 @@ https://discord.com/api/webhooks/1440704802190393344/hETWchv2MZTwRfVuLLHk39im5HT
 1. **Add to Railway Environment Variables:**
    - Go to your Railway project
    - Navigate to Variables
-   - Add new variable:
+   - Add or update variable:
      - **Key:** `LOG_WEBHOOK_URL`
-     - **Value:** `https://discord.com/api/webhooks/1440704802190393344/hETWchv2MZTwRfVuLLHk39im5HT3wEBOlD25nBExa6DvZAb7rOY43qVIzKeeG1Xm0eu3`
+     - **Value:** `https://discord.com/api/webhooks/1440729780986318848/lgpcwCFeGN4nX0xYpeNjxth-ZID-KBPCb8kMV8rMNe0ILkHYrOYq0Q9ZM1Bya3qmsH5n`
    - Save and redeploy
 
 2. **Or add to `.env` file (for local development):**
    ```bash
-   LOG_WEBHOOK_URL=https://discord.com/api/webhooks/1440704802190393344/hETWchv2MZTwRfVuLLHk39im5HT3wEBOlD25nBExa6DvZAb7rOY43qVIzKeeG1Xm0eu3
+   LOG_WEBHOOK_URL=https://discord.com/api/webhooks/1440729780986318848/lgpcwCFeGN4nX0xYpeNjxth-ZID-KBPCb8kMV8rMNe0ILkHYrOYq0Q9ZM1Bya3qmsH5n
    ```
 
 ### What Gets Logged
