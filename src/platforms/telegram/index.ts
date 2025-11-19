@@ -38,27 +38,38 @@ export async function startTelegramBot(): Promise<void> {
     
     // Only track groups, supergroups, and channels (not private chats)
     if (chatType === "group" || chatType === "supergroup" || chatType === "channel") {
-      // Check database to see if we've already logged this chat (prevents duplicates after restart)
       const chatIdStr = chatId.toString();
+      
+      // Check database FIRST (more reliable than in-memory cache which resets on restart)
       let alreadySeen = seenTelegramChats.has(chatId);
       
-      // Also check database if not in memory
-      if (!alreadySeen) {
-        try {
-          const { env } = await import("../../config");
-          if (env.backendUrl) {
-            const response = await fetch(`${env.backendUrl}/api/seen/telegram-chat?chatId=${encodeURIComponent(chatIdStr)}`);
-            if (response.ok) {
-              const data = await response.json();
-              alreadySeen = data.seen === true;
+      // Always check database to ensure we have the latest state
+      try {
+        const { env } = await import("../../config");
+        if (env.backendUrl) {
+          const response = await fetch(`${env.backendUrl}/api/seen/telegram-chat?chatId=${encodeURIComponent(chatIdStr)}`, {
+            signal: AbortSignal.timeout(3000), // 3 second timeout
+          });
+          if (response.ok) {
+            const data = await response.json();
+            alreadySeen = data.seen === true;
+            // Update in-memory cache based on database result
+            if (alreadySeen) {
+              seenTelegramChats.add(chatId);
             }
           }
-        } catch (error) {
-          // If database check fails, continue with in-memory check
+        }
+      } catch (error) {
+        // If database check fails, use in-memory cache as fallback
+        // But don't log if we're not sure - better to miss a log than duplicate
+        if (!alreadySeen) {
+          // Only proceed if we're confident it's new (in memory check)
         }
       }
       
+      // Only log if we're certain it's new (either not in memory AND database confirms, or database unavailable but not in memory)
       if (!alreadySeen) {
+        // Mark in memory immediately to prevent race conditions
         seenTelegramChats.add(chatId);
         setTelegramChatCount(seenTelegramChats.size);
         
@@ -86,7 +97,7 @@ export async function startTelegramBot(): Promise<void> {
               ? memberCount.toString() 
               : "Unknown";
           
-          // Mark as seen in database
+          // Mark as seen in database BEFORE logging (prevents race conditions)
           try {
             const { env } = await import("../../config");
             if (env.backendUrl) {
@@ -99,6 +110,9 @@ export async function startTelegramBot(): Promise<void> {
                   chatType,
                   memberCount,
                 }),
+                signal: AbortSignal.timeout(3000), // 3 second timeout
+              }).catch(() => {
+                // Silently fail - database might not be available
               });
             }
           } catch (error) {

@@ -521,13 +521,20 @@ async function replyWithClankerTokenLookup(
   interaction: ChatInputCommandInteraction,
   query: string,
 ): Promise<boolean> {
+  // Run both lookups in parallel if query is an address (major performance improvement)
   let tokens: ClankerToken[] = [];
   if (isEthAddress(query) || isSolAddress(query)) {
-    tokens = await fetchTokensByAddress(query);
-  }
-  if (tokens.length === 0) {
+    const [addressTokens, queryTokens] = await Promise.all([
+      fetchTokensByAddress(query),
+      fetchTokensByQuery(query),
+    ]);
+    // Prefer address results, fallback to query results
+    tokens = addressTokens.length > 0 ? addressTokens : queryTokens;
+  } else {
+    // For non-address queries, just use query search
     tokens = await fetchTokensByQuery(query);
   }
+  
   if (tokens.length === 0) {
     await interaction.editReply({
       content: `No Farcaster profile or Clanker deployments found for \`${query}\`.`,

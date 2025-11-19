@@ -138,19 +138,23 @@ async function main(): Promise<void> {
   // Track when bot is added to a new Discord server
   client.on(Events.GuildCreate, async (guild) => {
     try {
-      // Check database to see if we've already logged this guild (prevents duplicates after restart)
+      // Check database FIRST (more reliable than in-memory cache which resets on restart)
       let alreadySeen = false;
       try {
         const { env } = await import("./config");
         if (env.backendUrl) {
-          const response = await fetch(`${env.backendUrl}/api/seen/discord-guild?guildId=${encodeURIComponent(guild.id)}`);
+          const response = await fetch(`${env.backendUrl}/api/seen/discord-guild?guildId=${encodeURIComponent(guild.id)}`, {
+            signal: AbortSignal.timeout(3000), // 3 second timeout
+          });
           if (response.ok) {
             const data = await response.json();
             alreadySeen = data.seen === true;
           }
         }
       } catch (error) {
-        // If database check fails, continue and log anyway
+        // If database check fails, don't log - better to miss than duplicate
+        // Only log if we're certain it's new
+        return;
       }
       
       // Only log if we haven't seen this guild before
@@ -160,7 +164,7 @@ async function main(): Promise<void> {
         const owner = await guild.fetchOwner().catch(() => null);
         const ownerTag = owner?.user.tag || `ID: ${ownerId}`;
         
-        // Mark as seen in database
+        // Mark as seen in database BEFORE logging (prevents race conditions)
         try {
           const { env } = await import("./config");
           if (env.backendUrl) {
@@ -173,6 +177,9 @@ async function main(): Promise<void> {
                 memberCount,
                 ownerId,
               }),
+              signal: AbortSignal.timeout(3000), // 3 second timeout
+            }).catch(() => {
+              // Silently fail - database might not be available
             });
           }
         } catch (error) {

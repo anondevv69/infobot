@@ -83,11 +83,21 @@ export async function findUserByWallet(address: string): Promise<User | null> {
 
 export async function findUserByUsername(username: string): Promise<User | null> {
   try {
-    const response = await client.lookupUserByUsername({
-      username,
-    });
+    // Add timeout protection
+    const response = await Promise.race([
+      client.lookupUserByUsername({
+        username,
+      }),
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error("Username lookup timeout")), 5000)
+      ),
+    ]);
     return response.user;
   } catch (error) {
+    if (error instanceof Error && error.message === "Username lookup timeout") {
+      console.warn(`[Neynar] Username lookup timeout for ${username}`);
+      return null;
+    }
     if (isNotFoundError(error)) {
       return null;
     }
@@ -105,35 +115,50 @@ export async function findUserByXHandle(handle: string): Promise<User | null> {
     const url = `https://api.neynar.com/v2/farcaster/user/by_x_username/?x_username=${normalized}`;
     const apiKey = requireEnv(env.neynarApiKey, "NEYNAR_API_KEY");
 
-    const response = await fetch(url, {
-      headers: {
-        "x-api-key": apiKey,
-        "x-neynar-experimental": "true",
-      },
-    });
+    // Add timeout protection
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "x-api-key": apiKey,
+          "x-neynar-experimental": "true",
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "failed to read body");
-      console.error(
-        `[X Handle Lookup] Neynar lookup error for ${normalized}: ${response.status} ${errorText}`,
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "failed to read body");
+        console.error(
+          `[X Handle Lookup] Neynar lookup error for ${normalized}: ${response.status} ${errorText}`,
+        );
+        return null;
+      }
+
+      const data = (await response.json()) as { users?: User[] };
+
+      if (!data?.users?.length) {
+        console.log(`[X Handle Lookup] No users found for ${normalized}`);
+        return null;
+      }
+
+      // Just return the first user. No score filtering. No verification checks.
+      // The API endpoint is authoritative - if it returns a user, that's the match.
+      const user = data.users[0];
+      console.log(
+        `[X Handle Lookup] Found user: ${user.username} (fid: ${user.fid}) for ${normalized}`,
       );
-      return null;
+      return user;
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        console.warn(`[X Handle Lookup] Timeout for ${normalized}`);
+        return null;
+      }
+      throw error;
     }
-
-    const data = (await response.json()) as { users?: User[] };
-
-    if (!data?.users?.length) {
-      console.log(`[X Handle Lookup] No users found for ${normalized}`);
-      return null;
-    }
-
-    // Just return the first user. No score filtering. No verification checks.
-    // The API endpoint is authoritative - if it returns a user, that's the match.
-    const user = data.users[0];
-    console.log(
-      `[X Handle Lookup] Found user: ${user.username} (fid: ${user.fid}) for ${normalized}`,
-    );
-    return user;
   } catch (error) {
     console.error(`[X Handle Lookup] Lookup failed for ${normalized}:`, error);
     return null;
@@ -186,13 +211,23 @@ export interface CastSearchResults {
 
 export async function fetchMostRecentCastForUser(fid: number): Promise<Cast | null> {
   try {
-    const response = await client.fetchCastsForUser({
-      fid,
-      limit: 1,
-      includeReplies: true,
-    });
+    // Add timeout protection
+    const response = await Promise.race([
+      client.fetchCastsForUser({
+        fid,
+        limit: 1,
+        includeReplies: true,
+      }),
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error("Cast fetch timeout")), 5000)
+      ),
+    ]);
     return response.casts[0] ?? null;
   } catch (error) {
+    if (error instanceof Error && error.message === "Cast fetch timeout") {
+      console.warn(`[Neynar] Cast fetch timeout for FID ${fid}`);
+      return null;
+    }
     if (isNotFoundError(error)) {
       return null;
     }

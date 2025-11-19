@@ -469,9 +469,41 @@ export async function findBestZoraSummary(
   identifiers: Iterable<string>,
 ): Promise<ZoraLookupResult | null> {
   const tried = new Set<string>();
-  let fallback: ZoraLookupResult | null = null;
-
-  for (const identifier of identifiers) {
+  const identifierArray = Array.from(identifiers);
+  
+  // Parallelize first 3 identifiers for speed (major performance improvement)
+  // If we find a match with latestCoin, return immediately
+  const firstBatch = identifierArray.slice(0, 3);
+  const remaining = identifierArray.slice(3);
+  
+  // Try first batch in parallel
+  const firstBatchPromises = firstBatch.map(async (identifier) => {
+    const trimmed = identifier.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const key = trimmed.toLowerCase();
+    if (tried.has(key)) {
+      return null;
+    }
+    tried.add(key);
+    return fetchZoraSummary(trimmed);
+  });
+  
+  const firstBatchResults = await Promise.all(firstBatchPromises);
+  
+  // Check for immediate match (latestCoin)
+  for (const summary of firstBatchResults) {
+    if (summary?.latestCoin) {
+      return summary;
+    }
+  }
+  
+  // Use first non-null as fallback
+  let fallback: ZoraLookupResult | null = firstBatchResults.find(s => s !== null) ?? null;
+  
+  // Process remaining sequentially (only if no match found yet)
+  for (const identifier of remaining) {
     const trimmed = identifier.trim();
     if (!trimmed) {
       continue;

@@ -405,26 +405,48 @@ export async function buildTokenEmbed(
 export async function resolveUserFromToken(
   token: ClankerToken,
 ): Promise<User | null> {
+  // Run both lookups in parallel for speed (major performance improvement)
+  const promises: Promise<User | null>[] = [];
+
   if (token.related?.user?.username) {
-    try {
-      const user = await findUserByUsername(token.related.user.username);
-      if (user) {
-        return user;
-      }
-    } catch (error) {
-      console.warn("Failed to resolve user by username from token", error);
-    }
+    promises.push(
+      findUserByUsername(token.related.user.username).catch((error) => {
+        console.warn("Failed to resolve user by username from token", error);
+        return null;
+      })
+    );
   }
 
   if (token.msg_sender) {
-    try {
-      const user = await findUserByWallet(token.msg_sender);
+    promises.push(
+      findUserByWallet(token.msg_sender).catch((error) => {
+        console.warn("Failed to resolve user by wallet from token", error);
+        return null;
+      })
+    );
+  }
+
+  if (promises.length === 0) {
+    return null;
+  }
+
+  // Wait for first successful result with timeout
+  try {
+    const results = await Promise.race([
+      Promise.all(promises),
+      new Promise<User[]>((resolve) => 
+        setTimeout(() => resolve([]), 3000) // 3 second timeout
+      ),
+    ]);
+    
+    // Return first non-null result
+    for (const user of results) {
       if (user) {
         return user;
       }
-    } catch (error) {
-      console.warn("Failed to resolve user by wallet from token", error);
     }
+  } catch (error) {
+    console.warn("Error resolving user from token", error);
   }
 
   return null;
