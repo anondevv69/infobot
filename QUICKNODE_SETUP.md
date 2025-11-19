@@ -101,3 +101,4 @@ QuickNode might require you to create separate endpoints for each chain. If so, 
 Enjoy the speed boost! 🚀
 
 
+

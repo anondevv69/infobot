@@ -146,3 +146,4 @@ The multi-chain token check in Telegram is wrapped in a try-catch. If `fetchMult
 We need to ensure the multi-chain token check happens BEFORE any Zora profile lookup, and we need to verify that `fetchMultiChainTokenData` is actually being called and returning the correct data for Mantle tokens.
 
 
+

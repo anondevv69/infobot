@@ -129,6 +129,12 @@ export class ClankerWatcher {
           continue;
         }
 
+        // Filter: Only process ClankerWorld UI or Farcaster deployments (exclude bankr)
+        if (!this.isValidClankerSource(token)) {
+          logger.debug(`[Clanker Watcher] Skipping token ${token.contract_address} - not from ClankerWorld UI or Farcaster (platform: ${token.social_context?.platform || token.metadata?.platform || "unknown"})`);
+          continue;
+        }
+
         // Check if already broadcasted
         const alreadyBroadcasted = await hasBroadcastedClankerToken(token.contract_address);
         if (alreadyBroadcasted) {
@@ -289,12 +295,47 @@ export class ClankerWatcher {
   }
 
   /**
+   * Check if a token is from a valid source (ClankerWorld UI or Farcaster, not bankr)
+   */
+  private isValidClankerSource(token: ClankerToken): boolean {
+    // Get platform from social_context or metadata
+    const platform = (token.social_context?.platform || token.metadata?.platform || "").toLowerCase();
+    const interfaceName = (token.social_context?.interface || token.metadata?.interface || "").toLowerCase();
+    
+    // Exclude bankr deployments
+    if (platform.includes("bankr") || interfaceName.includes("bankr")) {
+      return false;
+    }
+    
+    // Only allow ClankerWorld UI or Farcaster deployments
+    // Check if platform is "farcaster" or "clankerworld" or similar valid sources
+    const validPlatforms = ["farcaster", "clankerworld", "clanker", "warpcast"];
+    const isValidPlatform = validPlatforms.some(valid => 
+      platform.includes(valid) || interfaceName.includes(valid)
+    );
+    
+    // If no platform specified, assume it's from ClankerWorld (default)
+    // Only exclude if explicitly bankr
+    if (!platform && !interfaceName) {
+      return true; // Default to allowing if no platform info
+    }
+    
+    return isValidPlatform;
+  }
+
+  /**
    * Manually check a specific token for broadcasting
    * Useful for testing or manual triggers
    */
   async checkToken(token: ClankerToken): Promise<boolean> {
     if (!token.contract_address) {
       logger.warn("[Clanker Watcher] Token has no contract address");
+      return false;
+    }
+
+    // Filter: Only process ClankerWorld UI or Farcaster deployments (exclude bankr)
+    if (!this.isValidClankerSource(token)) {
+      logger.info(`[Clanker Watcher] Token ${token.contract_address} is not from a valid source (bankr excluded)`);
       return false;
     }
 
