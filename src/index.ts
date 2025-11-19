@@ -34,6 +34,8 @@ import { handleDisconnectSignerCommand } from "./commands/disconnectSigner";
 import { parsePaginationButton } from "./utils/pagination";
 import { handleGeneralPagination } from "./handlers/pagination";
 import { showDiscordTypingIndicator, showDiscordCommandTyping } from "./utils/typingIndicator";
+import { initializeBroadcastClient } from "./services/clankerBroadcast";
+import { ClankerWatcher } from "./services/clankerWatcher";
 
 async function main(): Promise<void> {
   validateRequiredEnv();
@@ -90,6 +92,14 @@ async function main(): Promise<void> {
 
   client.once(Events.ClientReady, (readyClient) => {
     console.log(`Logged in as ${readyClient.user.tag}`);
+    
+    // Initialize broadcast client
+    initializeBroadcastClient(readyClient);
+    
+    // Start Clanker watcher
+    const watcher = new ClankerWatcher();
+    watcher.start();
+    console.log("[Clanker Watcher] Started monitoring Clanker deployments");
   });
 
   client.on(Events.InteractionCreate, handleInteraction);

@@ -11,6 +11,7 @@ import { walletRouter } from "./routes/wallet";
 import { debugRouter } from "./routes/debug";
 import { tradingRouter } from "./routes/trading";
 import { discordRouter } from "./routes/discord";
+import { clankerRouter } from "./routes/clanker";
 
 async function bootstrap(): Promise<void> {
   try {
@@ -149,8 +150,9 @@ async function bootstrap(): Promise<void> {
   app.use("/api/siwf", siwfRouter);
   app.use("/api/wallet", walletRouter);
   app.use("/api/discord", discordRouter);
-  app.use("/api/trading", tradingRouter);
-  app.use("/debug", debugRouter);
+            app.use("/api/trading", tradingRouter);
+            app.use("/api/clanker", clankerRouter);
+            app.use("/debug", debugRouter);
   // Alias for easier access (as mentioned in ChatGPT response)
   app.use("/api/siwf/debug", debugRouter);
   

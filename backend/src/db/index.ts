@@ -27,6 +27,15 @@ export interface SubscriptionRecord {
   updated_at: Date;
 }
 
+export interface BroadcastedClankerToken {
+  id: string;
+  contract_address: string;
+  deployer_fid: number;
+  deployer_score: number;
+  broadcasted_at: Date;
+  created_at: Date;
+}
+
 export async function ensureSchema(): Promise<void> {
   if (!pool) {
     logger.warn("Database not configured (DATABASE_URL not set). Skipping schema creation.");
@@ -44,6 +53,16 @@ export async function ensureSchema(): Promise<void> {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (guild_id, channel_id, fid)
     );
+    CREATE TABLE IF NOT EXISTS broadcasted_clanker_tokens (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      contract_address TEXT NOT NULL UNIQUE,
+      deployer_fid INTEGER NOT NULL,
+      deployer_score INTEGER NOT NULL,
+      broadcasted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_broadcasted_clanker_contract ON broadcasted_clanker_tokens(contract_address);
+    CREATE INDEX IF NOT EXISTS idx_broadcasted_clanker_fid ON broadcasted_clanker_tokens(deployer_fid);
   `);
 }
 
@@ -110,5 +129,41 @@ export async function listSubscriptionsForFid(
     [fid],
   );
   return rows;
+}
+
+export async function hasBroadcastedClankerToken(contractAddress: string): Promise<boolean> {
+  if (!pool) {
+    throw new Error("Database not configured (DATABASE_URL not set)");
+  }
+  
+  const { rows } = await pool.query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM broadcasted_clanker_tokens WHERE contract_address = $1`,
+    [contractAddress.toLowerCase()],
+  );
+  return parseInt(rows[0]?.count || "0", 10) > 0;
+}
+
+export async function markClankerTokenAsBroadcasted(
+  contractAddress: string,
+  deployerFid: number,
+  deployerScore: number,
+): Promise<BroadcastedClankerToken> {
+  if (!pool) {
+    throw new Error("Database not configured (DATABASE_URL not set)");
+  }
+  
+  const { rows } = await pool.query<BroadcastedClankerToken>(
+    `
+      INSERT INTO broadcasted_clanker_tokens (contract_address, deployer_fid, deployer_score)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (contract_address) DO UPDATE SET 
+        deployer_fid = EXCLUDED.deployer_fid,
+        deployer_score = EXCLUDED.deployer_score,
+        broadcasted_at = NOW()
+      RETURNING *;
+    `,
+    [contractAddress.toLowerCase(), deployerFid, deployerScore],
+  );
+  return rows[0];
 }
 
