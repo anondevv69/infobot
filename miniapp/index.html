@@ -127,12 +127,29 @@
       <div id="status"></div>
       <div id="userInfo"></div>
       
-      <button id="connectBtn" onclick="connectWallet()">
-        Connect with Farcaster
-      </button>
+      <!-- Discord Connection Section -->
+      <div id="discordSection" style="margin: 20px 0;">
+        <h3 style="color: #5865F2; margin-bottom: 10px;">💬 Connect Discord</h3>
+        <button id="connectDiscordBtn" onclick="connectDiscord()" style="background: #5865F2;">
+          Connect Discord Account
+        </button>
+        <div id="discordInfo" style="display: none; margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 8px; text-align: left;">
+          <p><strong>Discord:</strong> <span id="discordUsername">-</span></p>
+          <p><strong>User ID:</strong> <span id="discordUserId">-</span></p>
+        </div>
+      </div>
       
-      <button id="linkBotBtn" onclick="linkBot()" style="display: none;">
-        Link to Discord/Telegram
+      <!-- Farcaster Connection Section -->
+      <div id="farcasterSection" style="margin: 20px 0;">
+        <h3 style="color: #8a63d2; margin-bottom: 10px;">🔗 Connect Farcaster</h3>
+        <button id="connectBtn" onclick="connectWallet()">
+          Connect with Farcaster
+        </button>
+      </div>
+      
+      <!-- Link Button (shows when both are connected) -->
+      <button id="linkBotBtn" onclick="linkBot()" style="display: none; background: #00ff00; color: #000;">
+        ✅ Link Accounts & Complete Setup
       </button>
     </div>
 

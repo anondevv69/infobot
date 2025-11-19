@@ -5,6 +5,9 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
   DISCORD_BOT_TOKEN: z.string().min(1),
+  DISCORD_CLIENT_ID: z.string().min(1).optional(), // For OAuth
+  DISCORD_CLIENT_SECRET: z.string().min(1).optional(), // For OAuth
+  DISCORD_REDIRECT_URI: z.string().url().optional(), // For OAuth
   NEYNAR_API_KEY: z.string().min(1),
   WEBHOOK_SECRET: z.string().min(1),
   DATABASE_URL: z.string().url().optional(),

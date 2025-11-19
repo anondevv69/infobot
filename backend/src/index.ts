@@ -8,6 +8,7 @@ import { webhookRouter } from "./routes/webhooks";
 import { siwfRouter } from "./routes/siwf";
 import { debugRouter } from "./routes/debug";
 import { tradingRouter } from "./routes/trading";
+import { discordRouter } from "./routes/discord";
 
 async function bootstrap(): Promise<void> {
   await ensureSchema();
@@ -120,6 +121,7 @@ async function bootstrap(): Promise<void> {
   app.use("/api/subscriptions", subscriptionRouter);
   app.use("/webhooks", webhookRouter);
   app.use("/api/siwf", siwfRouter);
+  app.use("/api/discord", discordRouter);
   app.use("/api/trading", tradingRouter);
   app.use("/debug", debugRouter);
   // Alias for easier access (as mentioned in ChatGPT response)
