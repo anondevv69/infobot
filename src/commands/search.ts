@@ -54,6 +54,12 @@ export async function handleSearchCommand(
     return;
   }
 
+  // Log search immediately (before processing)
+  logger.search(query, "discord", userId, guildId, channelId, {
+    success: true, // Will update if it fails
+    type: "pending",
+  });
+
   await interaction.deferReply();
 
   try {
@@ -61,11 +67,15 @@ export async function handleSearchCommand(
     const txHash = extractTransactionHash(query);
     if (txHash && isTransactionHash(txHash)) {
       await handleTransactionSearch(interaction, txHash, query);
+      logger.search(query, "discord", userId, guildId, channelId, {
+        success: true,
+        type: "transaction",
+      });
       return;
     }
 
     if (isEthAddress(query) || isSolAddress(query)) {
-      await handleWalletSearch(interaction, query);
+      await handleWalletSearch(interaction, query, userId, guildId, channelId);
       return;
     }
 
@@ -76,6 +86,10 @@ export async function handleSearchCommand(
       normalizedUsername,
     );
     if (handledUsername) {
+      logger.search(query, "discord", userId, guildId, channelId, {
+        success: true,
+        type: "farcaster",
+      });
       return;
     }
 
@@ -127,7 +141,18 @@ export async function handleSearchCommand(
     }
 
     // Final fallback to Clanker token lookup
-      await replyWithClankerTokenLookup(interaction, query);
+    const clankerHandled = await replyWithClankerTokenLookup(interaction, query);
+    if (clankerHandled) {
+      logger.search(query, "discord", userId, guildId, channelId, {
+        success: true,
+        type: "clanker",
+      });
+    } else {
+      logger.search(query, "discord", userId, guildId, channelId, {
+        success: false,
+        type: "not_found",
+      });
+    }
   } catch (error) {
     const message =
       error instanceof NeynarLookupError
@@ -197,6 +222,11 @@ async function handleWalletSearch(
       embeds: walletResponse.embeds,
       components: walletResponse.components,
     });
+    
+    logger.search(address, "discord", userId, guildId, channelId, {
+      success: true,
+      type: "wallet_farcaster",
+    });
     return;
   }
 
@@ -262,6 +292,11 @@ async function handleWalletSearch(
       embeds: [embeds[0]],
       components,
     });
+    
+    logger.search(address, "discord", userId, guildId, channelId, {
+      success: true,
+      type: "wallet_clanker_token",
+    });
     return;
   }
 
@@ -289,6 +324,11 @@ async function handleWalletSearch(
     if (matchedCoin) {
       const response = await buildZoraCoinResponse(matchedCoin, zoraSummaryFromAddress);
       await interaction.editReply(response);
+      
+      logger.search(address, "discord", userId, guildId, channelId, {
+        success: true,
+        type: "wallet_zora_coin",
+      });
       return;
     }
   }
@@ -324,6 +364,11 @@ async function handleWalletSearch(
         ? [...farcasterEmbeds.embeds, ...zoraResponse.embeds]
         : zoraResponse.embeds,
       components: farcasterEmbeds?.components ?? [],
+    });
+    
+    logger.search(address, "discord", userId, guildId, channelId, {
+      success: true,
+      type: "wallet_zora_profile",
     });
     return;
   }
@@ -453,7 +498,7 @@ function normalizeUsername(value: string): string {
 async function replyWithClankerTokenLookup(
   interaction: ChatInputCommandInteraction,
   query: string,
-): Promise<void> {
+): Promise<boolean> {
   let tokens: ClankerToken[] = [];
   if (isEthAddress(query) || isSolAddress(query)) {
     tokens = await fetchTokensByAddress(query);
@@ -465,7 +510,7 @@ async function replyWithClankerTokenLookup(
     await interaction.editReply({
       content: `No Farcaster profile or Clanker deployments found for \`${query}\`.`,
     });
-    return;
+    return false;
   }
 
   const primaryToken = tokens[0];

@@ -21,6 +21,7 @@ export const TOKEN_FACTORY_MAP: Record<string, string> = {
   // Pattern: 0xb3bea12a...0261dabf - need to check logs for full address
   // KLIK Finance
   "0x4a0a35e7b9b4a29565b0f77ec0957dd64bb337d0": "KLIK Finance",
+  "0xb6cb1c049ee8942683fd3172f7eba63b6e8a6835": "KLIK Finance",
   // FEY (multiple factory addresses)
   "0xc1d0e984d87c32f2b0d45fb8f50aa2be6e9eb687": "Fey",
   "0x94c2ec832c8f885b34b8ffa2724e6e8a9f4a63bb": "Fey",
