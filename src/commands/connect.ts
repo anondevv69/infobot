@@ -14,8 +14,31 @@ export async function handleConnectCommand(
   const userId = interaction.user.id;
   const usernameOrWallet = interaction.options.getString("username_or_wallet");
   
-  // Check if user is already connected
-  const existingSession = await getSIWFSession(userId, "discord", env.backendUrl);
+  // Check if user is already connected (check both SIWF and wallet connections)
+  let existingSession = await getSIWFSession(userId, "discord", env.backendUrl);
+  
+  // Also check wallet connection
+  if (!existingSession) {
+    try {
+      const walletResponse = await fetch(`${env.backendUrl}/api/wallet/connection?userId=${userId}&platform=discord`);
+      if (walletResponse.ok) {
+        const walletConnection = await walletResponse.json();
+        if (walletConnection) {
+          // Convert wallet connection to SIWF format for compatibility
+          existingSession = {
+            fid: walletConnection.fid || 0,
+            username: walletConnection.username || "",
+            custodyAddress: walletConnection.walletAddress,
+            verifiedAddresses: [],
+            signature: "",
+          };
+        }
+      }
+    } catch (error) {
+      console.error("[Connect] Failed to check wallet connection:", error);
+    }
+  }
+  
   if (existingSession) {
     // Check if user has a signer
     let hasSigner = false;
@@ -74,79 +97,51 @@ export async function handleConnectCommand(
     // Don't return - continue to show the SIWF button below
   }
 
-  // DEFAULT: Use server-side SIWF flow (no CORS issues, reliable)
-  // OPTIONAL: Mini App available for better UX (if configured)
+  // SIMPLIFIED: Use wallet connection (no CORS issues, works with any wallet)
   const challenge = generateSIWFChallenge(userId, "discord");
-  const siwfUrl = generateSIWFUrl(
-    challenge.challenge,
-    userId,
-    "discord",
-    env.backendUrl,
-    env.farcasterReferralCode,
-  );
-  await storePendingVerificationInBackend(challenge.challenge, userId, "discord", env.backendUrl);
   
-  let connectUrl: string;
-  let connectLabel: string;
-  let description: string;
-  let buttons: ButtonBuilder[] = [];
-
-  // Primary button: Server-side SIWF flow (default, reliable)
-  const siwfButton = new ButtonBuilder()
-    .setLabel("🔐 Connect with Farcaster (Recommended)")
-    .setURL(siwfUrl)
-    .setStyle(ButtonStyle.Link);
-  buttons.push(siwfButton);
-
-  description =
-    `**Default Method (Recommended):**\n\n` +
-    `**Step 1:** Click "Connect with Farcaster" below\n` +
-    `**Step 2:** Sign in to your Farcaster account in Warpcast\n` +
-    `**Step 3:** Approve the connection\n` +
-    `**Step 4:** Return to Discord and run \`/connect\` again to verify\n\n` +
-    `✅ **Reliable** - No CORS issues\n` +
-    `🔒 **Secure** - Server-side verification\n` +
-    `⚡ **Fast** - Direct connection\n\n`;
-
-  // Optional: Mini App button (if configured)
-  if (env.miniappUrl && !env.miniappUrl.includes("your-miniapp-domain.com")) {
-    let miniappUrl: string;
-    if (env.miniappUrl.includes("farcaster.xyz/miniapps")) {
-      const url = new URL(env.miniappUrl);
-      url.searchParams.set("userId", userId);
-      url.searchParams.set("platform", "discord");
-      url.searchParams.set("backendUrl", env.backendUrl);
-      url.searchParams.set("challenge", challenge.challenge); // SECURITY: Include challenge for verification
-      miniappUrl = url.toString();
-    } else {
-      const url = new URL(env.miniappUrl);
-      url.searchParams.set("userId", userId);
-      url.searchParams.set("platform", "discord");
-      url.searchParams.set("backendUrl", env.backendUrl);
-      url.searchParams.set("challenge", challenge.challenge); // SECURITY: Include challenge for verification
-      miniappUrl = url.toString();
-    }
-    
-    const miniappButton = new ButtonBuilder()
-      .setLabel("🌐 Use Mini App (Better UX)")
-      .setURL(miniappUrl)
-      .setStyle(ButtonStyle.Link);
-    buttons.push(miniappButton);
-
-    description +=
-      `**Optional: Mini App (Better UX)**\n\n` +
-      `Want a smoother experience with Discord OAuth?\n` +
-      `Click "Use Mini App" for an in-browser connection flow.\n\n` +
-      `💡 **Features:** QR code login, Discord OAuth, native Farcaster experience\n`;
+  // Store challenge in backend
+  try {
+    await fetch(`${env.backendUrl}/api/wallet/pending`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        challenge: challenge.challenge, 
+        userId, 
+        platform: "discord" 
+      }),
+    });
+  } catch (error) {
+    console.error("[Connect] Failed to store pending verification:", error);
   }
+  
+  // Generate wallet connection URL
+  const walletConnectUrl = `${env.backendUrl}/wallet-connect/index.html?userId=${userId}&platform=discord&backendUrl=${encodeURIComponent(env.backendUrl)}&challenge=${challenge.challenge}`;
+  
+  const walletButton = new ButtonBuilder()
+    .setLabel("🔗 Connect Wallet")
+    .setURL(walletConnectUrl)
+    .setStyle(ButtonStyle.Link);
+
+  const description =
+    `**Connect Your Wallet for Trading**\n\n` +
+    `**Step 1:** Click "Connect Wallet" below\n` +
+    `**Step 2:** Connect your wallet (MetaMask, WalletConnect, etc.)\n` +
+    `**Step 3:** Sign the message to verify ownership\n` +
+    `**Step 4:** Return to Discord and use \`/balance\`, \`/buy\`, \`/sell\`, or \`/swap\`\n\n` +
+    `✅ **Simple** - Standard wallet connection\n` +
+    `🔒 **Secure** - Cryptographic signature verification\n` +
+    `⚡ **Fast** - Works with any wallet\n` +
+    `💎 **Trading Ready** - Use your wallet for all trades\n\n` +
+    `💡 **Note:** If your wallet is your Farcaster custody address, it will be automatically linked!`;
 
   const embed = new EmbedBuilder()
-    .setTitle("🔗 Connect Farcaster")
+    .setTitle("🔗 Connect Wallet")
     .setDescription(description)
     .setColor(0x8a63d2)
-    .setFooter({ text: `Referral code: ${env.farcasterReferralCode} - Secure account linking` });
+    .setFooter({ text: "Connect your wallet to start trading on Discord/Telegram" });
 
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents([walletButton]);
 
   await interaction.reply({
     embeds: [embed],

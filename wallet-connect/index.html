@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connect Wallet - InfoBot</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    
+    .subtitle {
+      color: #666;
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    
+    .status {
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    
+    .status.info {
+      background: #e3f2fd;
+      color: #1976d2;
+    }
+    
+    .status.success {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    
+    .status.error {
+      background: #ffebee;
+      color: #c62828;
+    }
+    
+    button {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-bottom: 10px;
+    }
+    
+    button.primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    button.primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    
+    .info-box {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 10px;
+      margin-top: 20px;
+      font-size: 14px;
+      color: #666;
+    }
+    
+    .info-box strong {
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔗 Connect Your Wallet</h1>
+    <p class="subtitle">Connect your Farcaster wallet to trade on Discord/Telegram</p>
+    
+    <div id="status" class="status info">
+      Ready to connect...
+    </div>
+    
+    <button id="connectBtn" class="primary" onclick="connectWallet()">
+      Connect Wallet
+    </button>
+    
+    <div id="info" class="info-box" style="display: none;">
+      <strong>Connected:</strong> <span id="walletAddress"></span><br>
+      <strong>Network:</strong> <span id="network"></span>
+    </div>
+  </div>
+
+  <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
+  <script>
+    let provider = null;
+    let signer = null;
+    let walletAddress = null;
+    
+    // Get URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('userId');
+    const platform = urlParams.get('platform') || 'discord';
+    const backendUrl = urlParams.get('backendUrl') || 'https://infobot-production-f74e.up.railway.app';
+    const challenge = urlParams.get('challenge');
+    
+    function showStatus(type, message) {
+      const statusDiv = document.getElementById('status');
+      statusDiv.className = `status ${type}`;
+      statusDiv.textContent = message;
+    }
+    
+    function showInfo(address, network) {
+      document.getElementById('info').style.display = 'block';
+      document.getElementById('walletAddress').textContent = address;
+      document.getElementById('network').textContent = network;
+    }
+    
+    async function connectWallet() {
+      try {
+        showStatus('info', '🔄 Connecting to wallet...');
+        document.getElementById('connectBtn').disabled = true;
+        
+        // Check if MetaMask or other wallet is available
+        if (typeof window.ethereum === 'undefined') {
+          throw new Error('No wallet found. Please install MetaMask or another Web3 wallet.');
+        }
+        
+        // Connect to wallet
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        await provider.send("eth_requestAccounts", []);
+        signer = provider.getSigner();
+        walletAddress = await signer.getAddress();
+        
+        // Get network
+        const network = await provider.getNetwork();
+        const networkName = network.name === 'homestead' ? 'Ethereum Mainnet' : 
+                           network.name === 'base' ? 'Base' :
+                           network.name === 'base-sepolia' ? 'Base Sepolia' :
+                           network.name;
+        
+        showStatus('success', '✅ Wallet connected!');
+        showInfo(walletAddress, networkName);
+        
+        // Automatically proceed to signature
+        setTimeout(() => {
+          signMessage();
+        }, 1000);
+        
+      } catch (error) {
+        console.error('Connection error:', error);
+        showStatus('error', `❌ ${error.message || 'Failed to connect wallet'}`);
+        document.getElementById('connectBtn').disabled = false;
+      }
+    }
+    
+    async function signMessage() {
+      try {
+        if (!signer || !walletAddress) {
+          throw new Error('Please connect wallet first');
+        }
+        
+        if (!challenge) {
+          throw new Error('Missing security challenge. Please use /connect command in Discord/Telegram.');
+        }
+        
+        if (!userId) {
+          throw new Error('Missing user ID. Please use /connect command in Discord/Telegram.');
+        }
+        
+        showStatus('info', '🔄 Please sign the message in your wallet...');
+        
+        // Create message to sign
+        const message = `Connect to InfoBot\n\nChallenge: ${challenge}\nPlatform: ${platform}\nUser ID: ${userId}\n\nThis signature proves you own this wallet.`;
+        
+        // Sign message
+        const signature = await signer.signMessage(message);
+        
+        showStatus('info', '🔄 Verifying connection...');
+        
+        // Send to backend
+        const response = await fetch(`${backendUrl}/api/wallet/connect`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId,
+            platform,
+            walletAddress,
+            message,
+            signature,
+            challenge,
+          }),
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(result.error || 'Verification failed');
+        }
+        
+        if (result.success) {
+          showStatus('success', '✅ Successfully connected! You can now use trading commands in Discord/Telegram.');
+          
+          // Show success info
+          setTimeout(() => {
+            showStatus('info', '💡 Go back to Discord/Telegram and use /balance, /buy, /sell, or /swap to start trading!');
+          }, 2000);
+        } else {
+          throw new Error(result.error || 'Connection failed');
+        }
+        
+      } catch (error) {
+        console.error('Signature error:', error);
+        showStatus('error', `❌ ${error.message || 'Failed to verify connection'}`);
+      }
+    }
+    
+    // Auto-connect if wallet is already connected
+    window.addEventListener('load', async () => {
+      if (typeof window.ethereum !== 'undefined') {
+        try {
+          provider = new ethers.providers.Web3Provider(window.ethereum);
+          const accounts = await provider.listAccounts();
+          if (accounts.length > 0) {
+            // Wallet already connected
+            signer = provider.getSigner();
+            walletAddress = accounts[0];
+            const network = await provider.getNetwork();
+            const networkName = network.name === 'homestead' ? 'Ethereum Mainnet' : 
+                               network.name === 'base' ? 'Base' :
+                               network.name === 'base-sepolia' ? 'Base Sepolia' :
+                               network.name;
+            showInfo(walletAddress, networkName);
+            showStatus('info', '✅ Wallet already connected. Click "Connect Wallet" to proceed.');
+          }
+        } catch (error) {
+          console.log('No existing connection');
+        }
+      }
+    });
+  </script>
+</body>
+</html>
+
