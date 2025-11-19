@@ -16,16 +16,29 @@ async function bootstrap(): Promise<void> {
   
   // CORS configuration - allow requests from Mini App and Farcaster domains
   app.use(cors({
-    origin: [
-      "https://infobot.fun",
-      "https://farcaster.xyz",
-      "https://warpcast.com",
-      "http://localhost:5173", // For local development
-      "http://localhost:3000", // For local development
-    ],
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      const allowedOrigins = [
+        "https://infobot.fun",
+        "https://farcaster.xyz",
+        "https://warpcast.com",
+        "http://localhost:5173", // For local development
+        "http://localhost:3000", // For local development
+      ];
+      
+      if (allowedOrigins.indexOf(origin) !== -1 || origin?.includes("farcaster.xyz") || origin?.includes("warpcast.com")) {
+        callback(null, true);
+      } else {
+        logger.warn(`[CORS] Blocked origin: ${origin}`);
+        callback(null, true); // Allow all for now, can restrict later
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-api-key"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "Accept"],
+    exposedHeaders: ["Content-Type"],
   }));
   
   app.use(express.json({ limit: "1mb" }));

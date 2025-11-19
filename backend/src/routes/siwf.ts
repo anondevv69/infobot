@@ -486,14 +486,28 @@ router.get("/callback", async (req, res) => {
   }
 });
 
+// Handle OPTIONS preflight request for CORS
+router.options("/miniapp-connect", (req, res) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "https://infobot.fun");
+  res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.sendStatus(200);
+});
+
 // Endpoint for Mini App connection (called from Mini App)
 router.post("/miniapp-connect", async (req, res) => {
   try {
+    // Set CORS headers explicitly
+    res.header("Access-Control-Allow-Origin", req.headers.origin || "https://infobot.fun");
+    res.header("Access-Control-Allow-Credentials", "true");
+    
     // Log the incoming request for debugging
     logger.info("[Mini App Connect] Received request:", {
       body: req.body,
       headers: req.headers,
       origin: req.headers.origin,
+      method: req.method,
     });
 
     const { userId, platform, fid, username, custodyAddress, verifiedAddresses, signerPrivateKey, signerPublicKey } = req.body;
