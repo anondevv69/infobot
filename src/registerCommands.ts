@@ -78,6 +78,9 @@ async function registerCommands(): Promise<void> {
     new SlashCommandBuilder()
       .setName("disconnect-signer")
       .setDescription("Remove your trading signer."),
+    new SlashCommandBuilder()
+      .setName("stats")
+      .setDescription("View bot statistics (servers, users, searches, etc.)"),
   ].map((command) => command.toJSON());
 
   const rest = new REST({ version: "10" }).setToken(token);

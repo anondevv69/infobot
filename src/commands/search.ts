@@ -36,6 +36,7 @@ import { buildZoraCoinResponse } from "../handlers/zoraAddress";
 import { splitEmbedIntoPages, buildPaginationButtons } from "../utils/pagination";
 import { storeEmbedForPagination } from "../handlers/pagination";
 import { logger } from "../utils/logger";
+import { trackUser, trackSearch } from "../utils/botStats";
 
 export async function handleSearchCommand(
   interaction: ChatInputCommandInteraction,
@@ -44,6 +45,10 @@ export async function handleSearchCommand(
   const userId = interaction.user.id;
   const guildId = interaction.guildId || undefined;
   const channelId = interaction.channelId;
+
+  // Track user and search
+  trackUser(userId, "discord");
+  trackSearch();
 
   logger.command("search", "discord", userId, guildId, channelId, { query });
 

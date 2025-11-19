@@ -31,6 +31,7 @@ import { handleRelayCommand } from "./commands/relay";
 import { handleDebugCommand } from "./commands/debug";
 import { handleConnectSignerCommand } from "./commands/connectSigner";
 import { handleDisconnectSignerCommand } from "./commands/disconnectSigner";
+import { handleStatsCommand } from "./commands/stats";
 import { parsePaginationButton } from "./utils/pagination";
 import { handleGeneralPagination } from "./handlers/pagination";
 import { showDiscordTypingIndicator, showDiscordCommandTyping } from "./utils/typingIndicator";
@@ -238,6 +239,9 @@ async function handleChatCommand(
       break;
     case "disconnect-signer":
       await handleDisconnectSignerCommand(interaction);
+      break;
+    case "stats":
+      await handleStatsCommand(interaction);
       break;
     default:
       await interaction.reply({

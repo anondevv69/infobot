@@ -347,6 +347,10 @@ Just send:
 
 async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string, userId?: number): Promise<void> {
   const { logger } = await import("../../../utils/logger");
+  const { trackSearch } = await import("../../../utils/botStats");
+  
+  // Track search
+  trackSearch();
   
   // Log initial search
   logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {

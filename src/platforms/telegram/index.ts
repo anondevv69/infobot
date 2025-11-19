@@ -4,6 +4,7 @@ import { handleTelegramMessage } from "./handlers/message";
 import { handleTelegramCommand } from "./handlers/command";
 import { showTelegramTypingIndicator } from "../../utils/typingIndicator";
 import { logger } from "../../utils/logger";
+import { trackUser, trackSearch, setTelegramChatCount } from "../../utils/botStats";
 
 // Track seen Telegram chats to detect new groups/channels
 const seenTelegramChats = new Set<number>();
@@ -38,6 +39,7 @@ export async function startTelegramBot(): Promise<void> {
     // Only track groups, supergroups, and channels (not private chats)
     if ((chatType === "group" || chatType === "supergroup" || chatType === "channel") && !seenTelegramChats.has(chatId)) {
       seenTelegramChats.add(chatId);
+      setTelegramChatCount(seenTelegramChats.size);
       
       try {
         const chatTitle = msg.chat.title || "Unknown";
@@ -64,6 +66,11 @@ export async function startTelegramBot(): Promise<void> {
           chatType,
         });
       }
+    }
+    
+    // Track user
+    if (msg.from?.id) {
+      trackUser(msg.from.id.toString(), "telegram");
     }
     
     // Handle text messages (addresses, usernames, etc.) - NOT commands
