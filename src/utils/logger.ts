@@ -1,6 +1,3 @@
-import * as fs from "fs";
-import * as path from "path";
-
 type LogLevel = "info" | "warn" | "error" | "debug" | "search" | "system";
 
 interface LogEntry {
@@ -15,69 +12,94 @@ interface LogEntry {
 }
 
 class Logger {
-  private logDir: string;
-  private logFile: string;
-  private errorLogFile: string;
-  private searchLogFile: string;
-  private systemLogFile: string;
+  private webhookUrl: string | null = null;
+  private rateLimitDelay = 0; // Rate limiting to avoid Discord webhook limits
 
   constructor() {
-    // Create logs directory if it doesn't exist
-    this.logDir = path.join(process.cwd(), "logs");
-    if (!fs.existsSync(this.logDir)) {
-      fs.mkdirSync(this.logDir, { recursive: true });
+    // Get webhook URL from environment
+    this.webhookUrl = process.env.LOG_WEBHOOK_URL || null;
+    
+    if (!this.webhookUrl) {
+      console.warn("[Logger] LOG_WEBHOOK_URL not set, logs will only go to console");
     }
-
-    // Log files with date rotation
-    const date = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-    this.logFile = path.join(this.logDir, `app-${date}.log`);
-    this.errorLogFile = path.join(this.logDir, `errors-${date}.log`);
-    this.searchLogFile = path.join(this.logDir, `searches-${date}.log`);
-    this.systemLogFile = path.join(this.logDir, `system-${date}.log`);
   }
 
-  private formatLog(entry: LogEntry): string {
-    const parts = [
-      entry.timestamp,
-      `[${entry.level.toUpperCase()}]`,
-      entry.message,
-    ];
+  private formatMessage(entry: LogEntry): string {
+    const parts: string[] = [];
+
+    // Add emoji based on level
+    const emoji = {
+      search: "🔍",
+      system: "⚙️",
+      info: "ℹ️",
+      warn: "⚠️",
+      error: "❌",
+      debug: "🐛",
+    }[entry.level] || "";
+
+    parts.push(`${emoji} **${entry.level.toUpperCase()}**`);
 
     if (entry.platform) {
       parts.push(`[${entry.platform.toUpperCase()}]`);
     }
 
-    if (entry.userId) {
-      parts.push(`[User:${entry.userId}]`);
+    parts.push(entry.message);
+
+    // Add context in a compact format
+    const context: string[] = [];
+    if (entry.userId) context.push(`User: ${entry.userId}`);
+    if (entry.guildId) context.push(`Guild: ${entry.guildId}`);
+    if (context.length > 0) {
+      parts.push(`(${context.join(", ")})`);
     }
 
-    if (entry.guildId) {
-      parts.push(`[Guild:${entry.guildId}]`);
-    }
-
-    if (entry.channelId) {
-      parts.push(`[Channel:${entry.channelId}]`);
-    }
-
+    // Add meta info if present (compact)
     if (entry.meta && Object.keys(entry.meta).length > 0) {
-      parts.push(JSON.stringify(entry.meta));
+      const metaStr = Object.entries(entry.meta)
+        .map(([key, value]) => {
+          if (typeof value === "object") {
+            return `${key}: ${JSON.stringify(value)}`;
+          }
+          return `${key}: ${value}`;
+        })
+        .join(", ");
+      if (metaStr.length < 200) {
+        parts.push(`\n\`${metaStr}\``);
+      }
     }
 
     return parts.join(" ");
   }
 
-  private writeLog(entry: LogEntry, files?: string[]): void {
-    const logLine = this.formatLog(entry) + "\n";
-    const filesToWrite = files || [this.logFile];
+  private async sendToWebhook(message: string): Promise<void> {
+    if (!this.webhookUrl) {
+      return;
+    }
 
-    filesToWrite.forEach((file) => {
-      try {
-        fs.appendFileSync(file, logLine, "utf8");
-      } catch (error) {
-        // Fallback to console if file write fails
-        console.error(`[Logger] Failed to write to ${file}:`, error);
+    // Rate limiting: wait if needed
+    const now = Date.now();
+    if (this.rateLimitDelay > now) {
+      await new Promise((resolve) => setTimeout(resolve, this.rateLimitDelay - now));
+    }
+    this.rateLimitDelay = Date.now() + 1000; // 1 second between webhook calls
+
+    try {
+      await fetch(this.webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content: message,
+        }),
+      });
+    } catch (error) {
+      // Silently fail - don't spam console with webhook errors
+      // Only log to console if it's a critical error
+      if (error instanceof Error && !error.message.includes("fetch")) {
+        console.error("[Logger] Webhook error:", error);
       }
-    });
+    }
   }
 
   private createEntry(
@@ -101,17 +123,15 @@ class Logger {
     };
   }
 
-  // General logging methods
+  // General logging methods (only console, no webhook)
   info(message: string, meta?: Record<string, any>): void {
     const entry = this.createEntry("info", message, meta);
-    console.log(this.formatLog(entry));
-    this.writeLog(entry);
+    console.log(`[INFO] ${entry.message}`);
   }
 
   warn(message: string, meta?: Record<string, any>): void {
     const entry = this.createEntry("warn", message, meta);
-    console.warn(this.formatLog(entry));
-    this.writeLog(entry);
+    console.warn(`[WARN] ${entry.message}`);
   }
 
   error(message: string, error?: Error | unknown, meta?: Record<string, any>): void {
@@ -121,26 +141,28 @@ class Logger {
       errorMeta.error = {
         name: error.name,
         message: error.message,
-        stack: error.stack,
       };
     } else if (error) {
       errorMeta.error = error;
     }
 
     const entry = this.createEntry("error", message, errorMeta);
-    console.error(this.formatLog(entry));
-    this.writeLog(entry, [this.logFile, this.errorLogFile]);
+    console.error(`[ERROR] ${entry.message}`, error);
+    
+    // Send errors to webhook too
+    const webhookMessage = this.formatMessage(entry);
+    this.sendToWebhook(webhookMessage).catch(() => {
+      // Ignore webhook errors
+    });
   }
 
   debug(message: string, meta?: Record<string, any>): void {
     if (process.env.NODE_ENV === "development") {
-      const entry = this.createEntry("debug", message, meta);
-      console.debug(this.formatLog(entry));
-      this.writeLog(entry);
+      console.debug(`[DEBUG] ${message}`);
     }
   }
 
-  // Search logging
+  // Search logging - send to webhook
   search(
     query: string,
     platform: "discord" | "telegram",
@@ -169,21 +191,31 @@ class Logger {
       channelId,
     );
 
-    console.log(this.formatLog(entry));
-    this.writeLog(entry, [this.logFile, this.searchLogFile]);
+    console.log(`[SEARCH] ${platform.toUpperCase()}: ${query} (${result?.success ? "✓" : "✗"})`);
+    
+    // Send to webhook
+    const webhookMessage = this.formatMessage(entry);
+    this.sendToWebhook(webhookMessage).catch(() => {
+      // Ignore webhook errors
+    });
   }
 
-  // System activity logging (Clanker checks, etc.)
+  // System activity logging (Clanker checks, etc.) - send to webhook
   system(
     activity: string,
     meta?: Record<string, any>,
   ): void {
     const entry = this.createEntry("system", activity, meta);
-    console.log(this.formatLog(entry));
-    this.writeLog(entry, [this.logFile, this.systemLogFile]);
+    console.log(`[SYSTEM] ${activity}`);
+    
+    // Send to webhook
+    const webhookMessage = this.formatMessage(entry);
+    this.sendToWebhook(webhookMessage).catch(() => {
+      // Ignore webhook errors
+    });
   }
 
-  // Command logging
+  // Command logging (only console, no webhook for commands)
   command(
     command: string,
     platform: "discord" | "telegram",
@@ -192,19 +224,7 @@ class Logger {
     channelId?: string,
     args?: Record<string, any>,
   ): void {
-    const meta: Record<string, any> = { command, ...args };
-    const entry = this.createEntry(
-      "info",
-      `Command: /${command}`,
-      meta,
-      platform,
-      userId,
-      guildId,
-      channelId,
-    );
-
-    console.log(this.formatLog(entry));
-    this.writeLog(entry);
+    console.log(`[COMMAND] ${platform.toUpperCase()}: /${command} by ${userId}`);
   }
 }
 
