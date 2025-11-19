@@ -138,26 +138,63 @@ async function main(): Promise<void> {
   // Track when bot is added to a new Discord server
   client.on(Events.GuildCreate, async (guild) => {
     try {
-      const memberCount = guild.memberCount || 0;
-      const ownerId = guild.ownerId || "Unknown";
-      const owner = await guild.fetchOwner().catch(() => null);
-      const ownerTag = owner?.user.tag || `ID: ${ownerId}`;
-      
-      logger.system(
-        `🎉 **NEW DISCORD SERVER**\n` +
-        `**Server:** ${guild.name}\n` +
-        `**ID:** ${guild.id}\n` +
-        `**Members:** ${memberCount}\n` +
-        `**Owner:** ${ownerTag}\n` +
-        `**Region:** ${guild.preferredLocale || "Unknown"}`,
-        {
-          guildId: guild.id,
-          guildName: guild.name,
-          memberCount,
-          ownerId,
-          ownerTag,
+      // Check database to see if we've already logged this guild (prevents duplicates after restart)
+      let alreadySeen = false;
+      try {
+        const { env } = await import("./config");
+        if (env.backendUrl) {
+          const response = await fetch(`${env.backendUrl}/api/seen/discord-guild?guildId=${encodeURIComponent(guild.id)}`);
+          if (response.ok) {
+            const data = await response.json();
+            alreadySeen = data.seen === true;
+          }
         }
-      );
+      } catch (error) {
+        // If database check fails, continue and log anyway
+      }
+      
+      // Only log if we haven't seen this guild before
+      if (!alreadySeen) {
+        const memberCount = guild.memberCount || 0;
+        const ownerId = guild.ownerId || "Unknown";
+        const owner = await guild.fetchOwner().catch(() => null);
+        const ownerTag = owner?.user.tag || `ID: ${ownerId}`;
+        
+        // Mark as seen in database
+        try {
+          const { env } = await import("./config");
+          if (env.backendUrl) {
+            await fetch(`${env.backendUrl}/api/seen/discord-guild`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                guildId: guild.id,
+                guildName: guild.name,
+                memberCount,
+                ownerId,
+              }),
+            });
+          }
+        } catch (error) {
+          // Silently fail - database might not be available
+        }
+        
+        logger.system(
+          `🎉 **NEW DISCORD SERVER**\n` +
+          `**Server:** ${guild.name}\n` +
+          `**ID:** ${guild.id}\n` +
+          `**Members:** ${memberCount}\n` +
+          `**Owner:** ${ownerTag}\n` +
+          `**Region:** ${guild.preferredLocale || "Unknown"}`,
+          {
+            guildId: guild.id,
+            guildName: guild.name,
+            memberCount,
+            ownerId,
+            ownerTag,
+          }
+        );
+      }
     } catch (error) {
       logger.error("Failed to log new Discord guild", error, {
         guildId: guild.id,
@@ -309,6 +346,7 @@ async function handleWebhookChannelCommand(message: import("discord.js").Message
           `**Discord Servers:** ${stats.discordServers}\n` +
           `**Total Users:** ${stats.totalUsers} unique users\n` +
           `**Telegram Chats:** ${stats.telegramChats} groups/channels\n` +
+          (stats.telegramTotalMembers > 0 ? `**Telegram Members:** ${stats.telegramTotalMembers} total members\n` : "") +
           `**Total Searches:** ${stats.totalSearches}\n` +
           `**Uptime:** ${stats.uptime}\n` +
           `**Memory:** ${stats.memoryUsage}`

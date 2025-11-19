@@ -22,26 +22,29 @@ export async function getBotStats(client: Client): Promise<{
   discordServers: number;
   totalUsers: number;
   telegramChats: number;
+  telegramTotalMembers: number;
   totalSearches: number;
   uptime: string;
   memoryUsage: string;
 }> {
-  // Get Discord server count
+  // Get Discord server count - from Discord.js client cache
   const discordServers = client.guilds.cache.size;
 
   // Calculate total unique users (Discord + Telegram)
+  // Tracked when users run commands (search, etc.)
   const totalUsers = uniqueUsers.size + uniqueTelegramUsers.size;
 
-  // Telegram chats are tracked in telegram/index.ts
-  // We'll need to import that or track it here
-  // For now, we'll estimate or get it from a shared state
+  // Telegram chats are tracked when bot receives messages from new groups/channels
   const telegramChats = getTelegramChatCount();
 
-  // Calculate uptime
+  // Get total Telegram members across all chats
+  const telegramTotalMembers = getTotalTelegramMembers();
+
+  // Calculate uptime - time since bot started
   const uptimeMs = Date.now() - startTime;
   const uptime = formatUptime(uptimeMs);
 
-  // Get memory usage
+  // Get memory usage - from Node.js process
   const memoryUsage = process.memoryUsage();
   const memoryUsageMB = (memoryUsage.heapUsed / 1024 / 1024).toFixed(2);
   const memoryUsageFormatted = `${memoryUsageMB} MB`;
@@ -50,14 +53,16 @@ export async function getBotStats(client: Client): Promise<{
     discordServers,
     totalUsers,
     telegramChats,
+    telegramTotalMembers,
     totalSearches: totalSearches.count,
     uptime,
     memoryUsage: memoryUsageFormatted,
   };
 }
 
-// Track Telegram chat count (shared with telegram/index.ts)
+// Track Telegram chat count and member counts (shared with telegram/index.ts)
 let telegramChatCount = 0;
+const telegramChatMembers = new Map<number, number>(); // chatId -> memberCount
 
 export function setTelegramChatCount(count: number): void {
   telegramChatCount = count;
@@ -65,6 +70,24 @@ export function setTelegramChatCount(count: number): void {
 
 export function getTelegramChatCount(): number {
   return telegramChatCount;
+}
+
+export function setTelegramChatMembers(chatId: number, memberCount: number): void {
+  telegramChatMembers.set(chatId, memberCount);
+}
+
+export function getTotalTelegramMembers(): number {
+  // Sum up all unique members across all Telegram chats
+  // Note: This might double-count users who are in multiple groups
+  let total = 0;
+  for (const count of telegramChatMembers.values()) {
+    total += count;
+  }
+  return total;
+}
+
+export function getTelegramChatMembersMap(): Map<number, number> {
+  return new Map(telegramChatMembers);
 }
 
 function formatUptime(ms: number): string {

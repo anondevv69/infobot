@@ -36,6 +36,16 @@ export interface BroadcastedClankerToken {
   created_at: Date;
 }
 
+export interface SeenTelegramChat {
+  id: string;
+  chat_id: string;
+  chat_title: string;
+  chat_type: string;
+  member_count: number | null;
+  first_seen_at: Date;
+  last_seen_at: Date;
+}
+
 export async function ensureSchema(): Promise<void> {
   if (!pool) {
     logger.warn("Database not configured (DATABASE_URL not set). Skipping schema creation.");
@@ -63,6 +73,26 @@ export async function ensureSchema(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_broadcasted_clanker_contract ON broadcasted_clanker_tokens(contract_address);
     CREATE INDEX IF NOT EXISTS idx_broadcasted_clanker_fid ON broadcasted_clanker_tokens(deployer_fid);
+    CREATE TABLE IF NOT EXISTS seen_telegram_chats (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      chat_id TEXT NOT NULL UNIQUE,
+      chat_title TEXT NOT NULL,
+      chat_type TEXT NOT NULL,
+      member_count INTEGER,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_seen_telegram_chat_id ON seen_telegram_chats(chat_id);
+    CREATE TABLE IF NOT EXISTS seen_discord_guilds (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      guild_id TEXT NOT NULL UNIQUE,
+      guild_name TEXT NOT NULL,
+      member_count INTEGER NOT NULL,
+      owner_id TEXT NOT NULL,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_seen_discord_guild_id ON seen_discord_guilds(guild_id);
   `);
 }
 
@@ -165,5 +195,79 @@ export async function markClankerTokenAsBroadcasted(
     [contractAddress.toLowerCase(), deployerFid, deployerScore],
   );
   return rows[0];
+}
+
+export async function hasSeenTelegramChat(chatId: string): Promise<boolean> {
+  if (!pool) {
+    return false; // If no DB, allow logging (fallback to in-memory)
+  }
+  
+  const { rows } = await pool.query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM seen_telegram_chats WHERE chat_id = $1`,
+    [chatId],
+  );
+  return parseInt(rows[0]?.count || "0", 10) > 0;
+}
+
+export async function markTelegramChatAsSeen(
+  chatId: string,
+  chatTitle: string,
+  chatType: string,
+  memberCount: number | null,
+): Promise<SeenTelegramChat> {
+  if (!pool) {
+    throw new Error("Database not configured (DATABASE_URL not set)");
+  }
+  
+  const { rows } = await pool.query<SeenTelegramChat>(
+    `
+      INSERT INTO seen_telegram_chats (chat_id, chat_title, chat_type, member_count)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (chat_id) DO UPDATE SET 
+        chat_title = EXCLUDED.chat_title,
+        chat_type = EXCLUDED.chat_type,
+        member_count = EXCLUDED.member_count,
+        last_seen_at = NOW()
+      RETURNING *;
+    `,
+    [chatId, chatTitle, chatType, memberCount],
+  );
+  return rows[0];
+}
+
+export async function hasSeenDiscordGuild(guildId: string): Promise<boolean> {
+  if (!pool) {
+    return false; // If no DB, allow logging (fallback to in-memory)
+  }
+  
+  const { rows } = await pool.query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM seen_discord_guilds WHERE guild_id = $1`,
+    [guildId],
+  );
+  return parseInt(rows[0]?.count || "0", 10) > 0;
+}
+
+export async function markDiscordGuildAsSeen(
+  guildId: string,
+  guildName: string,
+  memberCount: number,
+  ownerId: string,
+): Promise<void> {
+  if (!pool) {
+    throw new Error("Database not configured (DATABASE_URL not set)");
+  }
+  
+  await pool.query(
+    `
+      INSERT INTO seen_discord_guilds (guild_id, guild_name, member_count, owner_id)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (guild_id) DO UPDATE SET 
+        guild_name = EXCLUDED.guild_name,
+        member_count = EXCLUDED.member_count,
+        owner_id = EXCLUDED.owner_id,
+        last_seen_at = NOW()
+    `,
+    [guildId, guildName, memberCount, ownerId],
+  );
 }
 
