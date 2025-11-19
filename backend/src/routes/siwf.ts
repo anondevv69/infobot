@@ -7,10 +7,16 @@ import { verifyMessage } from "ethers";
 
 const router = Router();
 
-const neynarConfig = new Configuration({
-  apiKey: env.NEYNAR_API_KEY,
-});
-const neynarClient = new NeynarAPIClient(neynarConfig);
+// Only create Neynar client if API key is provided
+let neynarClient: NeynarAPIClient | null = null;
+if (env.NEYNAR_API_KEY) {
+  const neynarConfig = new Configuration({
+    apiKey: env.NEYNAR_API_KEY,
+  });
+  neynarClient = new NeynarAPIClient(neynarConfig);
+} else {
+  logger.warn("NEYNAR_API_KEY not set - some features will be unavailable");
+}
 
 // Store pending verifications (challenge -> user info)
 // In production, use Redis or database
@@ -310,6 +316,20 @@ router.get("/callback", async (req, res) => {
         }
 
         // Signature is valid - look up user by custody address
+        if (!neynarClient) {
+          logger.error("[SIWF Callback] Neynar client not configured");
+          return res.status(500).send(`
+            <!DOCTYPE html>
+            <html>
+              <head><title>Server Error</title></head>
+              <body>
+                <h1>❌ Server Error</h1>
+                <p>Neynar API not configured. Please contact support.</p>
+              </body>
+            </html>
+          `);
+        }
+        
         const response = await neynarClient.lookupUserByCustodyAddress({
           custodyAddress: providedAddress,
         });
@@ -645,6 +665,11 @@ router.post("/miniapp-connect", async (req, res) => {
     } else {
       // Fallback: Verify via Neynar API (lookup user by custody address)
       logger.info("[Mini App Connect] No signature provided, verifying via Neynar API");
+      if (!neynarClient) {
+        logger.error("[Mini App Connect] Neynar client not configured - cannot verify user");
+        return res.status(500).json({ error: "User verification service unavailable. Please try again later." });
+      }
+      
       try {
         const response = await neynarClient.lookupUserByCustodyAddress({
           custodyAddress: custodyAddress.toLowerCase(),
