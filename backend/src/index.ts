@@ -15,19 +15,6 @@ async function bootstrap(): Promise<void> {
 
   const app = express();
   
-  // CORS configuration - MUST be before other middleware
-  // Allow all Farcaster domains and user's domain
-  const allowedOrigins = [
-    "https://warpcast.com", // Farcaster/Warpcast origin (REQUIRED)
-    "https://snapchain.farcaster.xyz", // Snapchain preview (REQUIRED)
-    "https://client.farcaster.xyz", // OnchainKit / AuthKit (REQUIRED)
-    "https://farcaster.xyz", // Farcaster main domain
-    "https://infobot.fun", // User's Mini App domain
-    "https://infobot-production-f74e.up.railway.app", // Backend URL (optional, for testing)
-    "http://localhost:3000", // Local development
-    "http://localhost:5173", // Local development
-  ];
-  
   // CORS configuration - EXACTLY as Lovable requested
   // Allow requests from Mini App, Farcaster domains, and Lovable
   const allowedOrigins = [
@@ -37,6 +24,7 @@ async function bootstrap(): Promise<void> {
     'https://snapchain.farcaster.xyz', // Snapchain preview
     'https://farcaster.xyz',          // Farcaster main
     'https://3286b522-a4bf-4197-843e-64faa1e5aa3d.lovableproject.com', // Lovable project
+    'https://infobot-production-f74e.up.railway.app', // Backend URL (optional, for testing)
     'http://localhost:3000',          // Local development
     'http://localhost:5173',         // Local development
   ];
