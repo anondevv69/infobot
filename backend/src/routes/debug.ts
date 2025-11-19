@@ -133,6 +133,79 @@ router.get("/cors-test", (req, res) => {
   });
 });
 
+// Test miniapp-connect CORS specifically
+router.options("/miniapp-connect-test", (req, res) => {
+  const origin = req.headers.origin;
+  logger.info("[CORS TEST] OPTIONS request from:", origin || "none");
+  
+  const allowedOrigins = [
+    'https://infobot.fun',
+    'https://warpcast.com',
+    'https://client.farcaster.xyz',
+    'https://snapchain.farcaster.xyz',
+    'https://farcaster.xyz',
+    'https://3286b522-a4bf-4197-843e-64faa1e5aa3d.lovableproject.com',
+  ];
+  
+  if (origin && (allowedOrigins.includes(origin) || 
+                 origin.includes('farcaster.xyz') || 
+                 origin.includes('warpcast.com') ||
+                 /^https:\/\/[a-f0-9-]+\.lovableproject\.com$/.test(origin))) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    logger.info("[CORS TEST] ✅ Allowed origin:", origin);
+  } else if (origin) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    logger.warn("[CORS TEST] ⚠️ Unknown origin, allowing anyway:", origin);
+  }
+  
+  res.sendStatus(200);
+});
+
+router.post("/miniapp-connect-test", (req, res) => {
+  const origin = req.headers.origin;
+  logger.info("[CORS TEST] POST request from:", origin || "none");
+  
+  const allowedOrigins = [
+    'https://infobot.fun',
+    'https://warpcast.com',
+    'https://client.farcaster.xyz',
+    'https://snapchain.farcaster.xyz',
+    'https://farcaster.xyz',
+    'https://3286b522-a4bf-4197-843e-64faa1e5aa3d.lovableproject.com',
+  ];
+  
+  if (origin && (allowedOrigins.includes(origin) || 
+                 origin.includes('farcaster.xyz') || 
+                 origin.includes('warpcast.com') ||
+                 /^https:\/\/[a-f0-9-]+\.lovableproject\.com$/.test(origin))) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    logger.info("[CORS TEST] ✅ Allowed origin:", origin);
+  } else if (origin) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    logger.warn("[CORS TEST] ⚠️ Unknown origin, allowing anyway:", origin);
+  }
+  
+  res.json({
+    success: true,
+    message: "CORS test successful!",
+    origin: origin || "none",
+    body: req.body,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Health check endpoint
 router.get("/health", (req, res) => {
   res.json({

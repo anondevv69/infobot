@@ -77,6 +77,7 @@ async function bootstrap(): Promise<void> {
   });
   
   // Handle OPTIONS preflight for all routes
+  // Note: This is a catch-all, but route-specific handlers will take precedence
   app.options("*", cors());
   
   // Manual CORS headers as fallback for all /api/siwf/* endpoints
@@ -140,6 +141,16 @@ async function bootstrap(): Promise<void> {
   app.use("/debug", debugRouter);
   // Alias for easier access (as mentioned in ChatGPT response)
   app.use("/api/siwf/debug", debugRouter);
+  
+  // Log registered routes on startup
+  logger.info("=".repeat(60));
+  logger.info("[BACKEND STARTUP] Registered Routes:");
+  logger.info("[BACKEND STARTUP] - POST /api/siwf/miniapp-connect");
+  logger.info("[BACKEND STARTUP] - OPTIONS /api/siwf/miniapp-connect");
+  logger.info("[BACKEND STARTUP] - GET /debug/cors-test");
+  logger.info("[BACKEND STARTUP] - OPTIONS /debug/miniapp-connect-test");
+  logger.info("[BACKEND STARTUP] - POST /debug/miniapp-connect-test");
+  logger.info("=".repeat(60));
 
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     logger.error("Unhandled error", err);
