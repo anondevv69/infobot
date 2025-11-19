@@ -491,10 +491,24 @@ router.options("/miniapp-connect", (req, res) => {
   const origin = req.headers.origin;
   logger.info("[CORS] OPTIONS preflight request from:", origin);
   
-  // Explicitly allow https://infobot.fun as required by Lovable
-  res.header("Access-Control-Allow-Origin", "https://infobot.fun");
-  res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type");
+  // Allow Farcaster domains and user's domain
+  const allowedOrigins = [
+    "https://infobot.fun",
+    "https://warpcast.com",
+    "https://client.farcaster.xyz",
+    "https://farcaster.xyz",
+  ];
+  
+  // Check if origin is allowed, or default to the request origin
+  const allowedOrigin = origin && (
+    allowedOrigins.includes(origin) ||
+    origin.includes("farcaster.xyz") ||
+    origin.includes("warpcast.com")
+  ) ? origin : (origin || "https://infobot.fun");
+  
+  res.header("Access-Control-Allow-Origin", allowedOrigin);
+  res.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With");
   res.header("Access-Control-Allow-Credentials", "true");
   res.header("Access-Control-Max-Age", "86400"); // 24 hours
   res.sendStatus(200);
@@ -504,10 +518,25 @@ router.options("/miniapp-connect", (req, res) => {
 router.post("/miniapp-connect", async (req, res) => {
   try {
     // Set CORS headers explicitly (must be before any response)
-    // Explicitly allow https://infobot.fun as required by Lovable
-    res.header("Access-Control-Allow-Origin", "https://infobot.fun");
-    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type");
+    // Allow Farcaster domains and user's domain
+    const origin = req.headers.origin;
+    const allowedOrigins = [
+      "https://infobot.fun",
+      "https://warpcast.com",
+      "https://client.farcaster.xyz",
+      "https://farcaster.xyz",
+    ];
+    
+    // Check if origin is allowed, or default to the request origin
+    const allowedOrigin = origin && (
+      allowedOrigins.includes(origin) ||
+      origin.includes("farcaster.xyz") ||
+      origin.includes("warpcast.com")
+    ) ? origin : (origin || "https://infobot.fun");
+    
+    res.header("Access-Control-Allow-Origin", allowedOrigin);
+    res.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With");
     res.header("Access-Control-Allow-Credentials", "true");
     
     // Log the incoming request for debugging

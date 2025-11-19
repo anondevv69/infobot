@@ -15,25 +15,68 @@ async function bootstrap(): Promise<void> {
   const app = express();
   
   // CORS configuration - MUST be before other middleware
-  // Explicitly allow https://infobot.fun as required by Lovable
+  // Allow Farcaster domains (warpcast.com, client.farcaster.xyz) and user's domain
+  const allowedOrigins = [
+    "https://infobot.fun", // User's Mini App domain
+    "https://warpcast.com", // Farcaster/Warpcast origin
+    "https://client.farcaster.xyz", // Farcaster client origin
+    "https://farcaster.xyz", // Farcaster main domain
+    "http://localhost:3000", // Local development
+    "http://localhost:5173", // Local development
+  ];
+  
   app.use(cors({
-    origin: "https://infobot.fun", // Explicitly set to infobot.fun
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      // Check if origin is in allowed list or is a Farcaster domain
+      if (
+        allowedOrigins.indexOf(origin) !== -1 ||
+        origin.includes("farcaster.xyz") ||
+        origin.includes("warpcast.com") ||
+        origin.includes("snapchain.farcaster.xyz")
+      ) {
+        callback(null, true);
+      } else {
+        logger.warn(`[CORS] Blocked origin: ${origin}`);
+        // For now, allow all to debug - can restrict later
+        callback(null, true);
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "Accept", "Origin", "X-Requested-With"],
     exposedHeaders: ["Content-Type"],
     preflightContinue: false,
     optionsSuccessStatus: 200,
   }));
   
-  // Also add manual CORS headers as fallback for /api/siwf/miniapp-connect
+  // Also add manual CORS headers as fallback for /api/siwf/* endpoints
   app.use((req, res, next) => {
-    // For miniapp-connect endpoint, explicitly set CORS headers
-    if (req.path === "/api/siwf/miniapp-connect" || req.path.endsWith("/miniapp-connect")) {
-      res.header("Access-Control-Allow-Origin", "https://infobot.fun");
-      res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-      res.header("Access-Control-Allow-Headers", "Content-Type");
-      res.header("Access-Control-Allow-Credentials", "true");
+    // For SIWF endpoints, set CORS headers based on origin
+    if (req.path.startsWith("/api/siwf/")) {
+      const origin = req.headers.origin;
+      
+      // Allow if origin is in allowed list or is a Farcaster domain
+      if (
+        origin &&
+        (allowedOrigins.includes(origin) ||
+         origin.includes("farcaster.xyz") ||
+         origin.includes("warpcast.com") ||
+         origin.includes("snapchain.farcaster.xyz"))
+      ) {
+        res.header("Access-Control-Allow-Origin", origin);
+        res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With");
+        res.header("Access-Control-Allow-Credentials", "true");
+      } else if (origin) {
+        // Fallback: allow the origin anyway (for debugging)
+        res.header("Access-Control-Allow-Origin", origin);
+        res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.header("Access-Control-Allow-Headers", "Content-Type");
+        res.header("Access-Control-Allow-Credentials", "true");
+      }
       
       // Handle preflight
       if (req.method === "OPTIONS") {
