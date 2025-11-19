@@ -127,9 +127,21 @@
       <div id="status"></div>
       <div id="userInfo"></div>
       
+      <!-- Show message if no userId (direct visit) -->
+      <div id="noUserIdWarning" style="display: none; margin: 20px 0; padding: 15px; background: #fff3cd; border-radius: 10px; border: 1px solid #ffc107;">
+        <p style="color: #856404; margin: 0;">
+          <strong>⚠️ No Discord/Telegram connection detected</strong><br>
+          To link your Farcaster account to the bot, please:<br>
+          1. Go to Discord/Telegram<br>
+          2. Run <code>/connect</code> command<br>
+          3. Click the Mini App link<br><br>
+          Or connect Discord below to link accounts directly.
+        </p>
+      </div>
+      
       <!-- Discord Connection Section -->
       <div id="discordSection" style="margin: 20px 0;">
-        <h3 style="color: #5865F2; margin-bottom: 10px;">💬 Connect Discord</h3>
+        <h3 style="color: #5865F2; margin-bottom: 10px;">💬 Connect Discord (Optional)</h3>
         <button id="connectDiscordBtn" onclick="connectDiscord()" style="background: #5865F2;">
           Connect Discord Account
         </button>
@@ -142,9 +154,13 @@
       <!-- Farcaster Connection Section -->
       <div id="farcasterSection" style="margin: 20px 0;">
         <h3 style="color: #8a63d2; margin-bottom: 10px;">🔗 Connect Farcaster</h3>
-        <button id="connectBtn" onclick="connectWallet()">
+        <button id="connectBtn" onclick="connectWallet()" style="display: none;">
           Connect with Farcaster
         </button>
+        <div id="loadingIndicator" style="display: none; text-align: center; padding: 20px;">
+          <div class="loading"></div>
+          <p style="margin-top: 10px; color: #666;">Initializing...</p>
+        </div>
       </div>
       
       <!-- Link Button (shows when both are connected) -->

@@ -19,6 +19,8 @@ const DISCORD_SCOPE = 'identify';
 
 async function initSDK() {
   try {
+    showStatus('info', '🔄 Initializing Farcaster SDK...');
+    
     // Initialize the Mini App SDK
     sdk = await initMiniAppSDK();
     
@@ -29,15 +31,24 @@ async function initSDK() {
         showUserInfo(user);
         showStatus('success', '✅ Connected to Farcaster!');
         document.getElementById('connectBtn')!.style.display = 'none';
-        document.getElementById('linkBotBtn')!.style.display = 'block';
+        
+        // Check if we can link accounts now
+        checkCanLink();
+      } else {
+        // User not signed in - show connect button
+        showStatus('info', '👆 Click "Connect with Farcaster" to sign in');
+        document.getElementById('connectBtn')!.style.display = 'block';
       }
-    } catch (error) {
-      // User not signed in yet
-      console.log('User not signed in:', error);
+    } catch (error: any) {
+      // User not signed in yet - this is normal
+      console.log('[Mini App] User not signed in:', error?.message || error);
+      showStatus('info', '👆 Click "Connect with Farcaster" to sign in');
+      document.getElementById('connectBtn')!.style.display = 'block';
     }
-  } catch (error) {
-    console.error('Failed to initialize SDK:', error);
-    showStatus('error', 'Failed to initialize Farcaster SDK. Make sure you\'re opening this in Warpcast.');
+  } catch (error: any) {
+    console.error('[Mini App] Failed to initialize SDK:', error);
+    showStatus('error', `Failed to initialize: ${error?.message || 'Make sure you\'re opening this in Warpcast'}`);
+    document.getElementById('connectBtn')!.style.display = 'block';
   }
 }
 
@@ -352,10 +363,13 @@ async function linkToBot(farcasterUser: any) {
 }
 
 // Update connectWallet to check if we can link after Farcaster connection
-async function connectWallet() {
+(window as any).connectWallet = async function() {
   try {
-    showStatus('info', '🔄 Connecting...');
-    document.getElementById('connectBtn')!.disabled = true;
+    showStatus('info', '🔄 Connecting to Farcaster...');
+    const connectBtn = document.getElementById('connectBtn') as HTMLButtonElement;
+    if (connectBtn) {
+      connectBtn.disabled = true;
+    }
     
     // Sign in with Farcaster (this will show QR code on mobile)
     user = await sdk.actions.signIn();
@@ -363,22 +377,38 @@ async function connectWallet() {
     if (user) {
       showUserInfo(user);
       showStatus('success', '✅ Successfully connected to Farcaster!');
-      document.getElementById('connectBtn')!.style.display = 'none';
+      if (connectBtn) {
+        connectBtn.style.display = 'none';
+      }
       
       // Check if we can link accounts now
       checkCanLink();
       
       // Automatically link if we have both Discord and userId
       if (discordUser || userId) {
-        await linkToBot(user);
+        // Small delay to show success message
+        setTimeout(() => {
+          linkToBot(user);
+        }, 1000);
+      } else {
+        // No Discord/userId - show message
+        showStatus('info', '💡 Connect Discord or use /connect command in Discord/Telegram to link accounts');
+      }
+    } else {
+      showStatus('error', 'Failed to get user info from Farcaster');
+      if (connectBtn) {
+        connectBtn.disabled = false;
       }
     }
   } catch (error: any) {
-    console.error('Connection error:', error);
-    showStatus('error', `Connection failed: ${error.message || 'Unknown error'}`);
-    document.getElementById('connectBtn')!.disabled = false;
+    console.error('[Mini App] Connection error:', error);
+    showStatus('error', `Connection failed: ${error?.message || 'Unknown error'}. Try again or use the server-side flow from Discord/Telegram.`);
+    const connectBtn = document.getElementById('connectBtn') as HTMLButtonElement;
+    if (connectBtn) {
+      connectBtn.disabled = false;
+    }
   }
-}
+};
 
 // Update linkBot function
 (window as any).linkBot = async function() {
@@ -395,8 +425,41 @@ async function connectWallet() {
   await linkToBot(user);
 };
 
-// Initialize on page load
-initSDK();
+// Show loading indicator on page load
+document.addEventListener('DOMContentLoaded', () => {
+  const loadingIndicator = document.getElementById('loadingIndicator');
+  const connectBtn = document.getElementById('connectBtn');
+  if (loadingIndicator) {
+    loadingIndicator.style.display = 'block';
+  }
+  if (connectBtn) {
+    connectBtn.style.display = 'none';
+  }
+  
+  // Show warning if no userId (direct visit)
+  if (!userId) {
+    const warning = document.getElementById('noUserIdWarning');
+    if (warning) {
+      warning.style.display = 'block';
+    }
+  }
+  
+  // Initialize SDK
+  initSDK().then(() => {
+    // Hide loading indicator after init
+    if (loadingIndicator) {
+      loadingIndicator.style.display = 'none';
+    }
+  }).catch((error) => {
+    console.error('[Mini App] Init error:', error);
+    if (loadingIndicator) {
+      loadingIndicator.style.display = 'none';
+    }
+    if (connectBtn) {
+      connectBtn.style.display = 'block';
+    }
+  });
+});
 
 // Check if we have Discord OAuth code
 const code = urlParams.get('code');
