@@ -4,12 +4,12 @@ import { z } from "zod";
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
-  DISCORD_BOT_TOKEN: z.string().min(1),
+  DISCORD_BOT_TOKEN: z.string().min(1).optional(), // Only needed for bot service
   DISCORD_CLIENT_ID: z.string().min(1).optional(), // For OAuth
   DISCORD_CLIENT_SECRET: z.string().min(1).optional(), // For OAuth
   DISCORD_REDIRECT_URI: z.string().url().optional(), // For OAuth
-  NEYNAR_API_KEY: z.string().min(1),
-  WEBHOOK_SECRET: z.string().min(1),
+  NEYNAR_API_KEY: z.string().min(1).optional(), // Optional for backend (only needed for some features)
+  WEBHOOK_SECRET: z.string().min(1).optional(), // Optional for backend
   DATABASE_URL: z.string().url().optional(),
   BACKEND_URL: z.string().url().optional(),
   FARCASTER_REFERRAL_CODE: z.string().optional(),

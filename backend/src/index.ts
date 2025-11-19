@@ -11,7 +11,12 @@ import { tradingRouter } from "./routes/trading";
 import { discordRouter } from "./routes/discord";
 
 async function bootstrap(): Promise<void> {
-  await ensureSchema();
+  try {
+    await ensureSchema();
+  } catch (error) {
+    logger.warn("Database schema check failed (this is OK if DATABASE_URL is not set):", error);
+    // Continue anyway - database is optional for some features
+  }
 
   const app = express();
   
