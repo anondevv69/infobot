@@ -31,7 +31,6 @@ import { handleRelayCommand } from "./commands/relay";
 import { handleDebugCommand } from "./commands/debug";
 import { handleConnectSignerCommand } from "./commands/connectSigner";
 import { handleDisconnectSignerCommand } from "./commands/disconnectSigner";
-import { handleStatsCommand } from "./commands/stats";
 import { parsePaginationButton } from "./utils/pagination";
 import { handleGeneralPagination } from "./handlers/pagination";
 import { showDiscordTypingIndicator, showDiscordCommandTyping } from "./utils/typingIndicator";
@@ -137,6 +136,19 @@ async function main(): Promise<void> {
 
   client.on(Events.InteractionCreate, handleInteraction);
   client.on(Events.MessageCreate, async (message) => {
+    // Handle webhook channel commands (stats, etc.) - ONLY in webhook channel
+    if (message.guild && !message.author.bot) {
+      const { getWebhookChannelId } = await import("./utils/webhookChannel");
+      const webhookChannelId = await getWebhookChannelId(process.env.LOG_WEBHOOK_URL || null);
+      
+      // If this is the webhook channel, handle admin commands and return early
+      // This prevents any other handlers from running in the webhook channel
+      if (webhookChannelId && message.channelId === webhookChannelId) {
+        await handleWebhookChannelCommand(message);
+        return; // Exit early - don't process any other handlers
+      }
+    }
+
     // Skip bot messages and DMs (only respond in guilds)
     if (message.author.bot || !message.guild) {
       return;
@@ -240,13 +252,62 @@ async function handleChatCommand(
     case "disconnect-signer":
       await handleDisconnectSignerCommand(interaction);
       break;
-    case "stats":
-      await handleStatsCommand(interaction);
-      break;
     default:
       await interaction.reply({
         content: "Command not recognized. Use `/help` for the list of available commands.",
       });
+  }
+}
+
+async function handleWebhookChannelCommand(message: import("discord.js").Message): Promise<void> {
+  const content = message.content.trim().toLowerCase();
+  
+  // Only respond to specific admin commands in the webhook channel
+  // This is the ONLY place where stats and system info are accessible
+  if (content === "!stats" || content === "/stats" || content === "stats" || content === "!info") {
+    try {
+      const { getBotStats } = await import("./utils/botStats");
+      const stats = await getBotStats(message.client);
+      
+      const { EmbedBuilder } = await import("discord.js");
+      const embed = new EmbedBuilder()
+        .setTitle("📊 InfoBot Statistics")
+        .setColor(0x5865f2)
+        .setDescription(
+          `**Discord Servers:** ${stats.discordServers}\n` +
+          `**Total Users:** ${stats.totalUsers} unique users\n` +
+          `**Telegram Chats:** ${stats.telegramChats} groups/channels\n` +
+          `**Total Searches:** ${stats.totalSearches}\n` +
+          `**Uptime:** ${stats.uptime}\n` +
+          `**Memory:** ${stats.memoryUsage}`
+        )
+        .setTimestamp()
+        .setFooter({ text: "InfoBot Statistics - Admin Only" });
+
+      await message.reply({ embeds: [embed] });
+    } catch (error) {
+      logger.error("Failed to get stats for webhook channel", error);
+      await message.reply("❌ Failed to retrieve statistics.");
+    }
+    return; // Exit early - don't process any other commands
+  }
+  
+  // Show help for webhook channel commands
+  if (content === "!help" || content === "/help" || content === "help") {
+    const { EmbedBuilder } = await import("discord.js");
+    const embed = new EmbedBuilder()
+      .setTitle("🔐 Admin Commands")
+      .setColor(0x5865f2)
+      .setDescription(
+        "**Available Commands:**\n" +
+        "• `!stats` - View bot statistics\n" +
+        "• `!info` - View bot statistics\n\n" +
+        "⚠️ These commands are only available in this channel."
+      )
+      .setTimestamp();
+    
+    await message.reply({ embeds: [embed] });
+    return;
   }
 }
 
