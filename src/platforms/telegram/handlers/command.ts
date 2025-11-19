@@ -22,10 +22,6 @@ import {
   detectChainFromLink,
 } from "../../../services/relay";
 import {
-  handleTelegramConnect,
-  handleTelegramDisconnect,
-  handleTelegramBalance,
-  handleTelegramTrade,
   handleTelegramConnectSigner,
   handleTelegramDisconnectSigner,
 } from "./trading";
@@ -51,13 +47,6 @@ export async function handleTelegramCommand(
 <code>/casts &lt;keyword&gt;</code> - Search Farcaster casts by keyword
 <code>/relay &lt;transaction&gt;</code> - Get cross-chain transaction details from Relay.link
 
-<b>Trading Commands:</b>
-<code>/connect</code> - Connect your Farcaster account for trading
-<code>/disconnect</code> - Disconnect your Farcaster account
-<code>/balance [token] [chain]</code> - Check your wallet balance
-<code>/buy &lt;token&gt; &lt;amount&gt; [chain]</code> - Buy tokens with ETH
-<code>/sell &lt;token&gt; &lt;amount&gt; [chain]</code> - Sell tokens for ETH
-<code>/swap &lt;from&gt; &lt;to&gt; &lt;amount&gt; [chain]</code> - Swap between tokens
 
 <b>Auto-Detection:</b>
 Just send:
@@ -328,82 +317,6 @@ Just send:
         await bot.sendChatAction(chatId, "typing");
         
         await handleCastsQuery(bot, chatId, query);
-        break;
-      }
-
-      case "connect": {
-        // Parse optional username/wallet: /connect [@username|0xwallet]
-        const usernameOrWallet = query || undefined;
-        await handleTelegramConnect(bot, msg, usernameOrWallet);
-        break;
-      }
-
-      case "disconnect": {
-        await handleTelegramDisconnect(bot, msg);
-        break;
-      }
-
-      case "balance": {
-        // Parse optional parameters: /balance [token] [chain]
-        const parts = query?.split(/\s+/) || [];
-        const tokenAddress = parts[0] || undefined;
-        const chainId = parts[1] ? parseInt(parts[1], 10) : undefined;
-        await handleTelegramBalance(bot, msg, tokenAddress, chainId);
-        break;
-      }
-
-      case "buy": {
-        // Format: /buy <token> <amount> [chain]
-        if (!query) {
-          await bot.sendMessage(chatId, "Usage: <code>/buy &lt;token&gt; &lt;amount&gt; [chain]</code>\nExample: <code>/buy 0x1234... 0.1 8453</code>", { parse_mode: "HTML" });
-          return;
-        }
-        const parts = query.split(/\s+/);
-        if (parts.length < 2) {
-          await bot.sendMessage(chatId, "Usage: <code>/buy &lt;token&gt; &lt;amount&gt; [chain]</code>\nExample: <code>/buy 0x1234... 0.1 8453</code>", { parse_mode: "HTML" });
-          return;
-        }
-        const tokenAddress = parts[0];
-        const amount = parts[1];
-        const chainId = parts[2] ? parseInt(parts[2], 10) : undefined;
-        await handleTelegramTrade(bot, msg, "native", tokenAddress, amount, chainId);
-        break;
-      }
-
-      case "sell": {
-        // Format: /sell <token> <amount> [chain]
-        if (!query) {
-          await bot.sendMessage(chatId, "Usage: <code>/sell &lt;token&gt; &lt;amount&gt; [chain]</code>\nExample: <code>/sell 0x1234... 100 8453</code>", { parse_mode: "HTML" });
-          return;
-        }
-        const parts = query.split(/\s+/);
-        if (parts.length < 2) {
-          await bot.sendMessage(chatId, "Usage: <code>/sell &lt;token&gt; &lt;amount&gt; [chain]</code>\nExample: <code>/sell 0x1234... 100 8453</code>", { parse_mode: "HTML" });
-          return;
-        }
-        const tokenAddress = parts[0];
-        const amount = parts[1];
-        const chainId = parts[2] ? parseInt(parts[2], 10) : undefined;
-        await handleTelegramTrade(bot, msg, tokenAddress, "native", amount, chainId);
-        break;
-      }
-
-      case "swap": {
-        // Format: /swap <from> <to> <amount> [chain]
-        if (!query) {
-          await bot.sendMessage(chatId, "Usage: <code>/swap &lt;from&gt; &lt;to&gt; &lt;amount&gt; [chain]</code>\nExample: <code>/swap 0x1234... 0x5678... 0.1 8453</code>", { parse_mode: "HTML" });
-          return;
-        }
-        const parts = query.split(/\s+/);
-        if (parts.length < 3) {
-          await bot.sendMessage(chatId, "Usage: <code>/swap &lt;from&gt; &lt;to&gt; &lt;amount&gt; [chain]</code>\nExample: <code>/swap 0x1234... 0x5678... 0.1 8453</code>", { parse_mode: "HTML" });
-          return;
-        }
-        const fromToken = parts[0];
-        const toToken = parts[1];
-        const amount = parts[2];
-        const chainId = parts[3] ? parseInt(parts[3], 10) : undefined;
-        await handleTelegramTrade(bot, msg, fromToken, toToken, amount, chainId);
         break;
       }
 

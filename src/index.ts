@@ -28,10 +28,6 @@ import { handleXAccountMessage } from "./handlers/xAccount";
 import { handleCopyValueButton } from "./handlers/copyValueButton";
 import { handleClankerCommand, handleClankerPagination } from "./commands/clanker";
 import { handleRelayCommand } from "./commands/relay";
-import { handleConnectCommand } from "./commands/connect";
-import { handleDisconnectCommand } from "./commands/disconnect";
-import { handleBalanceCommand } from "./commands/balance";
-import { handleBuyCommand, handleSellCommand, handleSwapCommand } from "./commands/trade";
 import { handleDebugCommand } from "./commands/debug";
 import { handleConnectSignerCommand } from "./commands/connectSigner";
 import { handleDisconnectSignerCommand } from "./commands/disconnectSigner";
@@ -191,24 +187,6 @@ async function handleChatCommand(
       break;
     case "relay":
       await handleRelayCommand(interaction);
-      break;
-    case "connect":
-      await handleConnectCommand(interaction);
-      break;
-    case "disconnect":
-      await handleDisconnectCommand(interaction);
-      break;
-    case "balance":
-      await handleBalanceCommand(interaction);
-      break;
-    case "buy":
-      await handleBuyCommand(interaction);
-      break;
-    case "sell":
-      await handleSellCommand(interaction);
-      break;
-    case "swap":
-      await handleSwapCommand(interaction);
       break;
     case "debug":
       await handleDebugCommand(interaction);

@@ -24,12 +24,6 @@ export async function startTelegramBot(): Promise<void> {
     { command: "clanker", description: "Search Clanker deployments" },
     { command: "casts", description: "Search Farcaster casts by keyword" },
     { command: "relay", description: "Get cross-chain transaction details from Relay.link. Provide a full transaction link from a block explorer (e.g., https://basescan.org/tx/0x...)" },
-    { command: "connect", description: "Connect your Farcaster account for trading" },
-    { command: "disconnect", description: "Disconnect your Farcaster account" },
-    { command: "balance", description: "Check your wallet balance for a token" },
-    { command: "buy", description: "Buy tokens with ETH/native token" },
-    { command: "sell", description: "Sell tokens for ETH/native token" },
-    { command: "swap", description: "Swap between two tokens" },
   ]);
 
   bot.on("message", async (msg) => {
@@ -109,40 +103,6 @@ export async function startTelegramBot(): Promise<void> {
     await handleTelegramCommand(bot, msg, "relay");
   });
 
-  // Trading commands
-  bot.onText(/\/connect/, async (msg) => {
-    await handleTelegramCommand(bot, msg, "connect");
-  });
-
-  bot.onText(/\/disconnect/, async (msg) => {
-    await handleTelegramCommand(bot, msg, "disconnect");
-  });
-
-  bot.onText(/\/balance(?: (.+))?/, async (msg, match) => {
-    const query = match?.[1];
-    await handleTelegramCommand(bot, msg, "balance", query);
-  });
-
-  bot.onText(/\/buy (.+)/, async (msg, match) => {
-    const query = match?.[1];
-    if (query) {
-      await handleTelegramCommand(bot, msg, "buy", query);
-    }
-  });
-
-  bot.onText(/\/sell (.+)/, async (msg, match) => {
-    const query = match?.[1];
-    if (query) {
-      await handleTelegramCommand(bot, msg, "sell", query);
-    }
-  });
-
-  bot.onText(/\/swap (.+)/, async (msg, match) => {
-    const query = match?.[1];
-    if (query) {
-      await handleTelegramCommand(bot, msg, "swap", query);
-    }
-  });
 
   // Handle pagination callbacks
   bot.on("callback_query", async (callbackQuery) => {
