@@ -2,13 +2,7 @@ import type { ClankerToken } from "./clanker";
 import { fetchTokensByFid } from "./clanker";
 import { shouldBroadcastDeployment } from "./clankerMonitor";
 import { broadcastClankerDeployment } from "./clankerBroadcast";
-// Logger - use console for now
-const logger = {
-  info: (...args: any[]) => console.log("[INFO]", ...args),
-  warn: (...args: any[]) => console.warn("[WARN]", ...args),
-  error: (...args: any[]) => console.error("[ERROR]", ...args),
-  debug: (...args: any[]) => console.debug("[DEBUG]", ...args),
-};
+import { logger } from "../utils/logger";
 
 // Database functions - import from backend
 async function hasBroadcastedClankerToken(contractAddress: string): Promise<boolean> {
@@ -116,13 +110,15 @@ export class ClankerWatcher {
    * Polls Clanker API for recent deployments and checks deployer scores
    */
   private async checkForNewDeployments(): Promise<void> {
-    logger.info("[Clanker Watcher] Checking for new deployments...");
+    logger.system("Clanker Watcher: Starting deployment check");
 
     try {
       // Poll Clanker API for recent tokens
       const recentTokens = await this.fetchRecentClankerTokens();
       
-      logger.info(`[Clanker Watcher] Found ${recentTokens.length} recent tokens to check`);
+      logger.system("Clanker Watcher: Found recent tokens", {
+        count: recentTokens.length,
+      });
 
       for (const token of recentTokens) {
         if (!token.contract_address) {
@@ -131,7 +127,11 @@ export class ClankerWatcher {
 
         // Filter: Only process ClankerWorld UI or Farcaster deployments (exclude bankr)
         if (!this.isValidClankerSource(token)) {
-          logger.debug(`[Clanker Watcher] Skipping token ${token.contract_address} - not from ClankerWorld UI or Farcaster (platform: ${token.social_context?.platform || token.metadata?.platform || "unknown"})`);
+          logger.system("Clanker Watcher: Skipping token (invalid source)", {
+            contractAddress: token.contract_address,
+            platform: token.social_context?.platform || token.metadata?.platform || "unknown",
+            interface: token.social_context?.interface || token.metadata?.interface || "unknown",
+          });
           continue;
         }
 
@@ -147,9 +147,13 @@ export class ClankerWatcher {
           await shouldBroadcastDeployment(token);
 
         if (shouldBroadcast && deployerFid && deployerScore) {
-          logger.info(
-            `[Clanker Watcher] 🎯 Broadcasting deployment: ${token.name || token.symbol} (${token.contract_address}) by FID ${deployerFid} (score: ${deployerScore})`
-          );
+          logger.system("Clanker Watcher: Broadcasting high-score deployment", {
+            tokenName: token.name || token.symbol,
+            contractAddress: token.contract_address,
+            deployerFid,
+            deployerScore,
+            deployerUsername,
+          });
 
           // Broadcast to all servers
           const result = await broadcastClankerDeployment(
@@ -166,24 +170,30 @@ export class ClankerWatcher {
               deployerFid,
               deployerScore
             );
-            logger.info(
-              `[Clanker Watcher] ✅ Broadcasted to ${result.success} channels`
-            );
+            logger.system("Clanker Watcher: Broadcast successful", {
+              contractAddress: token.contract_address,
+              channelsBroadcasted: result.success,
+              channelsFailed: result.failed,
+            });
           } else {
-            logger.warn(
-              `[Clanker Watcher] ⚠️ Failed to broadcast to any channels`
-            );
+            logger.warn("Clanker Watcher: Broadcast failed", {
+              contractAddress: token.contract_address,
+              deployerFid,
+              result,
+            });
           }
         } else {
-          logger.debug(
-            `[Clanker Watcher] Token ${token.contract_address} does not meet broadcast criteria (score: ${deployerScore || "N/A"})`
-          );
+          logger.system("Clanker Watcher: Token does not meet broadcast criteria", {
+            contractAddress: token.contract_address,
+            deployerScore: deployerScore || null,
+            deployerFid: deployerFid || null,
+          });
         }
       }
 
-      logger.info("[Clanker Watcher] Check complete");
+      logger.system("Clanker Watcher: Deployment check complete");
     } catch (error) {
-      logger.error("[Clanker Watcher] Error checking deployments:", error);
+      logger.error("Clanker Watcher: Error during deployment check", error);
     }
   }
 

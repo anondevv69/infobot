@@ -1,13 +1,7 @@
 import { Client, EmbedBuilder, TextChannel } from "discord.js";
 import type { ClankerToken } from "./clanker";
 import { buildTokenEmbed } from "../utils/clankerEmbeds";
-// Logger - use console for now
-const logger = {
-  info: (...args: any[]) => console.log("[INFO]", ...args),
-  warn: (...args: any[]) => console.warn("[WARN]", ...args),
-  error: (...args: any[]) => console.error("[ERROR]", ...args),
-  debug: (...args: any[]) => console.debug("[DEBUG]", ...args),
-};
+import { logger } from "../utils/logger";
 import { env, requireEnv } from "../config";
 
 let discordClient: Client | null = null;

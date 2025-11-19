@@ -35,11 +35,17 @@ import { splitClankerTokens } from "../utils/clankerAssociation";
 import { buildZoraCoinResponse } from "../handlers/zoraAddress";
 import { splitEmbedIntoPages, buildPaginationButtons } from "../utils/pagination";
 import { storeEmbedForPagination } from "../handlers/pagination";
+import { logger } from "../utils/logger";
 
 export async function handleSearchCommand(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
   const query = interaction.options.getString("query", true).trim();
+  const userId = interaction.user.id;
+  const guildId = interaction.guildId || undefined;
+  const channelId = interaction.channelId;
+
+  logger.command("search", "discord", userId, guildId, channelId, { query });
 
   if (!query) {
     await interaction.reply({
@@ -111,6 +117,12 @@ export async function handleSearchCommand(
         embeds: [embeds[0]],
         components,
       });
+      
+      logger.search(query, "discord", userId, guildId, channelId, {
+        success: true,
+        type: "zora",
+        count: 1,
+      });
       return;
     }
 
@@ -121,6 +133,16 @@ export async function handleSearchCommand(
       error instanceof NeynarLookupError
         ? error.message
         : "Unexpected error while querying Neynar.";
+
+    logger.error(
+      `Search failed for query: ${query}`,
+      error,
+      { query, userId, guildId, channelId, platform: "discord" }
+    );
+
+    logger.search(query, "discord", userId, guildId, channelId, {
+      success: false,
+    });
 
     await interaction.editReply({
       content: `${message} Please retry later or check the provided value.`,

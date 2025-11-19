@@ -36,6 +36,7 @@ import { handleGeneralPagination } from "./handlers/pagination";
 import { showDiscordTypingIndicator, showDiscordCommandTyping } from "./utils/typingIndicator";
 import { initializeBroadcastClient } from "./services/clankerBroadcast";
 import { ClankerWatcher } from "./services/clankerWatcher";
+import { logger } from "./utils/logger";
 
 async function main(): Promise<void> {
   validateRequiredEnv();
@@ -72,13 +73,13 @@ async function main(): Promise<void> {
 
   // Handle unhandled promise rejections to prevent crashes
   process.on("unhandledRejection", (error) => {
-    console.error("Unhandled promise rejection:", error);
+    logger.error("Unhandled promise rejection", error);
     // Log but don't crash - Railway will handle if needed
   });
 
   // Handle uncaught exceptions
   process.on("uncaughtException", (error) => {
-    console.error("Uncaught exception:", error);
+    logger.error("Uncaught exception", error);
     // Log but allow Railway to restart if needed
   });
 
@@ -91,7 +92,7 @@ async function main(): Promise<void> {
   });
 
   client.once(Events.ClientReady, (readyClient) => {
-    console.log(`Logged in as ${readyClient.user.tag}`);
+    logger.info(`Discord bot logged in as ${readyClient.user.tag}`);
     
     // Initialize broadcast client
     initializeBroadcastClient(readyClient);
@@ -99,7 +100,7 @@ async function main(): Promise<void> {
     // Start Clanker watcher
     const watcher = new ClankerWatcher();
     watcher.start();
-    console.log("[Clanker Watcher] Started monitoring Clanker deployments");
+    logger.system("Clanker Watcher: Started monitoring Clanker deployments");
   });
 
   client.on(Events.InteractionCreate, handleInteraction);

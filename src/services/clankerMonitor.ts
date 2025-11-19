@@ -1,13 +1,7 @@
 import type { ClankerToken } from "./clanker";
 import { fetchTokensByFid } from "./clanker";
 import { findUserByWallet } from "./neynar";
-// Logger - use console for now
-const logger = {
-  info: (...args: any[]) => console.log("[INFO]", ...args),
-  warn: (...args: any[]) => console.warn("[WARN]", ...args),
-  error: (...args: any[]) => console.error("[ERROR]", ...args),
-  debug: (...args: any[]) => console.debug("[DEBUG]", ...args),
-};
+import { logger } from "../utils/logger";
 
 export interface ClankerDeployment {
   token: ClankerToken;

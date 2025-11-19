@@ -334,7 +334,13 @@ Just send:
         await bot.sendMessage(chatId, "Unknown command. Use /help to see available commands.");
     }
   } catch (error) {
-    console.error(`Error handling Telegram command ${command}:`, error);
+    const { logger } = await import("../../../utils/logger");
+    logger.error(`Error handling Telegram command: ${command}`, error, {
+      command,
+      chatId: msg.chat.id.toString(),
+      userId: msg.from?.id.toString(),
+      platform: "telegram",
+    });
     await bot.sendMessage(chatId, "An error occurred while processing your command. Please try again later.");
   }
 }
