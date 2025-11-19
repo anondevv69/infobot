@@ -57,81 +57,78 @@ export async function startTelegramBot(): Promise<void> {
         return; // Don't process further - already seen
       }
       
-      // Check database FIRST (most reliable source of truth)
-      let alreadySeen = false;
+      // Use atomic "check and mark" approach to prevent race conditions
+      // Try to mark in database FIRST - if it succeeds, it's new; if it fails, it already exists
+      const chatTitle = msg.chat.title || "Unknown";
+      const chatUsername = msg.chat.username ? `@${msg.chat.username}` : "None";
+      
+      // Get member count first (before database check to avoid extra delay)
+      let memberCount: number | null = null;
+      if (chatType === "group" || chatType === "supergroup") {
+        try {
+          memberCount = await bot.getChatMemberCount(chatId);
+          if (memberCount !== null) {
+            setTelegramChatMembers(chatId, memberCount);
+          }
+        } catch (error) {
+          // Bot might not have permission to get member count
+          memberCount = null;
+        }
+      }
+      
+      // Try to mark in database - this is atomic and prevents duplicates
+      let isNew = false;
       try {
         const { env } = await import("../../config");
         if (env.backendUrl) {
-          const response = await fetch(`${env.backendUrl}/api/seen/telegram-chat?chatId=${encodeURIComponent(chatIdStr)}`, {
-            signal: AbortSignal.timeout(2000), // 2 second timeout
+          // First check if already exists
+          const checkResponse = await fetch(`${env.backendUrl}/api/seen/telegram-chat?chatId=${encodeURIComponent(chatIdStr)}`, {
+            signal: AbortSignal.timeout(2000),
           });
-          if (response.ok) {
-            const data = await response.json();
-            alreadySeen = data.seen === true;
-            // Update in-memory cache based on database result
-            if (alreadySeen) {
+          
+          if (checkResponse.ok) {
+            const checkData = await checkResponse.json();
+            if (checkData.seen === true) {
+              // Already exists - update cache and return
               seenTelegramChats.add(chatId);
               setTelegramChatCount(seenTelegramChats.size);
-              return; // Already seen, don't log
+              return; // Don't log - already seen
             }
+          }
+          
+          // Not in database - mark it now (atomic operation)
+          const markResponse = await fetch(`${env.backendUrl}/api/seen/telegram-chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chatId: chatIdStr,
+              chatTitle,
+              chatType,
+              memberCount,
+            }),
+            signal: AbortSignal.timeout(2000),
+          });
+          
+          if (markResponse.ok) {
+            const markData = await markResponse.json();
+            isNew = markData.isNew === true; // Only log if it was actually new
+            // Update cache regardless
+            seenTelegramChats.add(chatId);
+            setTelegramChatCount(seenTelegramChats.size);
           }
         }
       } catch (error) {
-        // If database check fails, don't log - better to miss than duplicate
-        // This prevents duplicates when database is unavailable
+        // If database operations fail, don't log - better to miss than duplicate
         return;
       }
       
-      // Only log if database confirms it's new
-      // Mark in memory immediately to prevent race conditions
-      seenTelegramChats.add(chatId);
-      setTelegramChatCount(seenTelegramChats.size);
-      
-      try {
-        const chatTitle = msg.chat.title || "Unknown";
-        const chatUsername = msg.chat.username ? `@${msg.chat.username}` : "None";
-        
-        // Get actual member count for groups/supergroups (not channels)
-        let memberCount: number | null = null;
-        if (chatType === "group" || chatType === "supergroup") {
-          try {
-            memberCount = await bot.getChatMemberCount(chatId);
-            if (memberCount !== null) {
-              setTelegramChatMembers(chatId, memberCount);
-            }
-          } catch (error) {
-            // Bot might not have permission to get member count
-            memberCount = null;
-          }
-        }
-        
+      // Only log if we successfully marked it as new in database
+      if (isNew) {
         const memberCountDisplay = chatType === "channel" 
           ? "N/A (Channel)" 
           : memberCount !== null 
             ? memberCount.toString() 
             : "Unknown";
-        
-        // Mark as seen in database BEFORE logging (prevents race conditions)
-        try {
-          const { env } = await import("../../config");
-          if (env.backendUrl) {
-            await fetch(`${env.backendUrl}/api/seen/telegram-chat`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chatId: chatIdStr,
-                chatTitle,
-                chatType,
-                memberCount,
-              }),
-              signal: AbortSignal.timeout(2000), // 2 second timeout
-            }).catch(() => {
-              // Silently fail - database might not be available
-            });
-          }
-        } catch (error) {
-          // Silently fail - database might not be available
-        }
         
         logger.system(
           `🎉 **NEW TELEGRAM ${chatType.toUpperCase()}**\n` +
@@ -148,11 +145,6 @@ export async function startTelegramBot(): Promise<void> {
             memberCount: memberCount || undefined,
           }
         );
-      } catch (error) {
-        logger.error("Failed to log new Telegram chat", error, {
-          chatId: chatIdStr,
-          chatType,
-        });
       }
     }
     

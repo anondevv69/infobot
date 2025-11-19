@@ -214,10 +214,13 @@ export async function markTelegramChatAsSeen(
   chatTitle: string,
   chatType: string,
   memberCount: number | null,
-): Promise<SeenTelegramChat> {
+): Promise<{ record: SeenTelegramChat; isNew: boolean }> {
   if (!pool) {
     throw new Error("Database not configured (DATABASE_URL not set)");
   }
+  
+  // Check if it already exists first
+  const existing = await hasSeenTelegramChat(chatId);
   
   const { rows } = await pool.query<SeenTelegramChat>(
     `
@@ -232,7 +235,11 @@ export async function markTelegramChatAsSeen(
     `,
     [chatId, chatTitle, chatType, memberCount],
   );
-  return rows[0];
+  
+  return {
+    record: rows[0],
+    isNew: !existing, // Return whether this was a new insert
+  };
 }
 
 export async function hasSeenDiscordGuild(guildId: string): Promise<boolean> {

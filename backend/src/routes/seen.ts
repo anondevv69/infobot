@@ -32,8 +32,8 @@ seenRouter.post("/telegram-chat", async (req, res) => {
       return res.status(400).json({ error: "chatId, chatTitle, and chatType are required" });
     }
 
-    await markTelegramChatAsSeen(chatId, chatTitle, chatType, memberCount || null);
-    res.json({ success: true });
+    const result = await markTelegramChatAsSeen(chatId, chatTitle, chatType, memberCount || null);
+    res.json({ success: true, isNew: result.isNew });
   } catch (error) {
     console.error("[Seen] Error marking Telegram chat as seen:", error);
     res.status(500).json({ error: "Internal server error" });
