@@ -1,6 +1,6 @@
 import type { ClankerToken } from "./clanker";
 import { fetchTokensByFid } from "./clanker";
-import { findUserByWallet } from "./neynar";
+import { findUserByWallet, findUserByUsername } from "./neynar";
 import { logger } from "../utils/logger";
 
 export interface ClankerDeployment {
@@ -15,21 +15,45 @@ export interface ClankerDeployment {
  * Note: This uses follower count as a proxy for reputation score
  * If Neynar has a specific reputation API, update this function
  */
+/**
+ * Get user by FID using Neynar API
+ * Since lookupUserByFid doesn't exist, we'll need to use a workaround
+ */
+async function getUserByFid(fid: number): Promise<{ follower_count?: number; username?: string } | null> {
+  try {
+    // Use Neynar API v2 endpoint directly
+    const { env, requireEnv } = await import("../config");
+    const apiKey = requireEnv(env.neynarApiKey, "NEYNAR_API_KEY");
+    
+    const url = `https://api.neynar.com/v2/farcaster/user/by_fid?fid=${fid}`;
+    const response = await fetch(url, {
+      headers: {
+        "x-api-key": apiKey,
+      },
+    });
+    
+    if (!response.ok) {
+      return null;
+    }
+    
+    const data = (await response.json()) as { user?: { follower_count?: number; username?: string } };
+    return data.user || null;
+  } catch (error) {
+    logger.error(`[Clanker Monitor] Failed to get user by FID ${fid}:`, error);
+    return null;
+  }
+}
+
 export async function getNeynarReputationScore(fid: number): Promise<number | null> {
   try {
     // Try to get user info from Neynar
     // For now, we'll use follower count as a proxy
     // TODO: Replace with actual Neynar reputation API if available
-    const { Configuration, NeynarAPIClient } = await import("@neynar/nodejs-sdk");
-    const { env, requireEnv } = await import("../config");
+    const user = await getUserByFid(fid);
     
-    const configuration = new Configuration({
-      apiKey: requireEnv(env.neynarApiKey, "NEYNAR_API_KEY"),
-    });
-    const client = new NeynarAPIClient(configuration);
-    
-    const response = await client.lookupUserByFid({ fid });
-    const user = response.user;
+    if (!user) {
+      return null;
+    }
     
     // Use follower count as reputation proxy
     // Scale: 0-100 based on follower count
@@ -100,7 +124,7 @@ export async function resolveDeployerFid(token: ClankerToken): Promise<number | 
       const user = await findUserByWallet(token.msg_sender);
       return user?.fid ?? null;
     } catch (error) {
-      logger.warn(`[Clanker Monitor] Failed to resolve deployer from wallet ${token.msg_sender}:`, error);
+      logger.warn(`[Clanker Monitor] Failed to resolve deployer from wallet ${token.msg_sender}:`, { error: error instanceof Error ? error.message : String(error) });
     }
   }
   
@@ -140,18 +164,12 @@ export async function shouldBroadcastDeployment(token: ClankerToken): Promise<{
   // Get username if available
   let deployerUsername: string | undefined;
   try {
-    const { Configuration, NeynarAPIClient } = await import("@neynar/nodejs-sdk");
-    const { env, requireEnv } = await import("../config");
-    
-    const configuration = new Configuration({
-      apiKey: requireEnv(env.neynarApiKey, "NEYNAR_API_KEY"),
-    });
-    const client = new NeynarAPIClient(configuration);
-    
-    const response = await client.lookupUserByFid({ fid: deployerFid });
-    deployerUsername = response.user.username;
+    const user = await getUserByFid(deployerFid);
+    if (user?.username) {
+      deployerUsername = user.username;
+    }
   } catch (error) {
-    logger.warn(`[Clanker Monitor] Failed to get username for FID ${deployerFid}:`, error);
+    logger.warn(`[Clanker Monitor] Failed to get username for FID ${deployerFid}:`, { error: error instanceof Error ? error.message : String(error) });
   }
   
   return {
