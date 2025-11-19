@@ -73,7 +73,7 @@ Just send:
         // Send typing indicator
         await bot.sendChatAction(chatId, "typing");
         
-        await handleSearchQuery(bot, chatId, query);
+        await handleSearchQuery(bot, chatId, query, msg.from?.id);
         break;
       }
 
@@ -86,7 +86,7 @@ Just send:
         // Send typing indicator
         await bot.sendChatAction(chatId, "typing");
         
-        await handleZoraQuery(bot, chatId, query);
+        await handleZoraQuery(bot, chatId, query, msg.from?.id);
         break;
       }
 
@@ -99,7 +99,7 @@ Just send:
         // Send typing indicator
         await bot.sendChatAction(chatId, "typing");
         
-        await handleClankerQuery(bot, chatId, query);
+        await handleClankerQuery(bot, chatId, query, msg.from?.id);
         break;
       }
 
@@ -345,7 +345,15 @@ Just send:
   }
 }
 
-async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string): Promise<void> {
+async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string, userId?: number): Promise<void> {
+  const { logger } = await import("../../../utils/logger");
+  
+  // Log initial search
+  logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+    success: true,
+    type: "pending",
+  });
+  
   try {
     // Try address first
     if (isEthAddress(query) || isSolAddress(query)) {
@@ -354,6 +362,10 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
         // Try Clanker (build all pages)
         const clankerSent = await sendClankerTokenPages(bot, chatId, address);
         if (clankerSent) {
+          logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+            success: true,
+            type: "wallet_clanker_token",
+          });
           return;
         }
 
@@ -373,6 +385,11 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
           
           const identifier = `zora_wallet_${address.toLowerCase()}`;
           await sendPaginatedTelegramMessage(bot, chatId, zoraResponse.embeds, identifier);
+          
+          logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+            success: true,
+            type: "wallet_zora_profile",
+          });
           return;
         }
 
@@ -401,6 +418,11 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
                 ? ["Profile", "Clankers & Zora"] 
                 : undefined;
               await sendPaginatedTelegramMessage(bot, chatId, walletResponse.embeds, identifier, pageLabels);
+              
+              logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+                success: true,
+                type: "wallet_farcaster",
+              });
               return;
             }
           }
@@ -459,11 +481,21 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
             ? ["Profile", "Clankers & Zora"]
             : undefined;
           await sendPaginatedTelegramMessage(bot, chatId, result.embeds, identifier, pageLabels);
+          
+          logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+            success: true,
+            type: "farcaster",
+          });
           return;
         }
 
         // If no Farcaster profile found
         await bot.sendMessage(chatId, `No Farcaster profile linked to X handle @${handle}.`);
+        
+        logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+          success: false,
+          type: "farcaster_not_found",
+        });
         return;
       }
     }
@@ -491,6 +523,11 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
           ? ["Profile", "Clankers & Zora"]
           : undefined;
         await sendPaginatedTelegramMessage(bot, chatId, result.embeds, identifier, pageLabels);
+        
+        logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+          success: true,
+          type: "farcaster",
+        });
         return;
       }
     } catch (error) {
@@ -519,6 +556,11 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
           ? ["Profile", "Clankers & Zora"]
           : undefined;
         await sendPaginatedTelegramMessage(bot, chatId, result.embeds, identifier, pageLabels);
+        
+        logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+          success: true,
+          type: "farcaster",
+        });
         return;
       }
     } catch (error) {
@@ -535,12 +577,27 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
       const embeds = splitEmbedIntoPages(embed, 15);
       const identifier = `zora_profile_${normalizedUsername}`;
       await sendPaginatedTelegramMessage(bot, chatId, embeds, identifier);
+      
+      logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+        success: true,
+        type: "zora",
+      });
       return;
     }
 
     await bot.sendMessage(chatId, `No results found for: ${query}`);
+    
+    logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+      success: false,
+      type: "not_found",
+    });
   } catch (error) {
-    console.error("Error in handleSearchQuery:", error);
+    logger.error(`Error in handleSearchQuery: ${query}`, error, {
+      query,
+      chatId: chatId.toString(),
+      userId: userId?.toString(),
+      platform: "telegram",
+    });
     await bot.sendMessage(chatId, "An error occurred while searching. Please try again.");
   }
 }
@@ -612,7 +669,14 @@ function userHasMatchingXAccount(user: any, handle: string): boolean {
   });
 }
 
-async function handleZoraQuery(bot: TelegramBot, chatId: number, query: string): Promise<void> {
+async function handleZoraQuery(bot: TelegramBot, chatId: number, query: string, userId?: number): Promise<void> {
+  const { logger } = await import("../../../utils/logger");
+  
+  logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+    success: true,
+    type: "zora_pending",
+  });
+  
   try {
     // Try as Zora contract reference first
     const reference = extractZoraContractReference(query);
@@ -626,6 +690,11 @@ async function handleZoraQuery(bot: TelegramBot, chatId: number, query: string):
           ? ["Coin Details", "Creator Coin & Farcaster"]
           : undefined;
         await sendPaginatedTelegramMessage(bot, chatId, response.embeds, identifier, pageLabels);
+        
+        logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+          success: true,
+          type: "zora_coin",
+        });
         return;
       }
     }
@@ -641,17 +710,39 @@ async function handleZoraQuery(bot: TelegramBot, chatId: number, query: string):
       const embeds = splitEmbedIntoPages(embed, 15);
       const identifier = `zora_profile_${normalizedQuery}`;
       await sendPaginatedTelegramMessage(bot, chatId, embeds, identifier);
+      
+      logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+        success: true,
+        type: "zora",
+      });
       return;
     }
     
     await bot.sendMessage(chatId, `No Zora results found for: ${query}`);
+    
+    logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+      success: false,
+      type: "zora_not_found",
+    });
   } catch (error) {
-    console.error("Error in handleZoraQuery:", error);
+    logger.error(`Error in handleZoraQuery: ${query}`, error, {
+      query,
+      chatId: chatId.toString(),
+      userId: userId?.toString(),
+      platform: "telegram",
+    });
     await bot.sendMessage(chatId, "An error occurred while searching Zora. Please try again.");
   }
 }
 
-async function handleClankerQuery(bot: TelegramBot, chatId: number, query: string): Promise<void> {
+async function handleClankerQuery(bot: TelegramBot, chatId: number, query: string, userId?: number): Promise<void> {
+  const { logger } = await import("../../../utils/logger");
+  
+  logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+    success: true,
+    type: "clanker_pending",
+  });
+  
   try {
     // Try as address first
     if (isEthAddress(query)) {
@@ -659,6 +750,10 @@ async function handleClankerQuery(bot: TelegramBot, chatId: number, query: strin
       if (address) {
         const sent = await sendClankerTokenPages(bot, chatId, address);
         if (sent) {
+          logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+            success: true,
+            type: "clanker",
+          });
           return;
         }
       }
@@ -671,14 +766,29 @@ async function handleClankerQuery(bot: TelegramBot, chatId: number, query: strin
       if (address) {
         const sent = await sendClankerTokenPages(bot, chatId, address);
         if (sent) {
+          logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+            success: true,
+            type: "clanker",
+          });
           return;
         }
       }
     }
 
     await bot.sendMessage(chatId, `No Clanker results found for: ${query}`);
+    
+    logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+      success: false,
+      type: "clanker_not_found",
+    });
   } catch (error) {
-    console.error("Error in handleClankerQuery:", error);
+    const { logger } = await import("../../../utils/logger");
+    logger.error(`Error in handleClankerQuery: ${query}`, error, {
+      query,
+      chatId: chatId.toString(),
+      userId: userId?.toString(),
+      platform: "telegram",
+    });
     await bot.sendMessage(chatId, "An error occurred while searching Clanker. Please try again.");
   }
 }
