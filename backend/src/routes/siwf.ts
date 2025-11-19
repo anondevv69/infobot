@@ -488,12 +488,13 @@ router.get("/callback", async (req, res) => {
 
 // Handle OPTIONS preflight request for CORS
 router.options("/miniapp-connect", (req, res) => {
-  const origin = req.headers.origin || "https://infobot.fun";
+  const origin = req.headers.origin;
   logger.info("[CORS] OPTIONS preflight request from:", origin);
   
-  res.header("Access-Control-Allow-Origin", origin);
-  res.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With");
+  // Explicitly allow https://infobot.fun as required by Lovable
+  res.header("Access-Control-Allow-Origin", "https://infobot.fun");
+  res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
   res.header("Access-Control-Allow-Credentials", "true");
   res.header("Access-Control-Max-Age", "86400"); // 24 hours
   res.sendStatus(200);
@@ -503,11 +504,11 @@ router.options("/miniapp-connect", (req, res) => {
 router.post("/miniapp-connect", async (req, res) => {
   try {
     // Set CORS headers explicitly (must be before any response)
-    const origin = req.headers.origin || "https://infobot.fun";
-    res.header("Access-Control-Allow-Origin", origin);
+    // Explicitly allow https://infobot.fun as required by Lovable
+    res.header("Access-Control-Allow-Origin", "https://infobot.fun");
+    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type");
     res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With");
     
     // Log the incoming request for debugging
     logger.info("[Mini App Connect] Received request:", {

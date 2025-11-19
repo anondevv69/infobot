@@ -15,30 +15,30 @@ async function bootstrap(): Promise<void> {
   const app = express();
   
   // CORS configuration - MUST be before other middleware
-  // Allow all origins for now to debug (can restrict later)
+  // Explicitly allow https://infobot.fun as required by Lovable
   app.use(cors({
-    origin: true, // Allow all origins - will set specific origin in response
+    origin: "https://infobot.fun", // Explicitly set to infobot.fun
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "Accept", "Origin", "X-Requested-With"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
     exposedHeaders: ["Content-Type"],
     preflightContinue: false,
-    optionsSuccessStatus: 204,
+    optionsSuccessStatus: 200,
   }));
   
-  // Also add manual CORS headers as fallback
+  // Also add manual CORS headers as fallback for /api/siwf/miniapp-connect
   app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin) {
-      res.header("Access-Control-Allow-Origin", origin);
+    // For miniapp-connect endpoint, explicitly set CORS headers
+    if (req.path === "/api/siwf/miniapp-connect" || req.path.endsWith("/miniapp-connect")) {
+      res.header("Access-Control-Allow-Origin", "https://infobot.fun");
+      res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+      res.header("Access-Control-Allow-Headers", "Content-Type");
       res.header("Access-Control-Allow-Credentials", "true");
-      res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
-      res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key, Accept, Origin, X-Requested-With");
-    }
-    
-    // Handle preflight
-    if (req.method === "OPTIONS") {
-      return res.sendStatus(200);
+      
+      // Handle preflight
+      if (req.method === "OPTIONS") {
+        return res.sendStatus(200);
+      }
     }
     next();
   });
