@@ -52,32 +52,7 @@ async function initSDK() {
   }
 }
 
-// Connect wallet function
-(window as any).connectWallet = async function() {
-  try {
-    showStatus('info', '🔄 Connecting...');
-    document.getElementById('connectBtn')!.disabled = true;
-    
-    // Sign in with Farcaster (this will show QR code on mobile)
-    user = await sdk.actions.signIn();
-    
-    if (user) {
-      showUserInfo(user);
-      showStatus('success', '✅ Successfully connected to Farcaster!');
-      document.getElementById('connectBtn')!.style.display = 'none';
-      document.getElementById('linkBotBtn')!.style.display = 'block';
-      
-      // Automatically link to bot if userId is provided
-      if (userId) {
-        await linkToBot(user);
-      }
-    }
-  } catch (error: any) {
-    console.error('Connection error:', error);
-    showStatus('error', `Connection failed: ${error.message || 'Unknown error'}`);
-    document.getElementById('connectBtn')!.disabled = false;
-  }
-};
+// Connect wallet function - REMOVED DUPLICATE, see below
 
 // Link to Discord/Telegram bot
 (window as any).linkBot = async function() {
@@ -89,77 +64,7 @@ async function initSDK() {
   await linkToBot(user);
 };
 
-async function linkToBot(farcasterUser: any) {
-  try {
-    showStatus('info', '🔄 Linking to bot...');
-    
-    // Log the request for debugging
-    console.log('[Mini App] Making request to:', `${backendUrl}/api/siwf/miniapp-connect`);
-    console.log('[Mini App] Request data:', {
-      userId,
-      platform,
-      fid: farcasterUser.fid,
-      username: farcasterUser.username,
-    });
-    
-    // Send connection data to backend
-    const response = await fetch(`${backendUrl}/api/siwf/miniapp-connect`, {
-      method: 'POST',
-      mode: 'cors', // Explicitly enable CORS
-      credentials: 'include', // Include credentials
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        userId,
-        platform,
-        fid: farcasterUser.fid,
-        username: farcasterUser.username,
-        custodyAddress: farcasterUser.custodyAddress,
-        verifiedAddresses: farcasterUser.verifiedAddresses || [],
-        // Include any signer info if available
-        signerPrivateKey: farcasterUser.signerPrivateKey,
-        signerPublicKey: farcasterUser.signerPublicKey,
-      }),
-    });
-    
-    console.log('[Mini App] Response status:', response.status);
-    console.log('[Mini App] Response headers:', Object.fromEntries(response.headers.entries()));
-
-    const result = await response.json();
-
-    if (response.ok) {
-      showStatus('success', '✅ Successfully linked to bot! You can now return to Discord/Telegram.');
-      
-      // Show success message with instructions
-      setTimeout(() => {
-        showStatus('info', '💡 Return to Discord/Telegram and use /balance or /buy to start trading!');
-      }, 2000);
-    } else {
-      throw new Error(result.error || 'Failed to link to bot');
-    }
-  } catch (error: any) {
-    console.error('[Mini App] Link error:', error);
-    console.error('[Mini App] Error details:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name,
-    });
-    
-    // Show more detailed error message
-    let errorMessage = 'Failed to link: ';
-    if (error.message) {
-      errorMessage += error.message;
-    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      errorMessage += 'Network error - check CORS configuration on backend';
-    } else {
-      errorMessage += 'Unknown error - check console for details';
-    }
-    
-    showStatus('error', errorMessage);
-  }
-}
+// linkToBot function - REMOVED DUPLICATE, see below
 
 function showUserInfo(user: any) {
   const userInfoDiv = document.getElementById('userInfo')!;
@@ -277,7 +182,7 @@ function checkCanLink() {
   }
 }
 
-// Update linkToBot to use Discord user if available
+// Link Farcaster account to Discord/Telegram bot
 async function linkToBot(farcasterUser: any) {
   try {
     showStatus('info', '🔄 Linking accounts...');
@@ -287,7 +192,8 @@ async function linkToBot(farcasterUser: any) {
     const finalPlatform = discordUser ? 'discord' : (platform || 'discord');
     
     if (!finalUserId) {
-      throw new Error('No Discord account connected and no userId provided. Please connect Discord first or use /connect command in Discord.');
+      showStatus('error', '❌ No Discord/Telegram connection found. Please connect Discord above or use /connect command in Discord/Telegram.');
+      return;
     }
     
     // Log the request for debugging
@@ -300,37 +206,59 @@ async function linkToBot(farcasterUser: any) {
       discordUser: discordUser ? `${discordUser.username}#${discordUser.discriminator}` : 'none',
     });
     
-    // Send connection data to backend
-    const response = await fetch(`${backendUrl}/api/siwf/miniapp-connect`, {
-      method: 'POST',
-      mode: 'cors',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        userId: finalUserId,
-        platform: finalPlatform,
-        fid: farcasterUser.fid,
-        username: farcasterUser.username,
-        custodyAddress: farcasterUser.custodyAddress,
-        verifiedAddresses: farcasterUser.verifiedAddresses || [],
-        // Include Discord info if available
-        discordUsername: discordUser ? `${discordUser.username}#${discordUser.discriminator}` : undefined,
-        discordId: discordUser?.id,
-        // Include any signer info if available
-        signerPrivateKey: farcasterUser.signerPrivateKey,
-        signerPublicKey: farcasterUser.signerPublicKey,
-      }),
-    });
+    // Try to send connection data to backend
+    let response: Response;
+    try {
+      response = await fetch(`${backendUrl}/api/siwf/miniapp-connect`, {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: finalUserId,
+          platform: finalPlatform,
+          fid: farcasterUser.fid,
+          username: farcasterUser.username,
+          custodyAddress: farcasterUser.custodyAddress,
+          verifiedAddresses: farcasterUser.verifiedAddresses || [],
+          // Include Discord info if available
+          discordUsername: discordUser ? `${discordUser.username}#${discordUser.discriminator}` : undefined,
+          discordId: discordUser?.id,
+          // Include any signer info if available
+          signerPrivateKey: farcasterUser.signerPrivateKey,
+          signerPublicKey: farcasterUser.signerPublicKey,
+        }),
+      });
+    } catch (fetchError: any) {
+      // CORS or network error - fallback to server-side SIWF flow
+      console.error('[Mini App] CORS/Network error:', fetchError);
+      showStatus('error', '❌ CORS error detected. Redirecting to server-side flow...');
+      
+      // Generate server-side SIWF URL as fallback
+      const challenge = crypto.randomUUID(); // Simple challenge for fallback
+      const siwfUrl = `https://warpcast.com/~/signin?challenge=${challenge}&redirect_uri=${encodeURIComponent(`${backendUrl}/api/siwf/callback?challenge=${challenge}&userId=${finalUserId}&platform=${finalPlatform}`)}`;
+      
+      setTimeout(() => {
+        showStatus('info', '🔄 Redirecting to server-side connection flow...');
+        window.location.href = siwfUrl;
+      }, 2000);
+      return;
+    }
     
     console.log('[Mini App] Response status:', response.status);
     console.log('[Mini App] Response headers:', Object.fromEntries(response.headers.entries()));
 
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `HTTP ${response.status}`);
+    }
+
     const result = await response.json();
 
-    if (response.ok) {
+    if (result.success) {
       showStatus('success', '✅ Successfully linked! You can now use the bot in Discord.');
       
       // Show success message with instructions
@@ -352,17 +280,24 @@ async function linkToBot(farcasterUser: any) {
     let errorMessage = 'Failed to link: ';
     if (error.message) {
       errorMessage += error.message;
-    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      errorMessage += 'Network error - check CORS configuration on backend';
+    } else if (error.name === 'TypeError' && error.message?.includes('fetch')) {
+      errorMessage += 'Network/CORS error. Try using the server-side flow from Discord/Telegram instead.';
     } else {
-      errorMessage += 'Unknown error - check console for details';
+      errorMessage += 'Unknown error. Try using /connect command in Discord/Telegram.';
     }
     
     showStatus('error', errorMessage);
+    
+    // Show fallback option
+    if (userId) {
+      setTimeout(() => {
+        showStatus('info', '💡 Tip: Use the "Connect with Farcaster (Recommended)" button in Discord for a more reliable connection.');
+      }, 3000);
+    }
   }
 }
 
-// Update connectWallet to check if we can link after Farcaster connection
+// Connect wallet function - handles Farcaster sign-in
 (window as any).connectWallet = async function() {
   try {
     showStatus('info', '🔄 Connecting to Farcaster...');
