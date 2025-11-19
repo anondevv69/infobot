@@ -82,12 +82,35 @@ export async function handleTelegramConnect(
     // Continue to show SIWF link below
   }
 
-  // Use Mini App if configured, otherwise fallback to direct SIWF
-  let connectUrl: string;
+  // DEFAULT: Use server-side SIWF flow (no CORS issues, reliable)
+  // OPTIONAL: Mini App available for better UX (if configured)
+  const challenge = generateSIWFChallenge(userId, "telegram");
+  const siwfUrl = generateSIWFUrl(
+    challenge.challenge,
+    userId,
+    "telegram",
+    env.backendUrl,
+    env.farcasterReferralCode,
+  );
+  await storePendingVerificationInBackend(challenge.challenge, userId, "telegram", env.backendUrl);
+  
   let connectMessage: string;
 
+  // Primary: Server-side SIWF flow (default, reliable)
+  connectMessage =
+    `🔗 <b>Connect Your Farcaster Account</b>\n\n` +
+    `<b>Default Method (Recommended):</b>\n\n` +
+    `<b>Step 1:</b> Click "Connect with Farcaster" below\n` +
+    `<b>Step 2:</b> Sign in to your Farcaster account in Warpcast\n` +
+    `<b>Step 3:</b> Approve the connection\n` +
+    `<b>Step 4:</b> Return to Telegram and run /connect again to verify\n\n` +
+    `✅ <b>Reliable</b> - No CORS issues\n` +
+    `🔒 <b>Secure</b> - Server-side verification\n` +
+    `⚡ <b>Fast</b> - Direct connection\n\n` +
+    `<a href="${siwfUrl}">🔐 Connect with Farcaster (Recommended)</a>\n\n`;
+
+  // Optional: Mini App (if configured)
   if (env.miniappUrl && !env.miniappUrl.includes("your-miniapp-domain.com")) {
-    // Use Mini App (best option)
     let miniappUrl: string;
     if (env.miniappUrl.includes("farcaster.xyz/miniapps")) {
       const url = new URL(env.miniappUrl);
@@ -102,38 +125,13 @@ export async function handleTelegramConnect(
       url.searchParams.set("backendUrl", env.backendUrl);
       miniappUrl = url.toString();
     }
-    connectUrl = miniappUrl;
-    connectMessage =
-      `🔗 <b>Connect Farcaster</b>\n\n` +
-      `To securely connect your Farcaster account:\n\n` +
-      `**Step 1:** Click the link below to open the Mini App in Warpcast\n` +
-      `**Step 2:** Scan the QR code with your phone (or sign in on desktop)\n` +
-      `**Step 3:** Approve the connection in the Mini App\n` +
-      `**Step 4:** Return here and you'll be connected!\n\n` +
-      `🔒 <b>Security:</b> This method verifies you own the Farcaster account.\n\n` +
-      `💡 <b>Better UX:</b> Mini App provides QR code login and native Farcaster experience!\n\n` +
-      `<a href="${connectUrl}">🔐 Open Mini App to Connect</a>`;
-  } else {
-    // Fallback to direct SIWF (may have issues)
-    const challenge = generateSIWFChallenge(userId, "telegram");
-    const siwfUrl = generateSIWFUrl(
-      challenge.challenge,
-      userId,
-      "telegram",
-      env.backendUrl,
-      env.farcasterReferralCode,
-    );
-    await storePendingVerificationInBackend(challenge.challenge, userId, "telegram", env.backendUrl);
-    connectUrl = siwfUrl;
-    connectMessage =
-      `🔗 <b>Connect Farcaster</b>\n\n` +
-      `⚠️ <b>IMPORTANT:</b> Direct SIWF URLs often fail with "Could not reach Farcaster" error.\n\n` +
-      `To fix this, please deploy the Mini App (see MINIAPP_SETUP.md) and set MINIAPP_URL environment variable.\n\n` +
-      `Temporary workaround (may not work):\n` +
-      `1. Click the link below to open Warpcast\n` +
-      `2. Sign in to your Farcaster account\n` +
-      `3. If you see "Could not reach Farcaster", you'll need to use the Mini App approach\n\n` +
-      `<a href="${connectUrl}">🔐 Connect with Farcaster</a>`;
+    
+    connectMessage +=
+      `\n<b>Optional: Mini App (Better UX)</b>\n\n` +
+      `Want a smoother experience with Discord OAuth?\n` +
+      `Click below for an in-browser connection flow.\n\n` +
+      `💡 <b>Features:</b> QR code login, Discord OAuth, native Farcaster experience\n\n` +
+      `<a href="${miniappUrl}">🌐 Use Mini App (Better UX)</a>`;
   }
 
   await bot.sendMessage(
