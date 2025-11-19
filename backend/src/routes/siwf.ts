@@ -547,26 +547,33 @@ router.post("/miniapp-connect", async (req, res) => {
     ];
     
     // Set CORS headers - must use exact origin when credentials: true
-    if (origin && (allowedOrigins.includes(origin) || 
-                   origin.includes('farcaster.xyz') || 
-                   origin.includes('warpcast.com') ||
-                   /^https:\/\/[a-f0-9-]+\.lovableproject\.com$/.test(origin))) {
-      // Use exact origin (required when credentials: true)
-      res.header("Access-Control-Allow-Origin", origin);
-      res.header("Access-Control-Allow-Credentials", "true");
-      res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-      res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-      logger.info("[CORS] Allowed origin:", origin);
-    } else if (origin) {
-      // Fallback for debugging - still allow but log warning
-      res.header("Access-Control-Allow-Origin", origin);
-      res.header("Access-Control-Allow-Credentials", "true");
-      res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-      res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-      logger.warn("[CORS] Unknown origin, allowing anyway:", origin);
+    // NEVER use "*" when credentials: true (browser will reject it)
+    if (origin) {
+      // Check if origin is allowed
+      const isAllowed = allowedOrigins.includes(origin) || 
+                       origin.includes('farcaster.xyz') || 
+                       origin.includes('warpcast.com') ||
+                       /^https:\/\/[a-f0-9-]+\.lovableproject\.com$/.test(origin);
+      
+      if (isAllowed) {
+        // Use exact origin (REQUIRED when credentials: true)
+        res.header("Access-Control-Allow-Origin", origin);
+        res.header("Access-Control-Allow-Credentials", "true");
+        res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+        res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        logger.info("[CORS] ✅ Allowed origin (exact match):", origin);
+      } else {
+        // For debugging - still allow but log warning
+        res.header("Access-Control-Allow-Origin", origin);
+        res.header("Access-Control-Allow-Credentials", "true");
+        res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+        res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        logger.warn("[CORS] ⚠️ Unknown origin, allowing anyway:", origin);
+      }
     } else {
-      // No origin - allow all (for debugging)
-      res.header("Access-Control-Allow-Origin", "*");
+      // No origin header (e.g., Postman, curl) - don't set CORS headers
+      // This is fine for non-browser requests
+      logger.info("[CORS] No origin header - skipping CORS headers (non-browser request)");
     }
     
     // Log the incoming request for debugging

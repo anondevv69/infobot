@@ -80,20 +80,38 @@ async function bootstrap(): Promise<void> {
   app.options("*", cors());
   
   // Manual CORS headers as fallback for all /api/siwf/* endpoints
+  // This ensures CORS headers are ALWAYS set, even if the main CORS middleware misses something
   app.use((req, res, next) => {
     // For SIWF endpoints, always set CORS headers
     if (req.path.startsWith("/api/siwf/")) {
       const origin = req.headers.origin;
       
-      // ALWAYS set CORS headers - allow any origin for debugging
+      // Check if origin is allowed (must be exact match when credentials: true)
       if (origin) {
-        res.header("Access-Control-Allow-Origin", origin);
+        // Check if origin is in allowed list or matches pattern
+        const isAllowed = allowedOrigins.indexOf(origin) !== -1 ||
+                         lovablePattern.test(origin) ||
+                         origin.includes('farcaster.xyz') ||
+                         origin.includes('warpcast.com');
+        
+        if (isAllowed) {
+          // Use exact origin (REQUIRED when credentials: true)
+          res.header("Access-Control-Allow-Origin", origin);
+          res.header("Access-Control-Allow-Credentials", "true");
+          logger.info(`[CORS] Setting exact origin header: ${origin}`);
+        } else {
+          // For debugging, still allow but log warning
+          res.header("Access-Control-Allow-Origin", origin);
+          res.header("Access-Control-Allow-Credentials", "true");
+          logger.warn(`[CORS] Unknown origin, allowing anyway: ${origin}`);
+        }
       } else {
-        // If no origin, allow all (for debugging)
-        res.header("Access-Control-Allow-Origin", "*");
+        // No origin header (e.g., Postman, curl) - don't set CORS headers
+        // This is fine for non-browser requests
+        logger.info(`[CORS] No origin header for ${req.method} ${req.path}`);
       }
       
-      res.header("Access-Control-Allow-Credentials", "true");
+      // Set other CORS headers
       res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE, PATCH");
       res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With, x-api-key");
       
