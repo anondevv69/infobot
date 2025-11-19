@@ -1,5 +1,5 @@
 // Add at the top with other imports
-import { Router } from "express";
+import express, { Router } from "express";
 import { env } from "../config";
 import { logger } from "../utils/logger";
 import { NeynarAPIClient, Configuration } from "@neynar/nodejs-sdk";
@@ -486,10 +486,9 @@ router.get("/callback", async (req, res) => {
   }
 });
 
-// Handle OPTIONS preflight request for CORS
-router.options("/miniapp-connect", (req, res) => {
+// Helper function to set CORS headers (used by both OPTIONS and POST)
+function setCORSHeaders(req: express.Request, res: express.Response): void {
   const origin = req.headers.origin;
-  logger.info("[CORS] OPTIONS preflight request from:", origin || "none");
   
   // Allowed origins (must match exactly when using credentials)
   const allowedOrigins = [
@@ -501,80 +500,61 @@ router.options("/miniapp-connect", (req, res) => {
     'https://3286b522-a4bf-4197-843e-64faa1e5aa3d.lovableproject.com', // Lovable project
   ];
   
-  // Check if origin is allowed (must be exact match for credentials)
-  if (origin && (allowedOrigins.includes(origin) || 
-                 origin.includes('farcaster.xyz') || 
-                 origin.includes('warpcast.com') ||
-                 /^https:\/\/[a-f0-9-]+\.lovableproject\.com$/.test(origin))) {
-    // Use exact origin (required when credentials: true)
-    res.header("Access-Control-Allow-Origin", origin);
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    res.header("Access-Control-Max-Age", "86400"); // 24 hours
-    logger.info("[CORS] OPTIONS response headers set for:", origin);
-  } else {
-    // Fallback for debugging
-    if (origin) {
+  // Set CORS headers - must use exact origin when credentials: true
+  // NEVER use "*" when credentials: true (browser will reject it)
+  if (origin) {
+    // Check if origin is allowed
+    const isAllowed = allowedOrigins.includes(origin) || 
+                     origin.includes('farcaster.xyz') || 
+                     origin.includes('warpcast.com') ||
+                     /^https:\/\/[a-f0-9-]+\.lovableproject\.com$/.test(origin);
+    
+    if (isAllowed) {
+      // Use exact origin (REQUIRED when credentials: true)
       res.header("Access-Control-Allow-Origin", origin);
+      res.header("Access-Control-Allow-Credentials", "true");
+      res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+      res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      logger.info("[CORS] ✅ Allowed origin (exact match):", origin);
+    } else {
+      // For debugging - still allow but log warning
+      res.header("Access-Control-Allow-Origin", origin);
+      res.header("Access-Control-Allow-Credentials", "true");
+      res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+      res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      logger.warn("[CORS] ⚠️ Unknown origin, allowing anyway:", origin);
     }
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    logger.warn("[CORS] OPTIONS from unknown origin, allowing anyway:", origin);
+  } else {
+    // No origin header (e.g., Postman, curl) - don't set CORS headers
+    // This is fine for non-browser requests
+    logger.info("[CORS] No origin header - skipping CORS headers (non-browser request)");
   }
+}
+
+// Handle OPTIONS preflight request for CORS
+router.options("/miniapp-connect", (req, res) => {
+  const origin = req.headers.origin;
+  logger.info("[CORS] OPTIONS preflight request from:", origin || "none");
   
+  // Set CORS headers
+  setCORSHeaders(req, res);
+  
+  // Set additional OPTIONS-specific headers
+  res.header("Access-Control-Max-Age", "86400"); // 24 hours
+  
+  logger.info("[CORS] OPTIONS response headers set for:", origin);
   res.sendStatus(200);
 });
 
 // Endpoint for Mini App connection (called from Mini App)
 router.post("/miniapp-connect", async (req, res) => {
+  // Set CORS headers FIRST - before any processing or error handling
+  // This ensures CORS headers are ALWAYS set, even on error responses
+  setCORSHeaders(req, res);
+  
   try {
-    // Set CORS headers explicitly (must be before any response)
-    const origin = req.headers.origin;
-    
     logger.info("[Mini App Connect] POST request received");
-    logger.info("[Mini App Connect] Origin:", origin || "none");
-    
-    // Allowed origins (must match exactly when using credentials)
-    const allowedOrigins = [
-      'https://infobot.fun',
-      'https://warpcast.com',
-      'https://client.farcaster.xyz',
-      'https://snapchain.farcaster.xyz',
-      'https://farcaster.xyz',
-      'https://3286b522-a4bf-4197-843e-64faa1e5aa3d.lovableproject.com', // Lovable project
-    ];
-    
-    // Set CORS headers - must use exact origin when credentials: true
-    // NEVER use "*" when credentials: true (browser will reject it)
-    if (origin) {
-      // Check if origin is allowed
-      const isAllowed = allowedOrigins.includes(origin) || 
-                       origin.includes('farcaster.xyz') || 
-                       origin.includes('warpcast.com') ||
-                       /^https:\/\/[a-f0-9-]+\.lovableproject\.com$/.test(origin);
-      
-      if (isAllowed) {
-        // Use exact origin (REQUIRED when credentials: true)
-        res.header("Access-Control-Allow-Origin", origin);
-        res.header("Access-Control-Allow-Credentials", "true");
-        res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-        res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        logger.info("[CORS] ✅ Allowed origin (exact match):", origin);
-      } else {
-        // For debugging - still allow but log warning
-        res.header("Access-Control-Allow-Origin", origin);
-        res.header("Access-Control-Allow-Credentials", "true");
-        res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-        res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        logger.warn("[CORS] ⚠️ Unknown origin, allowing anyway:", origin);
-      }
-    } else {
-      // No origin header (e.g., Postman, curl) - don't set CORS headers
-      // This is fine for non-browser requests
-      logger.info("[CORS] No origin header - skipping CORS headers (non-browser request)");
-    }
+    logger.info("[Mini App Connect] Origin:", req.headers.origin || "none");
     
     // Log the incoming request for debugging
     logger.info("[Mini App Connect] Received request:", {
@@ -630,6 +610,7 @@ router.post("/miniapp-connect", async (req, res) => {
   } catch (error: any) {
     logger.error("[Mini App Connect] ❌ Error:", error);
     logger.error("[Mini App Connect] Error stack:", error.stack);
+    // CORS headers already set above, so error response will have them
     return res.status(500).json({ 
       error: "Internal server error",
       message: error.message || "Unknown error",
