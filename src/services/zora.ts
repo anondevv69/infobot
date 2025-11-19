@@ -167,6 +167,7 @@ function buildHeaders(): HeadersInit {
 async function requestZora<TData>(
   path: string,
   params?: QueryParams,
+  timeoutMs: number = 5000,
 ): Promise<TData | null> {
   const url = new URL(path, ZORA_API_BASE_URL);
   if (params) {
@@ -179,21 +180,38 @@ async function requestZora<TData>(
   }
 
   try {
-    const response = await fetch(url, { headers: buildHeaders() });
-    if (!response.ok) {
-      const body = await response.text();
-      if (response.status === 404 || response.status === 400) {
-        console.debug(
-          `[zora] request returned ${response.status} for ${url.toString()} -> ${body}`,
-        );
-      } else {
-        console.warn(
-          `Zora request failed (${response.status}): ${response.statusText} – ${url.toString()} -> ${body}`,
-        );
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
+    try {
+      const response = await fetch(url, { 
+        headers: buildHeaders(),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const body = await response.text();
+        if (response.status === 404 || response.status === 400) {
+          console.debug(
+            `[zora] request returned ${response.status} for ${url.toString()} -> ${body}`,
+          );
+        } else {
+          console.warn(
+            `Zora request failed (${response.status}): ${response.statusText} – ${url.toString()} -> ${body}`,
+          );
+        }
+        return null;
       }
-      return null;
+      return (await response.json()) as TData;
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        console.warn(`Zora request timeout after ${timeoutMs}ms: ${url.toString()}`);
+        return null;
+      }
+      throw error;
     }
-    return (await response.json()) as TData;
   } catch (error) {
     console.error(`Unexpected error calling Zora endpoint ${path}:`, error);
     return null;

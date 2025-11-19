@@ -187,40 +187,45 @@ async function handleWalletSearch(
   guildId?: string,
   channelId?: string,
 ): Promise<void> {
-  const zoraSummaryFromAddressPromise = findBestZoraSummary([address]);
-  let user: User | null = null;
-  try {
-    user = await findUserByWallet(address);
-  } catch (error) {
-    console.warn("Failed Neynar wallet lookup, continuing with other lookups:", error);
-  }
-  const zoraSummaryFromAddress = await zoraSummaryFromAddressPromise;
+  // Run initial lookups in PARALLEL (major performance improvement)
+  const [zoraSummaryFromAddress, user] = await Promise.all([
+    findBestZoraSummary([address]).catch(() => null),
+    findUserByWallet(address).catch(() => null),
+  ]);
 
-  if (!user && zoraSummaryFromAddress?.profile?.farcasterHandle) {
+  // If no user found but Zora has Farcaster handle, try that lookup (with timeout)
+  let finalUser = user;
+  if (!finalUser && zoraSummaryFromAddress?.profile?.farcasterHandle) {
     try {
       const handle = zoraSummaryFromAddress.profile.farcasterHandle.replace(/^@/, "");
-      user = await findUserByUsername(handle);
+      // Add timeout to username lookup
+      finalUser = await Promise.race([
+        findUserByUsername(handle),
+        new Promise<User | null>((resolve) => 
+          setTimeout(() => resolve(null), 3000)
+        ),
+      ]);
     } catch (error) {
       console.warn("Failed to resolve user from Zora Farcaster handle:", error);
     }
   }
 
-  if (user) {
-    const zoraIdentifiers = collectZoraIdentifiers(user, address);
+  if (finalUser) {
+    const zoraIdentifiers = collectZoraIdentifiers(finalUser, address);
     const [tokens, latestCast, zoraSummaryForUser] = await Promise.all([
-      safeFetchTokensByFid(user.fid),
-      safeFetchMostRecentCast(user.fid),
+      safeFetchTokensByFid(finalUser.fid),
+      safeFetchMostRecentCast(finalUser.fid),
       findBestZoraSummary(zoraIdentifiers),
     ]);
 
     const associatedSummary =
-      zoraSummaryForUser && isSummaryAssociatedWithUser(user, zoraSummaryForUser)
+      zoraSummaryForUser && isSummaryAssociatedWithUser(finalUser, zoraSummaryForUser)
         ? zoraSummaryForUser
         : zoraSummaryFromAddress;
 
     const walletResponse = await buildWalletProfileResponse({
       wallet: address,
-      user,
+      user: finalUser,
       zoraSummary: associatedSummary,
       clankerTokens: tokens,
       latestCast,
@@ -238,10 +243,19 @@ async function handleWalletSearch(
     return;
   }
 
+  // Fetch Clanker tokens (with timeout protection)
   const tokens = await fetchTokensByAddress(address);
+  
   if (tokens.length > 0) {
     const firstToken = tokens[0];
-    const associatedUser = await resolveUserFromToken(firstToken);
+    // Resolve user with timeout (3 seconds max)
+    const associatedUser = await Promise.race([
+      resolveUserFromToken(firstToken),
+      new Promise<User | null>((resolve) => 
+        setTimeout(() => resolve(null), 3000)
+      ),
+    ]);
+    
     if (associatedUser) {
       const [creatorTokens, latestCast, zoraSummaryForCreator] = await Promise.all([
         safeFetchTokensByFid(associatedUser.fid),

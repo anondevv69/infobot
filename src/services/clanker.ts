@@ -47,20 +47,34 @@ interface ClankerApiResponse {
 
 const CLANKER_API_BASE = "https://www.clanker.world/api";
 
-async function executeClankerRequest(url: URL): Promise<ClankerToken[]> {
+async function executeClankerRequest(url: URL, timeoutMs: number = 5000): Promise<ClankerToken[]> {
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      if (response.status === 404) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          return [];
+        }
+        console.warn(
+          `Clanker request failed (${response.status}): ${response.statusText} – ${url.toString()}`,
+        );
         return [];
       }
-      console.warn(
-        `Clanker request failed (${response.status}): ${response.statusText} – ${url.toString()}`,
-      );
-      return [];
+      const json = (await response.json()) as ClankerApiResponse;
+      return json.data ?? [];
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        console.warn(`Clanker request timeout after ${timeoutMs}ms: ${url.toString()}`);
+        return [];
+      }
+      throw error;
     }
-    const json = (await response.json()) as ClankerApiResponse;
-    return json.data ?? [];
   } catch (error) {
     console.error("Unexpected error calling Clanker API:", error);
     return [];
@@ -73,7 +87,7 @@ export async function fetchTokensByFid(fid: number): Promise<ClankerToken[]> {
   url.searchParams.set("limit", "20");
   url.searchParams.set("includeUser", "true");
   url.searchParams.set("includeMarket", "true");
-  return executeClankerRequest(url);
+  return executeClankerRequest(url, 5000); // 5 second timeout
 }
 
 export async function fetchTokensByQuery(query: string): Promise<ClankerToken[]> {
@@ -82,7 +96,7 @@ export async function fetchTokensByQuery(query: string): Promise<ClankerToken[]>
   url.searchParams.set("limit", "10");
   url.searchParams.set("includeUser", "true");
   url.searchParams.set("includeMarket", "true");
-  return executeClankerRequest(url);
+  return executeClankerRequest(url, 5000); // 5 second timeout
 }
 
 export async function fetchTokensByAddress(
@@ -90,15 +104,34 @@ export async function fetchTokensByAddress(
 ): Promise<ClankerToken[]> {
   const normalizedAddress = address.toLowerCase();
   
-  // First try direct contract address search (most reliable)
+  // Run all three searches in PARALLEL with timeouts (major performance improvement)
   const contractUrl = new URL(`${CLANKER_API_BASE}/tokens`);
   contractUrl.searchParams.set("contractAddress", normalizedAddress);
   contractUrl.searchParams.set("limit", "10");
   contractUrl.searchParams.set("includeUser", "true");
   contractUrl.searchParams.set("includeMarket", "true");
-  const byContract = await executeClankerRequest(contractUrl);
+  
+  const queryUrl = new URL(`${CLANKER_API_BASE}/tokens`);
+  queryUrl.searchParams.set("q", address);
+  queryUrl.searchParams.set("limit", "10");
+  queryUrl.searchParams.set("includeUser", "true");
+  queryUrl.searchParams.set("includeMarket", "true");
+  
+  const pairUrl = new URL(`${CLANKER_API_BASE}/tokens`);
+  pairUrl.searchParams.set("pairAddress", address);
+  pairUrl.searchParams.set("limit", "10");
+  pairUrl.searchParams.set("includeUser", "true");
+  pairUrl.searchParams.set("includeMarket", "true");
+  
+  // Execute all three searches in parallel (3 seconds timeout each)
+  const [byContract, byQuery, byPair] = await Promise.all([
+    executeClankerRequest(contractUrl, 3000),
+    executeClankerRequest(queryUrl, 3000),
+    executeClankerRequest(pairUrl, 3000),
+  ]);
+  
+  // Check results in priority order: contract > query > pair
   if (byContract.length > 0) {
-    // Filter to ensure exact match
     const exactMatches = byContract.filter(
       (token) => token.contract_address?.toLowerCase() === normalizedAddress,
     );
@@ -106,16 +139,8 @@ export async function fetchTokensByAddress(
       return exactMatches;
     }
   }
-
-  // Fallback to query search
-  const queryUrl = new URL(`${CLANKER_API_BASE}/tokens`);
-  queryUrl.searchParams.set("q", address);
-  queryUrl.searchParams.set("limit", "10");
-  queryUrl.searchParams.set("includeUser", "true");
-  queryUrl.searchParams.set("includeMarket", "true");
-  const byQuery = await executeClankerRequest(queryUrl);
+  
   if (byQuery.length > 0) {
-    // Filter to ensure exact match
     const exactMatches = byQuery.filter(
       (token) => token.contract_address?.toLowerCase() === normalizedAddress,
     );
@@ -123,15 +148,8 @@ export async function fetchTokensByAddress(
       return exactMatches;
     }
   }
-
-  // Last resort: try pair address
-  const pairUrl = new URL(`${CLANKER_API_BASE}/tokens`);
-  pairUrl.searchParams.set("pairAddress", address);
-  pairUrl.searchParams.set("limit", "10");
-  pairUrl.searchParams.set("includeUser", "true");
-  pairUrl.searchParams.set("includeMarket", "true");
-  const byPair = await executeClankerRequest(pairUrl);
-  // Filter to ensure exact match
+  
+  // Return pair results (filtered)
   return byPair.filter(
     (token) => token.contract_address?.toLowerCase() === normalizedAddress,
   );

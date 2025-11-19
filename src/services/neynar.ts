@@ -26,34 +26,54 @@ export class NeynarLookupError extends Error {
 export async function findUserByWallet(address: string): Promise<User | null> {
   const seen = new Map<number, User>();
 
+  // Run both lookups in parallel for speed (major performance improvement)
+  const promises: Promise<void>[] = [];
+
   if (address.toLowerCase().startsWith("0x")) {
-    try {
-      const response = await client.lookupUserByCustodyAddress({
+    promises.push(
+      client.lookupUserByCustodyAddress({
         custodyAddress: address,
-      });
-      seen.set(response.user.fid, response.user);
-    } catch (error) {
-      if (!isNotFoundError(error)) {
-        throw new NeynarLookupError("Failed to lookup custody address", error);
-      }
-    }
+      }).then((response) => {
+        seen.set(response.user.fid, response.user);
+      }).catch((error) => {
+        if (!isNotFoundError(error)) {
+          throw new NeynarLookupError("Failed to lookup custody address", error);
+        }
+      })
+    );
   }
 
-  try {
-    const bulk = await client.fetchBulkUsersByEthOrSolAddress({
+  promises.push(
+    client.fetchBulkUsersByEthOrSolAddress({
       addresses: [address],
       addressTypes: ["custody_address", "verified_address"],
-    });
-    Object.values(bulk).forEach((users) => {
-      users.forEach((user) => {
-        if (!seen.has(user.fid)) {
-          seen.set(user.fid, user);
-        }
+    }).then((bulk) => {
+      Object.values(bulk).forEach((users) => {
+        users.forEach((user) => {
+          if (!seen.has(user.fid)) {
+            seen.set(user.fid, user);
+          }
+        });
       });
-    });
+    }).catch((error) => {
+      if (!isNotFoundError(error)) {
+        throw new NeynarLookupError("Failed to lookup verified ETH address", error);
+      }
+    })
+  );
+
+  // Wait for all lookups with timeout
+  try {
+    await Promise.race([
+      Promise.all(promises),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Neynar lookup timeout")), 5000)
+      ),
+    ]);
   } catch (error) {
-    if (!isNotFoundError(error)) {
-      throw new NeynarLookupError("Failed to lookup verified ETH address", error);
+    // If timeout or error, continue with what we have
+    if (error instanceof Error && error.message === "Neynar lookup timeout") {
+      console.warn(`[Neynar] Wallet lookup timeout for ${address}`);
     }
   }
 
