@@ -37,18 +37,33 @@ export async function startTelegramBot(): Promise<void> {
     const chatType = msg.chat.type; // "private", "group", "supergroup", "channel"
     
     // Only track groups, supergroups, and channels (not private chats)
+    // Only log when bot is first added to a group (similar to Discord's GuildCreate event)
     if (chatType === "group" || chatType === "supergroup" || chatType === "channel") {
       const chatIdStr = chatId.toString();
       
-      // Check database FIRST (more reliable than in-memory cache which resets on restart)
-      let alreadySeen = seenTelegramChats.has(chatId);
+      // Skip if already in memory cache (fast path)
+      if (seenTelegramChats.has(chatId)) {
+        // Update member count for existing chats (refresh periodically)
+        if (chatType === "group" || chatType === "supergroup") {
+          try {
+            const memberCount = await bot.getChatMemberCount(chatId);
+            if (memberCount !== null) {
+              setTelegramChatMembers(chatId, memberCount);
+            }
+          } catch (error) {
+            // Silently fail - might not have permission
+          }
+        }
+        return; // Don't process further - already seen
+      }
       
-      // Always check database to ensure we have the latest state
+      // Check database FIRST (most reliable source of truth)
+      let alreadySeen = false;
       try {
         const { env } = await import("../../config");
         if (env.backendUrl) {
           const response = await fetch(`${env.backendUrl}/api/seen/telegram-chat?chatId=${encodeURIComponent(chatIdStr)}`, {
-            signal: AbortSignal.timeout(3000), // 3 second timeout
+            signal: AbortSignal.timeout(2000), // 2 second timeout
           });
           if (response.ok) {
             const data = await response.json();
@@ -56,100 +71,88 @@ export async function startTelegramBot(): Promise<void> {
             // Update in-memory cache based on database result
             if (alreadySeen) {
               seenTelegramChats.add(chatId);
+              setTelegramChatCount(seenTelegramChats.size);
+              return; // Already seen, don't log
             }
           }
         }
       } catch (error) {
-        // If database check fails, use in-memory cache as fallback
-        // But don't log if we're not sure - better to miss a log than duplicate
-        if (!alreadySeen) {
-          // Only proceed if we're confident it's new (in memory check)
-        }
+        // If database check fails, don't log - better to miss than duplicate
+        // This prevents duplicates when database is unavailable
+        return;
       }
       
-      // Only log if we're certain it's new (either not in memory AND database confirms, or database unavailable but not in memory)
-      if (!alreadySeen) {
-        // Mark in memory immediately to prevent race conditions
-        seenTelegramChats.add(chatId);
-        setTelegramChatCount(seenTelegramChats.size);
+      // Only log if database confirms it's new
+      // Mark in memory immediately to prevent race conditions
+      seenTelegramChats.add(chatId);
+      setTelegramChatCount(seenTelegramChats.size);
+      
+      try {
+        const chatTitle = msg.chat.title || "Unknown";
+        const chatUsername = msg.chat.username ? `@${msg.chat.username}` : "None";
         
-        try {
-          const chatTitle = msg.chat.title || "Unknown";
-          const chatUsername = msg.chat.username ? `@${msg.chat.username}` : "None";
-          
-          // Get actual member count for groups/supergroups (not channels)
-          let memberCount: number | null = null;
-          if (chatType === "group" || chatType === "supergroup") {
-            try {
-              memberCount = await bot.getChatMemberCount(chatId);
-              if (memberCount !== null) {
-                setTelegramChatMembers(chatId, memberCount);
-              }
-            } catch (error) {
-              // Bot might not have permission to get member count
-              memberCount = null;
-            }
-          }
-          
-          const memberCountDisplay = chatType === "channel" 
-            ? "N/A (Channel)" 
-            : memberCount !== null 
-              ? memberCount.toString() 
-              : "Unknown";
-          
-          // Mark as seen in database BEFORE logging (prevents race conditions)
+        // Get actual member count for groups/supergroups (not channels)
+        let memberCount: number | null = null;
+        if (chatType === "group" || chatType === "supergroup") {
           try {
-            const { env } = await import("../../config");
-            if (env.backendUrl) {
-              await fetch(`${env.backendUrl}/api/seen/telegram-chat`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  chatId: chatIdStr,
-                  chatTitle,
-                  chatType,
-                  memberCount,
-                }),
-                signal: AbortSignal.timeout(3000), // 3 second timeout
-              }).catch(() => {
-                // Silently fail - database might not be available
-              });
+            memberCount = await bot.getChatMemberCount(chatId);
+            if (memberCount !== null) {
+              setTelegramChatMembers(chatId, memberCount);
             }
           } catch (error) {
-            // Silently fail - database might not be available
+            // Bot might not have permission to get member count
+            memberCount = null;
           }
-          
-          logger.system(
-            `🎉 **NEW TELEGRAM ${chatType.toUpperCase()}**\n` +
-            `**Name:** ${chatTitle}\n` +
-            `**ID:** ${chatId}\n` +
-            `**Username:** ${chatUsername}\n` +
-            `**Type:** ${chatType}\n` +
-            `**Members:** ${memberCountDisplay}`,
-            {
-              chatId: chatIdStr,
-              chatTitle,
-              chatUsername,
-              chatType,
-              memberCount: memberCount || undefined,
-            }
-          );
-        } catch (error) {
-          logger.error("Failed to log new Telegram chat", error, {
-            chatId: chatIdStr,
-            chatType,
-          });
         }
-      } else if ((chatType === "group" || chatType === "supergroup") && seenTelegramChats.has(chatId)) {
-        // Update member count for existing chats (refresh periodically)
+        
+        const memberCountDisplay = chatType === "channel" 
+          ? "N/A (Channel)" 
+          : memberCount !== null 
+            ? memberCount.toString() 
+            : "Unknown";
+        
+        // Mark as seen in database BEFORE logging (prevents race conditions)
         try {
-          const memberCount = await bot.getChatMemberCount(chatId);
-          if (memberCount !== null) {
-            setTelegramChatMembers(chatId, memberCount);
+          const { env } = await import("../../config");
+          if (env.backendUrl) {
+            await fetch(`${env.backendUrl}/api/seen/telegram-chat`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chatId: chatIdStr,
+                chatTitle,
+                chatType,
+                memberCount,
+              }),
+              signal: AbortSignal.timeout(2000), // 2 second timeout
+            }).catch(() => {
+              // Silently fail - database might not be available
+            });
           }
         } catch (error) {
-          // Silently fail - might not have permission
+          // Silently fail - database might not be available
         }
+        
+        logger.system(
+          `🎉 **NEW TELEGRAM ${chatType.toUpperCase()}**\n` +
+          `**Name:** ${chatTitle}\n` +
+          `**ID:** ${chatId}\n` +
+          `**Username:** ${chatUsername}\n` +
+          `**Type:** ${chatType}\n` +
+          `**Members:** ${memberCountDisplay}`,
+          {
+            chatId: chatIdStr,
+            chatTitle,
+            chatUsername,
+            chatType,
+            memberCount: memberCount || undefined,
+          }
+        );
+      } catch (error) {
+        logger.error("Failed to log new Telegram chat", error, {
+          chatId: chatIdStr,
+          chatType,
+        });
       }
     }
     
