@@ -15,70 +15,80 @@ async function bootstrap(): Promise<void> {
   const app = express();
   
   // CORS configuration - MUST be before other middleware
-  // Allow Farcaster domains (warpcast.com, client.farcaster.xyz) and user's domain
+  // Allow all Farcaster domains and user's domain
   const allowedOrigins = [
-    "https://infobot.fun", // User's Mini App domain
-    "https://warpcast.com", // Farcaster/Warpcast origin
-    "https://client.farcaster.xyz", // Farcaster client origin
+    "https://warpcast.com", // Farcaster/Warpcast origin (REQUIRED)
+    "https://snapchain.farcaster.xyz", // Snapchain preview (REQUIRED)
+    "https://client.farcaster.xyz", // OnchainKit / AuthKit (REQUIRED)
     "https://farcaster.xyz", // Farcaster main domain
+    "https://infobot.fun", // User's Mini App domain
+    "https://infobot-production-f74e.up.railway.app", // Backend URL (optional, for testing)
     "http://localhost:3000", // Local development
     "http://localhost:5173", // Local development
   ];
   
+  // Main CORS middleware - handles all CORS requests
   app.use(cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
+      // Allow requests with no origin (like mobile apps, curl, Postman)
+      if (!origin) {
+        return callback(null, true);
+      }
       
       // Check if origin is in allowed list or is a Farcaster domain
-      if (
+      const isAllowed = 
         allowedOrigins.indexOf(origin) !== -1 ||
         origin.includes("farcaster.xyz") ||
         origin.includes("warpcast.com") ||
-        origin.includes("snapchain.farcaster.xyz")
-      ) {
+        origin.includes("snapchain.farcaster.xyz");
+      
+      if (isAllowed) {
         callback(null, true);
       } else {
-        logger.warn(`[CORS] Blocked origin: ${origin}`);
-        // For now, allow all to debug - can restrict later
+        logger.warn(`[CORS] Unknown origin: ${origin} - allowing for debugging`);
+        // Allow for now to debug - can restrict later in production
         callback(null, true);
       }
     },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true, // REQUIRED for SIWF
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "Accept", "Origin", "X-Requested-With"],
     exposedHeaders: ["Content-Type"],
     preflightContinue: false,
     optionsSuccessStatus: 200,
   }));
   
-  // Also add manual CORS headers as fallback for /api/siwf/* endpoints
+  // Handle OPTIONS preflight for all routes
+  app.options("*", cors());
+  
+  // Manual CORS headers as fallback for all /api/siwf/* endpoints
   app.use((req, res, next) => {
-    // For SIWF endpoints, set CORS headers based on origin
+    // For SIWF endpoints, always set CORS headers
     if (req.path.startsWith("/api/siwf/")) {
       const origin = req.headers.origin;
       
-      // Allow if origin is in allowed list or is a Farcaster domain
-      if (
-        origin &&
-        (allowedOrigins.includes(origin) ||
-         origin.includes("farcaster.xyz") ||
-         origin.includes("warpcast.com") ||
-         origin.includes("snapchain.farcaster.xyz"))
-      ) {
-        res.header("Access-Control-Allow-Origin", origin);
-        res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      // Set CORS headers based on origin
+      if (origin) {
+        // Check if it's an allowed origin
+        const isAllowed = 
+          allowedOrigins.includes(origin) ||
+          origin.includes("farcaster.xyz") ||
+          origin.includes("warpcast.com") ||
+          origin.includes("snapchain.farcaster.xyz");
+        
+        if (isAllowed) {
+          res.header("Access-Control-Allow-Origin", origin);
+        } else {
+          // Fallback: allow the origin anyway (for debugging)
+          res.header("Access-Control-Allow-Origin", origin);
+        }
+        
+        res.header("Access-Control-Allow-Credentials", "true");
+        res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE");
         res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With");
-        res.header("Access-Control-Allow-Credentials", "true");
-      } else if (origin) {
-        // Fallback: allow the origin anyway (for debugging)
-        res.header("Access-Control-Allow-Origin", origin);
-        res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        res.header("Access-Control-Allow-Headers", "Content-Type");
-        res.header("Access-Control-Allow-Credentials", "true");
       }
       
-      // Handle preflight
+      // Handle preflight requests
       if (req.method === "OPTIONS") {
         return res.sendStatus(200);
       }
