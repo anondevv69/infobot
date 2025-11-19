@@ -512,7 +512,7 @@ router.post("/miniapp-connect", async (req, res) => {
     
     // Log the incoming request for debugging
     logger.info("[Mini App Connect] Received request:", {
-      origin: origin,
+      origin: req.headers.origin,
       method: req.method,
       body: req.body,
       headers: {
