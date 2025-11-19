@@ -489,39 +489,60 @@ router.get("/callback", async (req, res) => {
 // Endpoint for Mini App connection (called from Mini App)
 router.post("/miniapp-connect", async (req, res) => {
   try {
+    // Log the incoming request for debugging
+    logger.info("[Mini App Connect] Received request:", {
+      body: req.body,
+      headers: req.headers,
+      origin: req.headers.origin,
+    });
+
     const { userId, platform, fid, username, custodyAddress, verifiedAddresses, signerPrivateKey, signerPublicKey } = req.body;
 
-    if (!userId || !platform || !fid) {
-      return res.status(400).json({ error: "Missing required fields" });
+    // Validate required fields
+    if (!userId) {
+      logger.warn("[Mini App Connect] Missing userId");
+      return res.status(400).json({ error: "Missing required field: userId" });
+    }
+    if (!platform) {
+      logger.warn("[Mini App Connect] Missing platform");
+      return res.status(400).json({ error: "Missing required field: platform" });
+    }
+    if (!fid) {
+      logger.warn("[Mini App Connect] Missing fid");
+      return res.status(400).json({ error: "Missing required field: fid" });
     }
 
     const key = `${platform}:${userId}`;
     
     // Store the connection
     verifiedConnections.set(key, {
-      fid,
+      fid: typeof fid === 'string' ? parseInt(fid, 10) : fid,
       username: username || "",
       custodyAddress: custodyAddress || "",
-      verifiedAddresses: verifiedAddresses || [],
+      verifiedAddresses: Array.isArray(verifiedAddresses) ? verifiedAddresses : [],
       platform,
       signerPrivateKey,
       signerPublicKey,
     });
 
-    logger.info(`Mini App connection stored for user ${userId} (FID: ${fid})`);
+    logger.info(`[Mini App Connect] ✅ Connection stored for user ${userId} (FID: ${fid}, Platform: ${platform})`);
 
     return res.json({
       success: true,
       message: "Successfully connected to bot",
       connection: {
-        fid,
-        username,
-        custodyAddress,
+        fid: typeof fid === 'string' ? parseInt(fid, 10) : fid,
+        username: username || "",
+        custodyAddress: custodyAddress || "",
       },
     });
   } catch (error: any) {
-    logger.error("Failed to store Mini App connection:", error);
-    return res.status(500).json({ error: "Internal server error" });
+    logger.error("[Mini App Connect] ❌ Error:", error);
+    logger.error("[Mini App Connect] Error stack:", error.stack);
+    return res.status(500).json({ 
+      error: "Internal server error",
+      message: error.message || "Unknown error",
+    });
   }
 });
 
