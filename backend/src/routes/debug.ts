@@ -119,22 +119,22 @@ router.get("/siwf", async (req, res) => {
   }
 });
 
-// Health check endpoint
-  // Test CORS endpoint
-  router.get("/cors-test", (req, res) => {
-    const origin = req.headers.origin;
-    res.header("Access-Control-Allow-Origin", origin || "*");
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.json({
-      success: true,
-      message: "CORS is working!",
-      origin: origin || "none",
-      timestamp: new Date().toISOString(),
-    });
+// Test CORS endpoint
+router.get("/cors-test", (req, res) => {
+  const origin = req.headers.origin;
+  res.header("Access-Control-Allow-Origin", origin || "*");
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.json({
+    success: true,
+    message: "CORS is working!",
+    origin: origin || "none",
+    timestamp: new Date().toISOString(),
   });
-  
-  router.get("/health", (req, res) => {
+});
+
+// Health check endpoint
+router.get("/health", (req, res) => {
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
