@@ -14,32 +14,34 @@ async function bootstrap(): Promise<void> {
 
   const app = express();
   
-  // CORS configuration - allow requests from Mini App and Farcaster domains
+  // CORS configuration - MUST be before other middleware
+  // Allow all origins for now to debug (can restrict later)
   app.use(cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
-      
-      const allowedOrigins = [
-        "https://infobot.fun",
-        "https://farcaster.xyz",
-        "https://warpcast.com",
-        "http://localhost:5173", // For local development
-        "http://localhost:3000", // For local development
-      ];
-      
-      if (allowedOrigins.indexOf(origin) !== -1 || origin?.includes("farcaster.xyz") || origin?.includes("warpcast.com")) {
-        callback(null, true);
-      } else {
-        logger.warn(`[CORS] Blocked origin: ${origin}`);
-        callback(null, true); // Allow all for now, can restrict later
-      }
-    },
+    origin: true, // Allow all origins - will set specific origin in response
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "Accept"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "Accept", "Origin", "X-Requested-With"],
     exposedHeaders: ["Content-Type"],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   }));
+  
+  // Also add manual CORS headers as fallback
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin) {
+      res.header("Access-Control-Allow-Origin", origin);
+      res.header("Access-Control-Allow-Credentials", "true");
+      res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+      res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key, Accept, Origin, X-Requested-With");
+    }
+    
+    // Handle preflight
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+    next();
+  });
   
   app.use(express.json({ limit: "1mb" }));
 

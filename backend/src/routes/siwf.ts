@@ -488,26 +488,36 @@ router.get("/callback", async (req, res) => {
 
 // Handle OPTIONS preflight request for CORS
 router.options("/miniapp-connect", (req, res) => {
-  res.header("Access-Control-Allow-Origin", req.headers.origin || "https://infobot.fun");
-  res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  const origin = req.headers.origin || "https://infobot.fun";
+  logger.info("[CORS] OPTIONS preflight request from:", origin);
+  
+  res.header("Access-Control-Allow-Origin", origin);
+  res.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With");
   res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Max-Age", "86400"); // 24 hours
   res.sendStatus(200);
 });
 
 // Endpoint for Mini App connection (called from Mini App)
 router.post("/miniapp-connect", async (req, res) => {
   try {
-    // Set CORS headers explicitly
-    res.header("Access-Control-Allow-Origin", req.headers.origin || "https://infobot.fun");
+    // Set CORS headers explicitly (must be before any response)
+    const origin = req.headers.origin || "https://infobot.fun";
+    res.header("Access-Control-Allow-Origin", origin);
     res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With");
     
     // Log the incoming request for debugging
     logger.info("[Mini App Connect] Received request:", {
-      body: req.body,
-      headers: req.headers,
-      origin: req.headers.origin,
+      origin: origin,
       method: req.method,
+      body: req.body,
+      headers: {
+        'content-type': req.headers['content-type'],
+        'origin': req.headers.origin,
+      },
     });
 
     const { userId, platform, fid, username, custodyAddress, verifiedAddresses, signerPrivateKey, signerPublicKey } = req.body;
