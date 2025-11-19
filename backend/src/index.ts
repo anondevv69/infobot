@@ -27,27 +27,63 @@ async function bootstrap(): Promise<void> {
     "http://localhost:5173", // Local development
   ];
   
-  // Main CORS middleware - handles all CORS requests
-  // TEMPORARILY ALLOW ALL ORIGINS FOR DEBUGGING
+  // CORS configuration - ALLOW ALL ORIGINS (for debugging)
+  // This is the most permissive CORS setup possible
+  app.use((req, res, next) => {
+    // Set CORS headers for ALL requests, regardless of origin
+    const origin = req.headers.origin;
+    
+    // Log the request for debugging
+    if (req.path.startsWith("/api/")) {
+      logger.info(`[CORS] ${req.method} ${req.path} - Origin: ${origin || "none"}`);
+    }
+    
+    // ALWAYS allow any origin (for debugging)
+    if (origin) {
+      res.header("Access-Control-Allow-Origin", origin);
+    } else {
+      res.header("Access-Control-Allow-Origin", "*");
+    }
+    
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key, Accept, Origin, X-Requested-With, X-Custom-Header");
+    res.header("Access-Control-Expose-Headers", "Content-Type, Content-Length");
+    res.header("Access-Control-Max-Age", "86400");
+    
+    // Handle preflight requests immediately
+    if (req.method === "OPTIONS") {
+      logger.info(`[CORS] OPTIONS preflight for ${req.path} - returning 200`);
+      return res.sendStatus(200);
+    }
+    
+    next();
+  });
+  
+  // Also use cors middleware as backup
   app.use(cors({
-    origin: true, // Allow ALL origins temporarily to debug
-    credentials: true, // REQUIRED for SIWF
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    origin: true, // Allow ALL origins
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "Accept", "Origin", "X-Requested-With"],
-    exposedHeaders: ["Content-Type"],
+    exposedHeaders: ["Content-Type", "Content-Length"],
     preflightContinue: false,
     optionsSuccessStatus: 200,
   }));
   
-  // Log all incoming requests for debugging
-  app.use((req, res, next) => {
+  // Handle OPTIONS preflight for all routes (triple backup)
+  app.options("*", (req, res) => {
     const origin = req.headers.origin;
-    logger.info(`[CORS Debug] ${req.method} ${req.path} - Origin: ${origin || "none"}`);
-    next();
+    if (origin) {
+      res.header("Access-Control-Allow-Origin", origin);
+    } else {
+      res.header("Access-Control-Allow-Origin", "*");
+    }
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key, Accept, Origin, X-Requested-With");
+    res.sendStatus(200);
   });
-  
-  // Handle OPTIONS preflight for all routes
-  app.options("*", cors());
   
   // Manual CORS headers as fallback for all /api/siwf/* endpoints
   app.use((req, res, next) => {

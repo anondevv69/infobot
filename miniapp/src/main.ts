@@ -75,11 +75,23 @@ async function linkToBot(farcasterUser: any) {
   try {
     showStatus('info', '🔄 Linking to bot...');
     
+    // Log the request for debugging
+    console.log('[Mini App] Making request to:', `${backendUrl}/api/siwf/miniapp-connect`);
+    console.log('[Mini App] Request data:', {
+      userId,
+      platform,
+      fid: farcasterUser.fid,
+      username: farcasterUser.username,
+    });
+    
     // Send connection data to backend
     const response = await fetch(`${backendUrl}/api/siwf/miniapp-connect`, {
       method: 'POST',
+      mode: 'cors', // Explicitly enable CORS
+      credentials: 'include', // Include credentials
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
       body: JSON.stringify({
         userId,
@@ -93,6 +105,9 @@ async function linkToBot(farcasterUser: any) {
         signerPublicKey: farcasterUser.signerPublicKey,
       }),
     });
+    
+    console.log('[Mini App] Response status:', response.status);
+    console.log('[Mini App] Response headers:', Object.fromEntries(response.headers.entries()));
 
     const result = await response.json();
 
@@ -107,8 +122,24 @@ async function linkToBot(farcasterUser: any) {
       throw new Error(result.error || 'Failed to link to bot');
     }
   } catch (error: any) {
-    console.error('Link error:', error);
-    showStatus('error', `Failed to link: ${error.message || 'Unknown error'}`);
+    console.error('[Mini App] Link error:', error);
+    console.error('[Mini App] Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    });
+    
+    // Show more detailed error message
+    let errorMessage = 'Failed to link: ';
+    if (error.message) {
+      errorMessage += error.message;
+    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      errorMessage += 'Network error - check CORS configuration on backend';
+    } else {
+      errorMessage += 'Unknown error - check console for details';
+    }
+    
+    showStatus('error', errorMessage);
   }
 }
 
