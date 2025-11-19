@@ -2,16 +2,21 @@ import { Pool } from "pg";
 import { env } from "../config";
 import { logger } from "../utils/logger";
 
-export const pool = new Pool({
-  connectionString: env.DATABASE_URL,
-  max: 10,
-  connectionTimeoutMillis: 5_000,
-  idleTimeoutMillis: 30_000,
-});
+// Only create pool if DATABASE_URL is provided
+export const pool = env.DATABASE_URL
+  ? new Pool({
+      connectionString: env.DATABASE_URL,
+      max: 10,
+      connectionTimeoutMillis: 5_000,
+      idleTimeoutMillis: 30_000,
+    })
+  : null;
 
-pool.on("error", (error: Error) => {
-  logger.error("Unexpected error on idle PostgreSQL client", error);
-});
+if (pool) {
+  pool.on("error", (error: Error) => {
+    logger.error("Unexpected error on idle PostgreSQL client", error);
+  });
+}
 
 export interface SubscriptionRecord {
   id: string;
@@ -23,6 +28,11 @@ export interface SubscriptionRecord {
 }
 
 export async function ensureSchema(): Promise<void> {
+  if (!pool) {
+    logger.warn("Database not configured (DATABASE_URL not set). Skipping schema creation.");
+    return;
+  }
+  
   await pool.query(`
     CREATE EXTENSION IF NOT EXISTS "pgcrypto";
     CREATE TABLE IF NOT EXISTS subscriptions (
@@ -42,6 +52,10 @@ export async function createSubscription(
   channelId: string,
   fid: number,
 ): Promise<SubscriptionRecord> {
+  if (!pool) {
+    throw new Error("Database not configured (DATABASE_URL not set)");
+  }
+  
   const { rows } = await pool.query<SubscriptionRecord>(
     `
       INSERT INTO subscriptions (guild_id, channel_id, fid)
@@ -59,6 +73,10 @@ export async function deleteSubscription(
   channelId: string,
   fid: number,
 ): Promise<boolean> {
+  if (!pool) {
+    throw new Error("Database not configured (DATABASE_URL not set)");
+  }
+  
   const { rowCount } = await pool.query(
     `DELETE FROM subscriptions WHERE guild_id = $1 AND channel_id = $2 AND fid = $3`,
     [guildId, channelId, fid],
@@ -69,6 +87,10 @@ export async function deleteSubscription(
 export async function listSubscriptionsForGuild(
   guildId: string,
 ): Promise<SubscriptionRecord[]> {
+  if (!pool) {
+    throw new Error("Database not configured (DATABASE_URL not set)");
+  }
+  
   const { rows } = await pool.query<SubscriptionRecord>(
     `SELECT * FROM subscriptions WHERE guild_id = $1 ORDER BY fid`,
     [guildId],
@@ -79,6 +101,10 @@ export async function listSubscriptionsForGuild(
 export async function listSubscriptionsForFid(
   fid: number,
 ): Promise<SubscriptionRecord[]> {
+  if (!pool) {
+    throw new Error("Database not configured (DATABASE_URL not set)");
+  }
+  
   const { rows } = await pool.query<SubscriptionRecord>(
     `SELECT * FROM subscriptions WHERE fid = $1`,
     [fid],
