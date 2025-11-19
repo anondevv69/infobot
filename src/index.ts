@@ -91,8 +91,40 @@ async function main(): Promise<void> {
     ],
   });
 
-  client.once(Events.ClientReady, (readyClient) => {
+  client.once(Events.ClientReady, async (readyClient) => {
     logger.info(`Discord bot logged in as ${readyClient.user.tag}`);
+    
+    // Check if bot is in the webhook channel's server
+    const { getWebhookChannelId } = await import("./utils/webhookChannel");
+    const webhookChannelId = await getWebhookChannelId(process.env.LOG_WEBHOOK_URL || null);
+    
+    if (webhookChannelId) {
+      const webhookChannel = await readyClient.channels.fetch(webhookChannelId).catch(() => null);
+      if (webhookChannel && webhookChannel.isTextBased() && "guild" in webhookChannel && webhookChannel.guild) {
+        const guild = webhookChannel.guild;
+        const channelName = "name" in webhookChannel ? webhookChannel.name : "Unknown";
+        logger.system(
+          `✅ **Bot is in webhook server**\n` +
+          `**Server:** ${guild.name}\n` +
+          `**Channel:** ${channelName}\n` +
+          `**Channel ID:** ${webhookChannelId}\n\n` +
+          `You can now use \`!stats\` in this channel to view bot statistics.`,
+          {
+            guildId: guild.id,
+            channelId: webhookChannelId,
+          }
+        );
+      } else {
+        logger.system(
+          `⚠️ **Bot is NOT in webhook server**\n` +
+          `The bot needs to be added to the server containing the webhook channel (ID: ${webhookChannelId}) to respond to \`!stats\` commands.\n\n` +
+          `**To fix:** Add the bot to the Discord server where your webhook channel is located.`,
+          {
+            channelId: webhookChannelId,
+          }
+        );
+      }
+    }
     
     // Initialize broadcast client
     initializeBroadcastClient(readyClient);

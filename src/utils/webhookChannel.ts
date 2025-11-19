@@ -25,7 +25,7 @@ export async function getWebhookChannelId(webhookUrl: string | null): Promise<st
 
     const [, webhookId, webhookToken] = match;
 
-    // Fetch webhook info to get channel_id
+    // Fetch webhook info to get channel_id and guild_id
     const response = await fetch(`https://discord.com/api/webhooks/${webhookId}/${webhookToken}`, {
       method: "GET",
     });
@@ -35,11 +35,12 @@ export async function getWebhookChannelId(webhookUrl: string | null): Promise<st
       return null;
     }
 
-    const webhookInfo = (await response.json()) as { channel_id?: string };
+    const webhookInfo = (await response.json()) as { channel_id?: string; guild_id?: string };
     const channelId = webhookInfo.channel_id;
 
     if (channelId) {
       cachedChannelId = channelId;
+      console.log(`[WebhookChannel] Found webhook channel: ${channelId} in guild: ${webhookInfo.guild_id || "unknown"}`);
       return channelId;
     }
 
