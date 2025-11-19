@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import path from "path";
 import { env } from "./config";
 import { ensureSchema } from "./db";
 import { logger } from "./utils/logger";
@@ -136,7 +137,8 @@ async function bootstrap(): Promise<void> {
   app.use(express.json({ limit: "1mb" }));
   
   // Serve static files (wallet connection page)
-  app.use(express.static("wallet-connect"));
+  // Use path relative to backend directory (works in both dev and production)
+  app.use(express.static(path.join(__dirname, "../wallet-connect")));
 
   app.get("/healthz", (_req, res) => {
     res.json({ status: "ok", uptime: process.uptime() });
