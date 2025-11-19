@@ -27,63 +27,60 @@ async function bootstrap(): Promise<void> {
     "http://localhost:5173", // Local development
   ];
   
-  // CORS configuration - ALLOW ALL ORIGINS (for debugging)
-  // This is the most permissive CORS setup possible
-  app.use((req, res, next) => {
-    // Set CORS headers for ALL requests, regardless of origin
-    const origin = req.headers.origin;
-    
-    // Log the request for debugging
-    if (req.path.startsWith("/api/")) {
-      logger.info(`[CORS] ${req.method} ${req.path} - Origin: ${origin || "none"}`);
-    }
-    
-    // ALWAYS allow any origin (for debugging)
-    if (origin) {
-      res.header("Access-Control-Allow-Origin", origin);
-    } else {
-      res.header("Access-Control-Allow-Origin", "*");
-    }
-    
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key, Accept, Origin, X-Requested-With, X-Custom-Header");
-    res.header("Access-Control-Expose-Headers", "Content-Type, Content-Length");
-    res.header("Access-Control-Max-Age", "86400");
-    
-    // Handle preflight requests immediately
-    if (req.method === "OPTIONS") {
-      logger.info(`[CORS] OPTIONS preflight for ${req.path} - returning 200`);
-      return res.sendStatus(200);
-    }
-    
-    next();
-  });
+  // CORS configuration - EXACTLY as Lovable requested
+  // Allow requests from Mini App and Farcaster domains
+  const allowedOrigins = [
+    'https://infobot.fun',           // Your mini-app
+    'https://warpcast.com',           // Farcaster frames
+    'https://client.farcaster.xyz',    // Farcaster client
+    'https://snapchain.farcaster.xyz', // Snapchain preview
+    'https://farcaster.xyz',          // Farcaster main
+    'http://localhost:3000',          // Local development
+    'http://localhost:5173',         // Local development
+  ];
   
-  // Also use cors middleware as backup
+  // Main CORS middleware - exactly as Lovable specified
   app.use(cors({
-    origin: true, // Allow ALL origins
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "Accept", "Origin", "X-Requested-With"],
-    exposedHeaders: ["Content-Type", "Content-Length"],
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps, curl, Postman)
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      // Check if origin is in allowed list
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        // Also allow any Farcaster domain for safety
+        if (origin.includes('farcaster.xyz') || origin.includes('warpcast.com')) {
+          logger.info(`[CORS] Allowing Farcaster domain: ${origin}`);
+          callback(null, true);
+        } else {
+          logger.warn(`[CORS] Blocked origin: ${origin}`);
+          // For debugging, allow anyway - can restrict in production
+          callback(null, true);
+        }
+      }
+    },
+    credentials: true, // REQUIRED as per Lovable
+    methods: ['GET', 'POST', 'OPTIONS'], // Exactly as Lovable specified
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+    exposedHeaders: ['Content-Type'],
     preflightContinue: false,
     optionsSuccessStatus: 200,
   }));
   
-  // Handle OPTIONS preflight for all routes (triple backup)
-  app.options("*", (req, res) => {
+  // Log all incoming requests for debugging
+  app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin) {
-      res.header("Access-Control-Allow-Origin", origin);
-    } else {
-      res.header("Access-Control-Allow-Origin", "*");
+    if (req.path.startsWith("/api/")) {
+      logger.info(`[CORS] ${req.method} ${req.path} - Origin: ${origin || "none"}`);
     }
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key, Accept, Origin, X-Requested-With");
-    res.sendStatus(200);
+    next();
   });
+  
+  // Handle OPTIONS preflight for all routes
+  app.options("*", cors());
   
   // Manual CORS headers as fallback for all /api/siwf/* endpoints
   app.use((req, res, next) => {
