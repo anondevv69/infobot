@@ -178,6 +178,9 @@ export async function handleSearchCommand(
 async function handleWalletSearch(
   interaction: ChatInputCommandInteraction,
   address: string,
+  userId?: string,
+  guildId?: string,
+  channelId?: string,
 ): Promise<void> {
   const zoraSummaryFromAddressPromise = findBestZoraSummary([address]);
   let user: User | null = null;
@@ -538,7 +541,7 @@ async function replyWithClankerTokenLookup(
       embeds: [userEmbed],
       components: detailRows,
     });
-    return;
+    return true;
   }
 
   const earliestCast = primaryToken.contract_address
@@ -561,11 +564,12 @@ async function replyWithClankerTokenLookup(
     components.push(...buildPaginationButtons(0, totalPages, identifier));
   }
 
-    await interaction.editReply({
-      content: `No Farcaster profile found for \`${query}\`, but the keyword matches this Clanker deployment:`,
-      embeds: [embeds[0]],
-      components,
-    });
+  await interaction.editReply({
+    content: `No Farcaster profile found for \`${query}\`, but the keyword matches this Clanker deployment:`,
+    embeds: [embeds[0]],
+    components,
+  });
+  return true;
 }
 
 /**
