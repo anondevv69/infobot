@@ -29,16 +29,20 @@ async function bootstrap(): Promise<void> {
   ];
   
   // CORS configuration - EXACTLY as Lovable requested
-  // Allow requests from Mini App and Farcaster domains
+  // Allow requests from Mini App, Farcaster domains, and Lovable
   const allowedOrigins = [
     'https://infobot.fun',           // Your mini-app
     'https://warpcast.com',           // Farcaster frames
     'https://client.farcaster.xyz',    // Farcaster client
     'https://snapchain.farcaster.xyz', // Snapchain preview
     'https://farcaster.xyz',          // Farcaster main
+    'https://3286b522-a4bf-4197-843e-64faa1e5aa3d.lovableproject.com', // Lovable project
     'http://localhost:3000',          // Local development
     'http://localhost:5173',         // Local development
   ];
+  
+  // Also allow any Lovable project subdomain
+  const lovablePattern = /^https:\/\/[a-f0-9-]+\.lovableproject\.com$/;
   
   // Main CORS middleware - exactly as Lovable specified
   app.use(cors({
@@ -50,6 +54,10 @@ async function bootstrap(): Promise<void> {
       
       // Check if origin is in allowed list
       if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else if (lovablePattern.test(origin)) {
+        // Allow any Lovable project subdomain
+        logger.info(`[CORS] Allowing Lovable domain: ${origin}`);
         callback(null, true);
       } else {
         // Also allow any Farcaster domain for safety
@@ -63,7 +71,7 @@ async function bootstrap(): Promise<void> {
         }
       }
     },
-    credentials: true, // REQUIRED as per Lovable
+    credentials: true, // REQUIRED as per Lovable (must be true when using specific origins)
     methods: ['GET', 'POST', 'OPTIONS'], // Exactly as Lovable specified
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     exposedHeaders: ['Content-Type'],

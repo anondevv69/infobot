@@ -490,21 +490,40 @@ router.get("/callback", async (req, res) => {
 router.options("/miniapp-connect", (req, res) => {
   const origin = req.headers.origin;
   logger.info("[CORS] OPTIONS preflight request from:", origin || "none");
-  logger.info("[CORS] Request headers:", JSON.stringify(req.headers, null, 2));
   
-  // TEMPORARILY ALLOW ANY ORIGIN FOR DEBUGGING
-  if (origin) {
+  // Allowed origins (must match exactly when using credentials)
+  const allowedOrigins = [
+    'https://infobot.fun',
+    'https://warpcast.com',
+    'https://client.farcaster.xyz',
+    'https://snapchain.farcaster.xyz',
+    'https://farcaster.xyz',
+    'https://3286b522-a4bf-4197-843e-64faa1e5aa3d.lovableproject.com', // Lovable project
+  ];
+  
+  // Check if origin is allowed (must be exact match for credentials)
+  if (origin && (allowedOrigins.includes(origin) || 
+                 origin.includes('farcaster.xyz') || 
+                 origin.includes('warpcast.com') ||
+                 /^https:\/\/[a-f0-9-]+\.lovableproject\.com$/.test(origin))) {
+    // Use exact origin (required when credentials: true)
     res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.header("Access-Control-Max-Age", "86400"); // 24 hours
+    logger.info("[CORS] OPTIONS response headers set for:", origin);
   } else {
-    res.header("Access-Control-Allow-Origin", "*");
+    // Fallback for debugging
+    if (origin) {
+      res.header("Access-Control-Allow-Origin", origin);
+    }
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    logger.warn("[CORS] OPTIONS from unknown origin, allowing anyway:", origin);
   }
   
-  res.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With, x-api-key");
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Max-Age", "86400"); // 24 hours
-  
-  logger.info("[CORS] OPTIONS response headers set, returning 200");
   res.sendStatus(200);
 });
 
@@ -512,23 +531,43 @@ router.options("/miniapp-connect", (req, res) => {
 router.post("/miniapp-connect", async (req, res) => {
   try {
     // Set CORS headers explicitly (must be before any response)
-    // TEMPORARILY ALLOW ANY ORIGIN FOR DEBUGGING
     const origin = req.headers.origin;
     
     logger.info("[Mini App Connect] POST request received");
     logger.info("[Mini App Connect] Origin:", origin || "none");
-    logger.info("[Mini App Connect] All headers:", JSON.stringify(req.headers, null, 2));
     
-    // ALWAYS set CORS headers - allow any origin for debugging
-    if (origin) {
+    // Allowed origins (must match exactly when using credentials)
+    const allowedOrigins = [
+      'https://infobot.fun',
+      'https://warpcast.com',
+      'https://client.farcaster.xyz',
+      'https://snapchain.farcaster.xyz',
+      'https://farcaster.xyz',
+      'https://3286b522-a4bf-4197-843e-64faa1e5aa3d.lovableproject.com', // Lovable project
+    ];
+    
+    // Set CORS headers - must use exact origin when credentials: true
+    if (origin && (allowedOrigins.includes(origin) || 
+                   origin.includes('farcaster.xyz') || 
+                   origin.includes('warpcast.com') ||
+                   /^https:\/\/[a-f0-9-]+\.lovableproject\.com$/.test(origin))) {
+      // Use exact origin (required when credentials: true)
       res.header("Access-Control-Allow-Origin", origin);
+      res.header("Access-Control-Allow-Credentials", "true");
+      res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+      res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      logger.info("[CORS] Allowed origin:", origin);
+    } else if (origin) {
+      // Fallback for debugging - still allow but log warning
+      res.header("Access-Control-Allow-Origin", origin);
+      res.header("Access-Control-Allow-Credentials", "true");
+      res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+      res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      logger.warn("[CORS] Unknown origin, allowing anyway:", origin);
     } else {
+      // No origin - allow all (for debugging)
       res.header("Access-Control-Allow-Origin", "*");
     }
-    
-    res.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With, x-api-key");
-    res.header("Access-Control-Allow-Credentials", "true");
     
     // Log the incoming request for debugging
     logger.info("[Mini App Connect] Received request:", {
