@@ -81,11 +81,25 @@ export async function handleConnectCommand(
 
   if (env.miniappUrl && !env.miniappUrl.includes("your-miniapp-domain.com")) {
     // Use Mini App (best option)
-    const miniappUrl = new URL(env.miniappUrl);
-    miniappUrl.searchParams.set("userId", userId);
-    miniappUrl.searchParams.set("platform", "discord");
-    miniappUrl.searchParams.set("backendUrl", env.backendUrl);
-    connectUrl = miniappUrl.toString();
+    // For Farcaster-hosted Mini Apps, we need to pass parameters differently
+    // The Mini App will receive them via Farcaster's SDK context
+    let miniappUrl: string;
+    if (env.miniappUrl.includes("farcaster.xyz/miniapps")) {
+      // Farcaster-hosted Mini App - parameters passed via URL hash or query
+      const url = new URL(env.miniappUrl);
+      url.searchParams.set("userId", userId);
+      url.searchParams.set("platform", "discord");
+      url.searchParams.set("backendUrl", env.backendUrl);
+      miniappUrl = url.toString();
+    } else {
+      // Custom domain Mini App
+      const url = new URL(env.miniappUrl);
+      url.searchParams.set("userId", userId);
+      url.searchParams.set("platform", "discord");
+      url.searchParams.set("backendUrl", env.backendUrl);
+      miniappUrl = url.toString();
+    }
+    connectUrl = miniappUrl;
     connectLabel = "🔐 Open Mini App to Connect";
     description =
       `To securely connect your Farcaster account:\n\n` +
