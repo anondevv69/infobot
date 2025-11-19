@@ -134,6 +134,9 @@ async function bootstrap(): Promise<void> {
   });
   
   app.use(express.json({ limit: "1mb" }));
+  
+  // Serve static files (wallet connection page)
+  app.use(express.static("wallet-connect"));
 
   app.get("/healthz", (_req, res) => {
     res.json({ status: "ok", uptime: process.uptime() });
