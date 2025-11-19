@@ -6,6 +6,10 @@ const uniqueTelegramUsers = new Set<number>();
 const totalSearches = { count: 0 };
 const startTime = Date.now();
 
+// Track response times for commands (in milliseconds)
+const responseTimes: number[] = [];
+const MAX_RESPONSE_TIMES = 1000; // Keep last 1000 response times for average
+
 export function trackUser(userId: string, platform: "discord" | "telegram"): void {
   if (platform === "discord") {
     uniqueUsers.add(userId);
@@ -18,6 +22,22 @@ export function trackSearch(): void {
   totalSearches.count++;
 }
 
+export function trackResponseTime(ms: number): void {
+  responseTimes.push(ms);
+  // Keep only the most recent response times to prevent memory bloat
+  if (responseTimes.length > MAX_RESPONSE_TIMES) {
+    responseTimes.shift();
+  }
+}
+
+export function getAverageResponseTime(): number {
+  if (responseTimes.length === 0) {
+    return 0;
+  }
+  const sum = responseTimes.reduce((acc, time) => acc + time, 0);
+  return Math.round(sum / responseTimes.length);
+}
+
 export async function getBotStats(client: Client): Promise<{
   discordServers: number;
   totalUsers: number;
@@ -26,6 +46,7 @@ export async function getBotStats(client: Client): Promise<{
   totalSearches: number;
   uptime: string;
   memoryUsage: string;
+  avgResponseTime: string;
 }> {
   // Get Discord server count - from Discord.js client cache
   const discordServers = client.guilds.cache.size;
@@ -49,6 +70,10 @@ export async function getBotStats(client: Client): Promise<{
   const memoryUsageMB = (memoryUsage.heapUsed / 1024 / 1024).toFixed(2);
   const memoryUsageFormatted = `${memoryUsageMB} MB`;
 
+  // Calculate average response time
+  const avgResponseTimeMs = getAverageResponseTime();
+  const avgResponseTimeFormatted = formatResponseTime(avgResponseTimeMs);
+
   return {
     discordServers,
     totalUsers,
@@ -57,6 +82,7 @@ export async function getBotStats(client: Client): Promise<{
     totalSearches: totalSearches.count,
     uptime,
     memoryUsage: memoryUsageFormatted,
+    avgResponseTime: avgResponseTimeFormatted,
   };
 }
 
@@ -105,5 +131,16 @@ function formatUptime(ms: number): string {
   } else {
     return `${seconds}s`;
   }
+}
+
+function formatResponseTime(ms: number): string {
+  if (ms === 0) {
+    return "N/A";
+  }
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
+  const seconds = (ms / 1000).toFixed(1);
+  return `${seconds}s`;
 }
 

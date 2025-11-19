@@ -355,6 +355,7 @@ async function handleWebhookChannelCommand(message: import("discord.js").Message
           `**Telegram Chats:** ${stats.telegramChats} groups/channels\n` +
           (stats.telegramTotalMembers > 0 ? `**Telegram Members:** ${stats.telegramTotalMembers} total members\n` : "") +
           `**Total Searches:** ${stats.totalSearches}\n` +
+          `**Avg Response Time:** ${stats.avgResponseTime}\n` +
           `**Uptime:** ${stats.uptime}\n` +
           `**Memory:** ${stats.memoryUsage}`
         )

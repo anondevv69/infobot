@@ -347,10 +347,13 @@ Just send:
 
 async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string, userId?: number): Promise<void> {
   const { logger } = await import("../../../utils/logger");
-  const { trackSearch } = await import("../../../utils/botStats");
+  const { trackSearch, trackResponseTime } = await import("../../../utils/botStats");
   
   // Track search
   trackSearch();
+  
+  // Track response time
+  const startTime = Date.now();
   
   // Log initial search
   logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
@@ -603,6 +606,10 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
       platform: "telegram",
     });
     await bot.sendMessage(chatId, "An error occurred while searching. Please try again.");
+  } finally {
+    // Track response time for this command
+    const responseTime = Date.now() - startTime;
+    trackResponseTime(responseTime);
   }
 }
 

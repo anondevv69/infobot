@@ -36,7 +36,7 @@ import { buildZoraCoinResponse } from "../handlers/zoraAddress";
 import { splitEmbedIntoPages, buildPaginationButtons } from "../utils/pagination";
 import { storeEmbedForPagination } from "../handlers/pagination";
 import { logger } from "../utils/logger";
-import { trackUser, trackSearch } from "../utils/botStats";
+import { trackUser, trackSearch, trackResponseTime } from "../utils/botStats";
 
 export async function handleSearchCommand(
   interaction: ChatInputCommandInteraction,
@@ -65,6 +65,8 @@ export async function handleSearchCommand(
     type: "pending",
   });
 
+  // Track response time
+  const startTime = Date.now();
   await interaction.deferReply();
 
   try {
@@ -177,6 +179,10 @@ export async function handleSearchCommand(
     await interaction.editReply({
       content: `${message} Please retry later or check the provided value.`,
     });
+  } finally {
+    // Track response time for this command
+    const responseTime = Date.now() - startTime;
+    trackResponseTime(responseTime);
   }
 }
 
