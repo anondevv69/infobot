@@ -116,12 +116,14 @@ export async function handleConnectCommand(
       url.searchParams.set("userId", userId);
       url.searchParams.set("platform", "discord");
       url.searchParams.set("backendUrl", env.backendUrl);
+      url.searchParams.set("challenge", challenge.challenge); // SECURITY: Include challenge for verification
       miniappUrl = url.toString();
     } else {
       const url = new URL(env.miniappUrl);
       url.searchParams.set("userId", userId);
       url.searchParams.set("platform", "discord");
       url.searchParams.set("backendUrl", env.backendUrl);
+      url.searchParams.set("challenge", challenge.challenge); // SECURITY: Include challenge for verification
       miniappUrl = url.toString();
     }
     

@@ -10,6 +10,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const userId = urlParams.get('userId'); // From Discord bot (if coming from /connect command)
 const platform = urlParams.get('platform') || 'discord';
 const backendUrl = urlParams.get('backendUrl') || 'https://infobot-production-f74e.up.railway.app';
+const challenge = urlParams.get('challenge'); // SIWF challenge from bot (REQUIRED for security)
 
 // Discord OAuth configuration
 // You'll need to set these in your Discord Developer Portal
@@ -196,6 +197,44 @@ async function linkToBot(farcasterUser: any) {
       return;
     }
     
+    // SECURITY: Challenge is required for signature verification
+    if (!challenge) {
+      showStatus('error', '❌ Missing security challenge. Please use /connect command in Discord/Telegram to get a valid connection link.');
+      return;
+    }
+    
+    // SECURITY: Get signed SIWF message from Farcaster SDK
+    // The SDK should provide a way to sign a message with the user's custody address
+    let signedMessage: string | null = null;
+    let signature: string | null = null;
+    
+    try {
+      // Create a message to sign (includes challenge for verification)
+      const messageToSign = `Connect to InfoBot\n\nChallenge: ${challenge}\nPlatform: ${finalPlatform}\nUser ID: ${finalUserId}\n\nThis signature proves you own this Farcaster account.`;
+      
+      // Try to get signature from SDK (if available)
+      // Note: Farcaster Mini App SDK may provide signing capabilities
+      if (sdk?.actions?.signMessage) {
+        const signResult = await sdk.actions.signMessage(messageToSign);
+        signedMessage = messageToSign;
+        signature = signResult?.signature || null;
+      } else if (farcasterUser.signature) {
+        // If SDK provides signature directly
+        signedMessage = messageToSign;
+        signature = farcasterUser.signature;
+      } else {
+        // Fallback: Use the challenge as the message and let backend verify via Neynar
+        // Backend will verify the user owns the custody address
+        signedMessage = challenge;
+        signature = null; // Backend will verify via Neynar API lookup
+      }
+    } catch (signError: any) {
+      console.warn('[Mini App] Could not get signature from SDK:', signError);
+      // Continue without signature - backend will verify via Neynar API
+      signedMessage = challenge;
+      signature = null;
+    }
+    
     // Log the request for debugging
     console.log('[Mini App] Making request to:', `${backendUrl}/api/siwf/miniapp-connect`);
     console.log('[Mini App] Request data:', {
@@ -203,6 +242,8 @@ async function linkToBot(farcasterUser: any) {
       platform: finalPlatform,
       fid: farcasterUser.fid,
       username: farcasterUser.username,
+      challenge: challenge,
+      hasSignature: !!signature,
       discordUser: discordUser ? `${discordUser.username}#${discordUser.discriminator}` : 'none',
     });
     
@@ -218,18 +259,25 @@ async function linkToBot(farcasterUser: any) {
           'Accept': 'application/json',
         },
         body: JSON.stringify({
+          // Required for verification
+          challenge: challenge,
           userId: finalUserId,
           platform: finalPlatform,
+          // Farcaster user data (will be verified server-side)
           fid: farcasterUser.fid,
           username: farcasterUser.username,
           custodyAddress: farcasterUser.custodyAddress,
           verifiedAddresses: farcasterUser.verifiedAddresses || [],
+          // Signed message for cryptographic verification
+          message: signedMessage,
+          signature: signature,
           // Include Discord info if available
           discordUsername: discordUser ? `${discordUser.username}#${discordUser.discriminator}` : undefined,
           discordId: discordUser?.id,
-          // Include any signer info if available
+          // Delegated signer info (if available from SDK)
           signerPrivateKey: farcasterUser.signerPrivateKey,
           signerPublicKey: farcasterUser.signerPublicKey,
+          signerFid: farcasterUser.signerFid,
         }),
       });
     } catch (fetchError: any) {

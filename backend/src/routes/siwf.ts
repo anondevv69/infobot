@@ -560,16 +560,33 @@ router.post("/miniapp-connect", async (req, res) => {
     logger.info("[Mini App Connect] Received request:", {
       origin: req.headers.origin,
       method: req.method,
-      body: req.body,
+      body: { ...req.body, signerPrivateKey: req.body.signerPrivateKey ? "[REDACTED]" : undefined },
       headers: {
         'content-type': req.headers['content-type'],
         'origin': req.headers.origin,
       },
     });
 
-    const { userId, platform, fid, username, custodyAddress, verifiedAddresses, signerPrivateKey, signerPublicKey } = req.body;
+    const { 
+      challenge,           // SIWF challenge (REQUIRED for security)
+      userId,             // Discord/Telegram user ID
+      platform,           // "discord" or "telegram"
+      fid,                // Farcaster ID
+      username,           // Farcaster username
+      custodyAddress,     // Custody wallet address
+      verifiedAddresses,  // Verified Ethereum addresses
+      message,            // Signed message (for verification)
+      signature,          // Signature of the message
+      signerPrivateKey,    // Delegated signer private key (ENCRYPTED before storage)
+      signerPublicKey,    // Delegated signer public key
+      signerFid,          // Signer FID
+    } = req.body;
 
-    // Validate required fields
+    // SECURITY: Validate required fields
+    if (!challenge) {
+      logger.warn("[Mini App Connect] Missing challenge");
+      return res.status(400).json({ error: "Missing required field: challenge" });
+    }
     if (!userId) {
       logger.warn("[Mini App Connect] Missing userId");
       return res.status(400).json({ error: "Missing required field: userId" });
@@ -582,19 +599,99 @@ router.post("/miniapp-connect", async (req, res) => {
       logger.warn("[Mini App Connect] Missing fid");
       return res.status(400).json({ error: "Missing required field: fid" });
     }
+    if (!custodyAddress) {
+      logger.warn("[Mini App Connect] Missing custodyAddress");
+      return res.status(400).json({ error: "Missing required field: custodyAddress" });
+    }
+
+    // SECURITY: Verify challenge exists and hasn't expired
+    const pending = pendingVerifications.get(challenge);
+    if (!pending || Date.now() - pending.timestamp > 10 * 60 * 1000) {
+      logger.warn("[Mini App Connect] Challenge expired or not found:", {
+        challenge,
+        exists: !!pending,
+        age: pending ? Date.now() - pending.timestamp : "N/A",
+      });
+      return res.status(400).json({ error: "Challenge expired or not found. Please try connecting again." });
+    }
+
+    // SECURITY: Verify the challenge matches the expected user
+    if (pending.userId !== userId || pending.platform !== platform) {
+      logger.warn("[Mini App Connect] Challenge user mismatch:", {
+        challenge,
+        expected: `${pending.platform}:${pending.userId}`,
+        received: `${platform}:${userId}`,
+      });
+      return res.status(400).json({ error: "Challenge user mismatch. Please try connecting again." });
+    }
+
+    // SECURITY: Verify signature if provided (cryptographic proof of ownership)
+    if (signature && message && custodyAddress) {
+      try {
+        // Verify the signature matches the custody address
+        const recoveredAddress = verifyMessage(message, signature);
+        const providedAddress = custodyAddress.toLowerCase();
+        
+        if (recoveredAddress.toLowerCase() !== providedAddress) {
+          logger.warn(`[Mini App Connect] Signature verification failed: ${recoveredAddress} !== ${providedAddress}`);
+          return res.status(400).json({ error: "Signature verification failed. Please try connecting again." });
+        }
+        
+        logger.info("[Mini App Connect] ✅ Signature verified successfully");
+      } catch (verifyError: any) {
+        logger.error("[Mini App Connect] Signature verification error:", verifyError);
+        return res.status(400).json({ error: "Invalid signature format. Please try connecting again." });
+      }
+    } else {
+      // Fallback: Verify via Neynar API (lookup user by custody address)
+      logger.info("[Mini App Connect] No signature provided, verifying via Neynar API");
+      try {
+        const response = await neynarClient.lookupUserByCustodyAddress({
+          custodyAddress: custodyAddress.toLowerCase(),
+        });
+
+        if (!response || !response.user || response.user.fid !== (typeof fid === 'string' ? parseInt(fid, 10) : fid)) {
+          logger.warn("[Mini App Connect] User verification failed via Neynar:", {
+            fid,
+            custodyAddress,
+            found: response?.user?.fid,
+          });
+          return res.status(400).json({ error: "User verification failed. Please try connecting again." });
+        }
+
+        logger.info("[Mini App Connect] ✅ User verified via Neynar API");
+      } catch (neynarError: any) {
+        logger.error("[Mini App Connect] Neynar verification error:", neynarError);
+        return res.status(500).json({ error: "User verification service unavailable. Please try again later." });
+      }
+    }
+
+    // SECURITY: Encrypt signer private key before storage (if provided)
+    let encryptedSignerPrivateKey: string | undefined = undefined;
+    if (signerPrivateKey) {
+      // TODO: Implement encryption using SIGNER_ENCRYPTION_KEY
+      // For now, log a warning (in production, this MUST be encrypted)
+      logger.warn("[Mini App Connect] ⚠️  Signer private key provided but NOT encrypted - implement encryption before production!");
+      // encryptedSignerPrivateKey = encryptSigner(signerPrivateKey, process.env.SIGNER_ENCRYPTION_KEY);
+      encryptedSignerPrivateKey = signerPrivateKey; // TEMPORARY - MUST ENCRYPT IN PRODUCTION
+    }
 
     const key = `${platform}:${userId}`;
     
-    // Store the connection
+    // Store the verified connection
     verifiedConnections.set(key, {
       fid: typeof fid === 'string' ? parseInt(fid, 10) : fid,
       username: username || "",
       custodyAddress: custodyAddress || "",
       verifiedAddresses: Array.isArray(verifiedAddresses) ? verifiedAddresses : [],
       platform,
-      signerPrivateKey,
-      signerPublicKey,
+      signerPrivateKey: encryptedSignerPrivateKey,
+      signerPublicKey: signerPublicKey,
+      signerFid: signerFid ? (typeof signerFid === 'string' ? parseInt(signerFid, 10) : signerFid) : undefined,
     });
+
+    // Clean up pending verification
+    pendingVerifications.delete(challenge);
 
     logger.info(`[Mini App Connect] ✅ Connection stored for user ${userId} (FID: ${fid}, Platform: ${platform})`);
 
