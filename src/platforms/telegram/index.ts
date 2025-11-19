@@ -4,10 +4,19 @@ import { handleTelegramMessage } from "./handlers/message";
 import { handleTelegramCommand } from "./handlers/command";
 import { showTelegramTypingIndicator } from "../../utils/typingIndicator";
 import { logger } from "../../utils/logger";
-import { trackUser, trackSearch, setTelegramChatCount, setTelegramChatMembers } from "../../utils/botStats";
+import { trackUser, trackSearch, setTelegramChatCount } from "../../utils/botStats";
 
 // Track seen Telegram chats to detect new groups/channels
+// NOTE: This is just for fast lookup - actual data is in database
+// This Set is small (just chat IDs as numbers) and won't cause memory issues
 const seenTelegramChats = new Set<number>();
+
+// Optional: Clear cache periodically (every 24 hours) to sync with database
+// This ensures we don't have stale data if database is updated externally
+setInterval(() => {
+  seenTelegramChats.clear();
+  setTelegramChatCount(0);
+}, 24 * 60 * 60 * 1000); // Every 24 hours
 
 export async function startTelegramBot(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -43,17 +52,8 @@ export async function startTelegramBot(): Promise<void> {
       
       // Skip if already in memory cache (fast path)
       if (seenTelegramChats.has(chatId)) {
-        // Update member count for existing chats (refresh periodically)
-        if (chatType === "group" || chatType === "supergroup") {
-          try {
-            const memberCount = await bot.getChatMemberCount(chatId);
-            if (memberCount !== null) {
-              setTelegramChatMembers(chatId, memberCount);
-            }
-          } catch (error) {
-            // Silently fail - might not have permission
-          }
-        }
+        // Don't update member count in memory - it's stored in database
+        // This reduces memory usage significantly
         return; // Don't process further - already seen
       }
       
@@ -62,14 +62,11 @@ export async function startTelegramBot(): Promise<void> {
       const chatTitle = msg.chat.title || "Unknown";
       const chatUsername = msg.chat.username ? `@${msg.chat.username}` : "None";
       
-      // Get member count first (before database check to avoid extra delay)
+      // Get member count for database storage (not memory - reduces memory usage)
       let memberCount: number | null = null;
       if (chatType === "group" || chatType === "supergroup") {
         try {
           memberCount = await bot.getChatMemberCount(chatId);
-          if (memberCount !== null) {
-            setTelegramChatMembers(chatId, memberCount);
-          }
         } catch (error) {
           // Bot might not have permission to get member count
           memberCount = null;

@@ -1,6 +1,7 @@
 import { Client } from "discord.js";
 
 // Track unique users who have used commands
+// NOTE: These grow unbounded but are small (just IDs). Could add cleanup if needed.
 const uniqueUsers = new Set<string>();
 const uniqueTelegramUsers = new Set<number>();
 const totalSearches = { count: 0 };
@@ -9,6 +10,15 @@ const startTime = Date.now();
 // Track response times for commands (in milliseconds)
 const responseTimes: number[] = [];
 const MAX_RESPONSE_TIMES = 1000; // Keep last 1000 response times for average
+
+// Periodic cleanup to prevent memory bloat
+// Clean up old response times every hour
+setInterval(() => {
+  if (responseTimes.length > MAX_RESPONSE_TIMES) {
+    // Keep only the most recent entries
+    responseTimes.splice(0, responseTimes.length - MAX_RESPONSE_TIMES);
+  }
+}, 60 * 60 * 1000); // Every hour
 
 export function trackUser(userId: string, platform: "discord" | "telegram"): void {
   if (platform === "discord") {
@@ -58,8 +68,8 @@ export async function getBotStats(client: Client): Promise<{
   // Telegram chats are tracked when bot receives messages from new groups/channels
   const telegramChats = getTelegramChatCount();
 
-  // Get total Telegram members across all chats
-  const telegramTotalMembers = getTotalTelegramMembers();
+  // Get total Telegram members from database (not memory - reduces memory usage)
+  const telegramTotalMembers = await getTotalTelegramMembers();
 
   // Calculate uptime - time since bot started
   const uptimeMs = Date.now() - startTime;
@@ -86,9 +96,9 @@ export async function getBotStats(client: Client): Promise<{
   };
 }
 
-// Track Telegram chat count and member counts (shared with telegram/index.ts)
+// Track Telegram chat count (shared with telegram/index.ts)
+// NOTE: Member counts are stored in database, not memory (to reduce memory usage)
 let telegramChatCount = 0;
-const telegramChatMembers = new Map<number, number>(); // chatId -> memberCount
 
 export function setTelegramChatCount(count: number): void {
   telegramChatCount = count;
@@ -98,22 +108,27 @@ export function getTelegramChatCount(): number {
   return telegramChatCount;
 }
 
-export function setTelegramChatMembers(chatId: number, memberCount: number): void {
-  telegramChatMembers.set(chatId, memberCount);
-}
-
-export function getTotalTelegramMembers(): number {
-  // Sum up all unique members across all Telegram chats
-  // Note: This might double-count users who are in multiple groups
-  let total = 0;
-  for (const count of telegramChatMembers.values()) {
-    total += count;
+// Get total Telegram members from database (not memory)
+export async function getTotalTelegramMembers(): Promise<number> {
+  try {
+    const { env } = await import("../config");
+    if (!env.backendUrl) {
+      return 0;
+    }
+    
+    // Query database for total members
+    const response = await fetch(`${env.backendUrl}/api/seen/telegram-total-members`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return data.totalMembers || 0;
+    }
+  } catch (error) {
+    // Silently fail - return 0 if database unavailable
   }
-  return total;
-}
-
-export function getTelegramChatMembersMap(): Map<number, number> {
-  return new Map(telegramChatMembers);
+  return 0;
 }
 
 function formatUptime(ms: number): string {

@@ -8,6 +8,26 @@ import {
 
 export const seenRouter = Router();
 
+// Get total Telegram members from database
+seenRouter.get("/telegram-total-members", async (req, res) => {
+  try {
+    const { pool } = await import("../db");
+    if (!pool) {
+      return res.json({ totalMembers: 0 });
+    }
+    
+    const { rows } = await pool.query<{ sum: string | null }>(
+      `SELECT SUM(member_count) as sum FROM seen_telegram_chats WHERE member_count IS NOT NULL`
+    );
+    
+    const total = rows[0]?.sum ? parseInt(rows[0].sum, 10) : 0;
+    res.json({ totalMembers: total });
+  } catch (error) {
+    console.error("[Seen] Error getting total Telegram members:", error);
+    res.json({ totalMembers: 0 });
+  }
+});
+
 // Check if Telegram chat has been seen
 seenRouter.get("/telegram-chat", async (req, res) => {
   try {

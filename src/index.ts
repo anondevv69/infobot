@@ -343,7 +343,7 @@ async function handleWebhookChannelCommand(message: import("discord.js").Message
   if (content === "!stats" || content === "/stats" || content === "stats" || content === "!info") {
     try {
       const { getBotStats } = await import("./utils/botStats");
-      const stats = await getBotStats(message.client);
+      const stats = await getBotStats(message.client); // This is now async due to database query
       
       const { EmbedBuilder } = await import("discord.js");
       const embed = new EmbedBuilder()
