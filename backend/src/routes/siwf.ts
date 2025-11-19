@@ -489,28 +489,22 @@ router.get("/callback", async (req, res) => {
 // Handle OPTIONS preflight request for CORS
 router.options("/miniapp-connect", (req, res) => {
   const origin = req.headers.origin;
-  logger.info("[CORS] OPTIONS preflight request from:", origin);
+  logger.info("[CORS] OPTIONS preflight request from:", origin || "none");
+  logger.info("[CORS] Request headers:", JSON.stringify(req.headers, null, 2));
   
-  // Allow Farcaster domains and user's domain
-  const allowedOrigins = [
-    "https://infobot.fun",
-    "https://warpcast.com",
-    "https://client.farcaster.xyz",
-    "https://farcaster.xyz",
-  ];
+  // TEMPORARILY ALLOW ANY ORIGIN FOR DEBUGGING
+  if (origin) {
+    res.header("Access-Control-Allow-Origin", origin);
+  } else {
+    res.header("Access-Control-Allow-Origin", "*");
+  }
   
-  // Check if origin is allowed, or default to the request origin
-  const allowedOrigin = origin && (
-    allowedOrigins.includes(origin) ||
-    origin.includes("farcaster.xyz") ||
-    origin.includes("warpcast.com")
-  ) ? origin : (origin || "https://infobot.fun");
-  
-  res.header("Access-Control-Allow-Origin", allowedOrigin);
-  res.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With");
+  res.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With, x-api-key");
   res.header("Access-Control-Allow-Credentials", "true");
   res.header("Access-Control-Max-Age", "86400"); // 24 hours
+  
+  logger.info("[CORS] OPTIONS response headers set, returning 200");
   res.sendStatus(200);
 });
 
@@ -518,25 +512,22 @@ router.options("/miniapp-connect", (req, res) => {
 router.post("/miniapp-connect", async (req, res) => {
   try {
     // Set CORS headers explicitly (must be before any response)
-    // Allow Farcaster domains and user's domain
+    // TEMPORARILY ALLOW ANY ORIGIN FOR DEBUGGING
     const origin = req.headers.origin;
-    const allowedOrigins = [
-      "https://infobot.fun",
-      "https://warpcast.com",
-      "https://client.farcaster.xyz",
-      "https://farcaster.xyz",
-    ];
     
-    // Check if origin is allowed, or default to the request origin
-    const allowedOrigin = origin && (
-      allowedOrigins.includes(origin) ||
-      origin.includes("farcaster.xyz") ||
-      origin.includes("warpcast.com")
-    ) ? origin : (origin || "https://infobot.fun");
+    logger.info("[Mini App Connect] POST request received");
+    logger.info("[Mini App Connect] Origin:", origin || "none");
+    logger.info("[Mini App Connect] All headers:", JSON.stringify(req.headers, null, 2));
     
-    res.header("Access-Control-Allow-Origin", allowedOrigin);
-    res.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With");
+    // ALWAYS set CORS headers - allow any origin for debugging
+    if (origin) {
+      res.header("Access-Control-Allow-Origin", origin);
+    } else {
+      res.header("Access-Control-Allow-Origin", "*");
+    }
+    
+    res.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With, x-api-key");
     res.header("Access-Control-Allow-Credentials", "true");
     
     // Log the incoming request for debugging
