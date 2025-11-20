@@ -124,6 +124,13 @@ export async function buildBaseTokenEmbed(
     inline: false,
   });
 
+  // Add trading links right after Token Details (which contains the contract address)
+  embed.addFields({
+    name: "💱 Trade",
+    value: buildTradingLinks(contractAddress),
+    inline: false,
+  });
+
   // Token Metrics section removed - market cap is shown in Token Details section
 
   // Trading Activity (compact - all in one row)
