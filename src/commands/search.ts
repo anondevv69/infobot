@@ -454,8 +454,12 @@ async function handleWalletSearch(
     return;
   }
 
+  const errorMsg = `We're continuing to add more wallet tracking systems and cannot connect \`${address}\` to any wallet or contract at this time.\n\n**Note:** This address has no activity on any supported chain (Ethereum, Base, Polygon, Arbitrum, Optimism, Avalanche, BSC, Fantom, Mantle).`;
+  const truncatedMsg = errorMsg.length > 2000 
+    ? errorMsg.substring(0, 1997) + "..." 
+    : errorMsg;
   await interaction.editReply({
-    content: `We're continuing to add more wallet tracking systems and cannot connect \`${address}\` to any wallet or contract at this time.\n\n**Note:** This address has no activity on any supported chain (Ethereum, Base, Polygon, Arbitrum, Optimism, Avalanche, BSC, Fantom, Mantle).`,
+    content: truncatedMsg,
   });
 }
 
@@ -618,8 +622,12 @@ async function handleTransactionSearch(
   const transaction = await lookupTransaction(txHash, preferredChainId || undefined);
 
   if (!transaction) {
+    const errorMsg = `❌ Transaction \`${txHash}\` not found on any supported chain.\n\n**Supported chains:** Ethereum, Base, Polygon, Arbitrum, Optimism, Avalanche, BSC, Fantom, Mantle, Gnosis, Celo, Linea, Scroll\n\n**Note:** If this is a Relay cross-chain transaction, use \`/relay\` instead.`;
+    const truncatedMsg = errorMsg.length > 2000 
+      ? errorMsg.substring(0, 1997) + "..." 
+      : errorMsg;
     await interaction.editReply({
-      content: `❌ Transaction \`${txHash}\` not found on any supported chain.\n\n**Supported chains:** Ethereum, Base, Polygon, Arbitrum, Optimism, Avalanche, BSC, Fantom, Mantle, Gnosis, Celo, Linea, Scroll\n\n**Note:** If this is a Relay cross-chain transaction, use \`/relay\` instead.`,
+      content: truncatedMsg,
     });
     return;
   }

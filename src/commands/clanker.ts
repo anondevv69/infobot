@@ -105,11 +105,29 @@ export async function handleClankerCommand(
     hasManyClanks,
   );
 
-  await interaction.editReply({
-    content: `Clanker results for \`${query}\` (${allTokens.length} total)${clankMessage}`,
-    embeds,
-    components,
-  });
+  // Use embed description instead of content to avoid 2000 character limit
+  // If query is very long, truncate it in the description
+  const queryDisplay = query.length > 50 ? query.substring(0, 47) + "..." : query;
+  const description = `Clanker results for \`${queryDisplay}\` (${allTokens.length} total)${clankMessage}`;
+  
+  // If description is too long, put it in the first embed instead
+  if (description.length > 2000) {
+    // Truncate description and put in first embed
+    const truncatedDesc = description.substring(0, 4096); // Embed description limit is 4096
+    if (embeds.length > 0) {
+      embeds[0].setDescription(truncatedDesc);
+    }
+    await interaction.editReply({
+      embeds,
+      components,
+    });
+  } else {
+    await interaction.editReply({
+      content: description,
+      embeds,
+      components,
+    });
+  }
 }
 
 export async function handleClankerPagination(
@@ -182,11 +200,29 @@ export async function handleClankerPagination(
     hasManyClanks,
   );
 
-  await interaction.editReply({
-    content: `Clanker results for \`${query}\` (${allTokens.length} total)${clankMessage}`,
-    embeds,
-    components,
-  });
+  // Use embed description instead of content to avoid 2000 character limit
+  // If query is very long, truncate it in the description
+  const queryDisplay = query.length > 50 ? query.substring(0, 47) + "..." : query;
+  const description = `Clanker results for \`${queryDisplay}\` (${allTokens.length} total)${clankMessage}`;
+  
+  // If description is too long, put it in the first embed instead
+  if (description.length > 2000) {
+    // Truncate description and put in first embed
+    const truncatedDesc = description.substring(0, 4096); // Embed description limit is 4096
+    if (embeds.length > 0) {
+      embeds[0].setDescription(truncatedDesc);
+    }
+    await interaction.editReply({
+      embeds,
+      components,
+    });
+  } else {
+    await interaction.editReply({
+      content: description,
+      embeds,
+      components,
+    });
+  }
 }
 
 function prioritizeFirstAndLatest(tokens: ClankerToken[]): ClankerToken[] {

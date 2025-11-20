@@ -34,28 +34,38 @@ export async function handleTelegramCommand(
     switch (command) {
       case "start":
       case "help": {
-        const helpText = `<b>InfoBot Commands</b>
+        const helpText = `<b>📚 InfoBot Commands & Features</b>
 
-<b>Search Commands:</b>
-<code>/search &lt;query&gt;</code> - Search wallets, contracts, Farcaster profiles, or Zora accounts
-<code>/zora &lt;query&gt;</code> - Search Zora accounts, contracts, or creator coins
-<code>/clanker &lt;query&gt;</code> - Search Clanker deployments
-<code>/casts &lt;keyword&gt;</code> - Search Farcaster casts by keyword
-<code>/relay &lt;transaction&gt;</code> - Get cross-chain transaction details from Relay.link
-
+<b>Commands:</b>
+• <code>/search &lt;query&gt;</code> — Universal search (wallets, contracts, profiles)
+• <code>/zora &lt;query&gt;</code> — Zora accounts, contracts, or creator coins
+• <code>/clanker &lt;query&gt;</code> — Clanker token deployments
+• <code>/casts &lt;keyword&gt;</code> — Search Farcaster casts by keyword
+• <code>/relay &lt;tx&gt;</code> — Cross-chain transaction details
 
 <b>Auto-Detection:</b>
-Just send:
-• Ethereum address (0x...) - Auto-detects Clanker, Zora, or wallet
-• Farcaster username (@username) - Looks up profile
-• Zora URL - Looks up Zora profile/coin
+Paste in chat:
+• Addresses (0x... or SOL) — Auto-detects Zora/Clanker/Base tokens
+• <code>@username</code> — Farcaster profile lookup
+• <code>zora.co/...</code> — Zora profile/coin
+• <code>clanker.world</code> — Clanker token
+• <code>x.com/...</code> or <code>twitter.com/...</code> — Farcaster profile (if linked)
+• <code>farcaster.xyz/...</code> — Farcaster cast/profile
+• <code>base.org/...</code> or <code>base.app/...</code> — Base post
+• <code>cast &lt;keyword&gt;</code> — Cast search
+• <code>far &lt;keyword&gt;</code> — Farcaster user search
+• <code>zora &lt;query&gt;</code> — Zora search
+• <code>wallet 0x...</code> — Wallet lookup
 
-<b>Examples:</b>
-<code>/search 0x1234...</code>
-<code>/zora @username</code>
-<code>/clanker tokenname</code>
+<b>Features:</b>
+• Multi-page cards with pagination
+• Zora coins, profiles, creator detection
+• Farcaster profiles, casts, wallet links
+• Clanker tokens with deployer info
+• Base token factory detection
+• Multi-chain token support
 
-<i>Built by rayblanco.eth</i>`;
+Fast blockchain discovery—drop any address, profile, or link.`;
         await bot.sendMessage(chatId, helpText, { parse_mode: "HTML" });
         break;
       }

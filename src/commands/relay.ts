@@ -114,8 +114,13 @@ export async function handleRelayCommand(
         errorMessage += "• A wallet address to find the most recent transaction";
       }
       
+      // Truncate error message if it exceeds Discord's 2000 character limit
+      const truncatedMessage = errorMessage.length > 2000 
+        ? errorMessage.substring(0, 1997) + "..." 
+        : errorMessage;
+      
       await interaction.editReply({
-        content: errorMessage,
+        content: truncatedMessage,
       });
       return;
     }
@@ -156,8 +161,13 @@ export async function handleRelayCommand(
         errorMessage += `\n\n**Note:** If the transaction is very recent, it may take a few minutes to appear in Relay's system.`;
       }
       
+      // Truncate error message if it exceeds Discord's 2000 character limit
+      const truncatedMessage = errorMessage.length > 2000 
+        ? errorMessage.substring(0, 1997) + "..." 
+        : errorMessage;
+      
       await interaction.editReply({
-        content: errorMessage,
+        content: truncatedMessage,
       });
       return;
     }
@@ -170,8 +180,12 @@ export async function handleRelayCommand(
     });
   } catch (error) {
     console.error("Error handling relay command:", error);
+    const errorMsg = `❌ Error fetching transaction data: ${error instanceof Error ? error.message : "Unknown error"}`;
+    const truncatedMsg = errorMsg.length > 2000 
+      ? errorMsg.substring(0, 1997) + "..." 
+      : errorMsg;
     await interaction.editReply({
-      content: `❌ Error fetching transaction data: ${error instanceof Error ? error.message : "Unknown error"}`,
+      content: truncatedMsg,
     });
   }
 }

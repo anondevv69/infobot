@@ -1,5 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 import { isEthAddress, isSolAddress, extractFirstAddress, extractZoraContractReference } from "../../../utils/address";
+import { embedsToTelegram } from "../adapters/telegramAdapter";
 import { findBestZoraSummary, fetchZoraCoin } from "../../../services/zora";
 import { findUserByUsername, findUserByWallet } from "../../../services/neynar";
 import { sendClankerTokenPages } from "./clankerHandler";
@@ -1043,6 +1044,146 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
         // If no Farcaster profile found
         await bot.sendMessage(chatId, `No Farcaster profile linked to X handle @${handle}.`);
         return;
+      }
+    }
+
+    // Check if it's a Base post link (base.org or base.app)
+    const basePostRegex = /https:\/\/base\.(?:org|app)\/post\/[^\s)]+/i;
+    if (basePostRegex.test(text)) {
+      try {
+        const match = text.match(basePostRegex);
+        if (match) {
+          const postUrl = match[0];
+          const response = await fetch(postUrl, {
+            headers: {
+              "User-Agent": "telegram-bot/1.0",
+              Accept: "text/html,application/xhtml+xml",
+            },
+          });
+          
+          if (response.ok) {
+            const html = await response.text();
+            // Extract contract address using the same logic as Discord
+            const BASE_CONTRACT_REGEX = /base(?::mainnet)?:0x[a-fA-F0-9]{40}/i;
+            const CONTRACT_JSON_REGEX = /"contractAddress"\s*:\s*"(0x[a-fA-F0-9]{40})"/i;
+            const CONTRACT_ESCAPED_REGEX = /contractAddress\\":\\"(0x[a-fA-F0-9]{40})/i;
+            const ADDRESS_REGEX = /0x[a-fA-F0-9]{40}/g;
+            
+            let contractAddress: string | null = null;
+            const prefixMatch = BASE_CONTRACT_REGEX.exec(html);
+            if (prefixMatch) {
+              contractAddress = prefixMatch[0].split(":")[1]?.toLowerCase() || null;
+            } else {
+              const jsonMatch = CONTRACT_JSON_REGEX.exec(html);
+              if (jsonMatch) {
+                contractAddress = jsonMatch[1].toLowerCase();
+              } else {
+                const escapedMatch = CONTRACT_ESCAPED_REGEX.exec(html);
+                if (escapedMatch) {
+                  contractAddress = escapedMatch[1].toLowerCase();
+                } else {
+                  const fallbackMatch = ADDRESS_REGEX.exec(html);
+                  if (fallbackMatch) {
+                    contractAddress = fallbackMatch[0].toLowerCase();
+                  }
+                }
+              }
+            }
+            
+            if (contractAddress) {
+              const coin = await fetchZoraCoin(contractAddress, 8453);
+              const zoraSummary = coin ? await findBestZoraSummary([contractAddress]) : null;
+              
+              if (coin) {
+                const response = await buildZoraCoinResponse(coin, zoraSummary, { returnAllPages: true });
+                const identifier = `base_post_${contractAddress}`;
+                const pageLabels = response.embeds.length > 1
+                  ? ["Coin Details", "Creator Coin & Farcaster"]
+                  : undefined;
+                await sendPaginatedTelegramMessage(bot, chatId, response.embeds, identifier, pageLabels);
+                return;
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error("[Telegram] Error handling Base post:", error);
+        // Continue to other handlers
+      }
+    }
+
+    // Check if it's a Farcaster cast link (warpcast.com, fcast.me, farcaster.xyz)
+    const castUrlRegex = /(https?:\/\/(?:www\.)?(?:warpcast\.com|fcast\.me|farcaster\.xyz)\/[^\s]+)/i;
+    if (castUrlRegex.test(text)) {
+      try {
+        const match = text.match(castUrlRegex);
+        if (match) {
+          const castUrl = match[0].replace(/[).,!?\]]*$/, "");
+          const { findCastByUrl, fetchEmbeddedUrlMetadata } = await import("../../../services/neynar");
+          
+          // Try to find cast by URL
+          let cast = await findCastByUrl(castUrl);
+          
+          // If not found, try to resolve via metadata
+          if (!cast) {
+            try {
+              const metadata = await fetchEmbeddedUrlMetadata(castUrl);
+              // Extract canonical URL from metadata if available
+              const frame = metadata?.frame as { post_url?: string } | undefined;
+              const resolvedUrl = frame?.post_url || castUrl;
+              if (resolvedUrl !== castUrl) {
+                cast = await findCastByUrl(resolvedUrl);
+              }
+            } catch (metaError) {
+              // Continue with original URL
+            }
+          }
+          
+          if (cast) {
+            const { buildCastEmbed } = await import("../../../handlers/castLink");
+            const { buildCastUrl } = await import("../../../utils/farcasterLinks");
+            const embed = buildCastEmbed(cast, buildCastUrl(cast.author.username, cast.hash));
+            const messages = embedsToTelegram([embed]);
+            await bot.sendMessage(chatId, messages[0], {
+              parse_mode: "HTML",
+              disable_web_page_preview: true,
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("[Telegram] Error handling cast link:", error);
+        // Continue to other handlers
+      }
+    }
+
+    // Check if it's a Zora contract URL (zora.co/collect or zora.co/coin)
+    const zoraContractRegex = /https?:\/\/zora\.co\/(?:collect|coin)\/[^\s)]+/i;
+    if (zoraContractRegex.test(text)) {
+      try {
+        const match = text.match(zoraContractRegex);
+        if (match) {
+          const url = match[0];
+          // Extract address from URL or fetch from Zora API
+          const addressMatch = url.match(/0x[a-fA-F0-9]{40}/i);
+          if (addressMatch) {
+            const address = addressMatch[0].toLowerCase();
+            const coin = await fetchZoraCoin(address);
+            if (coin) {
+              const zoraSummary = await findBestZoraSummary([address]);
+              const response = await buildZoraCoinResponse(coin, zoraSummary, { returnAllPages: true });
+              const identifier = `zora_coin_${address}`;
+              const pageLabels = response.embeds.length > 1
+                ? ["Coin Details", "Creator Coin & Farcaster"]
+                : undefined;
+              await sendPaginatedTelegramMessage(bot, chatId, response.embeds, identifier, pageLabels);
+              return;
+            }
+          }
+        }
+      } catch (error) {
+        console.error("[Telegram] Error handling Zora contract URL:", error);
+        // Continue to other handlers
       }
     }
 
