@@ -268,16 +268,6 @@ export async function buildTokenEmbed(
     .setDescription(description)
     .setTimestamp(new Date());
 
-  // Add trading links right after title for Base chain tokens
-  if (token.contract_address && (token.chain_id === 8453 || token.chain_id === BASE_CHAIN_ID)) {
-    const { buildTradingLinks } = await import("./tradingButtons");
-    embed.addFields({
-      name: "💱 Trade",
-      value: buildTradingLinks(token.contract_address),
-      inline: false,
-    });
-  }
-
   if (token.contract_address) {
     embed.setURL(`https://www.clanker.world/clanker/${token.contract_address}`);
   }
@@ -349,6 +339,16 @@ export async function buildTokenEmbed(
   });
 
   embed.addFields(buildContractField(token));
+
+  // Add trading links right after contract field for Base chain tokens
+  if (token.contract_address && (token.chain_id === 8453 || token.chain_id === BASE_CHAIN_ID)) {
+    const { buildTradingLinks } = await import("./tradingButtons");
+    embed.addFields({
+      name: "💱 Trade",
+      value: buildTradingLinks(token.contract_address),
+      inline: false,
+    });
+  }
 
   const tokenSocials = formatTokenSocialLinks(token, { farcasterUser });
   if (tokenSocials) {

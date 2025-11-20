@@ -216,18 +216,30 @@ export async function buildZoraCoinResponse(
     },
   );
   
-  // Add trading links right after title for Base chain tokens
+  // Add trading links right after contract field for Base chain tokens
   if (coin.chainId === 8453 || coin.chainId === BASE_CHAIN_ID) {
-    // Insert at the beginning of fields (right after title)
+    // Find the Contract field and insert Trade field right after it
     const existingFields = coinEmbed.data.fields || [];
-    coinEmbed.data.fields = [
-      {
+    const contractIndex = existingFields.findIndex(field => 
+      field.name === "Contract" || field.name?.toLowerCase().includes("contract")
+    );
+    
+    if (contractIndex >= 0) {
+      // Insert right after contract field
+      existingFields.splice(contractIndex + 1, 0, {
         name: "💱 Trade",
         value: buildTradingLinks(coin.address),
         inline: false,
-      },
-      ...existingFields,
-    ];
+      });
+      coinEmbed.data.fields = existingFields;
+    } else {
+      // If no contract field found, add at the end
+      coinEmbed.addFields({
+        name: "💱 Trade",
+        value: buildTradingLinks(coin.address),
+        inline: false,
+      });
+    }
   }
 
   const embeds: EmbedBuilder[] = [coinEmbed];

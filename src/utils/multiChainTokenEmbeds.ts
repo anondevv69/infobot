@@ -162,6 +162,15 @@ export async function buildMultiChainTokenEmbed(
     inline: false,
   });
 
+  // Add trading links right after contract address (only for Base chain tokens)
+  if (tokenData.chainId === "8453" || tokenData.chainId === "base" || tokenData.chainId?.toLowerCase() === "base") {
+    embed.addFields({
+      name: "💱 Trade",
+      value: buildTradingLinks(contractAddress),
+      inline: false,
+    });
+  }
+
   // Created At
   if (tokenData.createdAt) {
     embed.addFields({

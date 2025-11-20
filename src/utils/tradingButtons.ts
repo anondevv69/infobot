@@ -1,6 +1,6 @@
 /**
- * Build trading links as markdown text for embedding in token cards
- * Returns a formatted string with clickable links
+ * Build trading links as plain text for embedding in token cards
+ * Returns a formatted string with plain text links (not markdown)
  */
 export function buildTradingLinks(contractAddress: string): string {
   const normalizedAddress = contractAddress.toLowerCase();
@@ -12,20 +12,10 @@ export function buildTradingLinks(contractAddress: string): string {
   const telegramUrl = `https://t.me/based_eth_bot?start=r_infobot_${normalizedAddress}`;
   
   // Farcaster Wallet - opens Farcaster wallet with contract pre-filled for trading
-  // Using Warpcast/Farcaster wallet URL format
-  // This should open the Farcaster wallet interface with the token contract pre-filled
-  // Format: https://warpcast.com/~/wallet/swap or farcaster://wallet/swap
-  // For maximum compatibility, using the web URL that should redirect to app if installed
   const fcwUrl = `https://warpcast.com/~/wallet/swap?token=${normalizedAddress}&chain=base&ref=2ORGMS`;
-  
-  // Alternative formats (commented for reference):
-  // EIP-681 format: ethereum:0x...@8453/transfer?address=...
-  // const fcwUrl = `ethereum:${normalizedAddress}@8453?ref=2ORGMS`;
-  // Farcaster deep link: farcaster://wallet/swap?token=...
-  // const fcwUrl = `farcaster://wallet/swap?token=${normalizedAddress}&chain=base&ref=2ORGMS`;
 
-  // Return as clickable markdown links (GMGN, Telegram/BB, FCW)
-  return `[📊 GMGN](${gmgnUrl}) • [🔄 BB](${telegramUrl}) • [💼 FCW](${fcwUrl})`;
+  // Return as plain text links in one row
+  return `[GMGN](${gmgnUrl}) • [BB](${telegramUrl}) • [FCW](${fcwUrl})`;
 }
 
 /**
