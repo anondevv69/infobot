@@ -266,6 +266,15 @@ function buildClankerPage(
         : `Showing ${totalCount} Clanker deployment${totalCount !== 1 ? "s" : ""}.`,
     );
 
+  // Add trading links right after title for the first token on the page (if Base chain)
+  if (pageTokens.length > 0 && pageTokens[0].contract_address && pageTokens[0].chain_id === 8453) {
+    embed.addFields({
+      name: "💱 Trade",
+      value: buildTradingLinks(pageTokens[0].contract_address),
+      inline: false,
+    });
+  }
+
   if (user) {
     embed.setThumbnail(user.pfp_url ?? null);
     embed.addFields({
@@ -371,8 +380,18 @@ function buildClankerTokenEmbed(
       token.description ??
         token.metadata?.description ??
         "_No description provided._",
-    )
-    .addFields(
+    );
+
+  // Add trading links right after title for Base chain tokens
+  if (token.contract_address && token.chain_id === 8453) {
+    embed.addFields({
+      name: "💱 Trade",
+      value: buildTradingLinks(token.contract_address),
+      inline: false,
+    });
+  }
+
+  embed.addFields(
       { name: "Symbol", value: token.symbol ?? "N/A", inline: true },
       {
         name: "Contract",

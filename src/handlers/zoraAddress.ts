@@ -216,13 +216,18 @@ export async function buildZoraCoinResponse(
     },
   );
   
-  // Add trading links for Base chain tokens
+  // Add trading links right after title for Base chain tokens
   if (coin.chainId === 8453 || coin.chainId === BASE_CHAIN_ID) {
-    coinEmbed.addFields({
-      name: "💱 Trade",
-      value: buildTradingLinks(coin.address),
-      inline: false,
-    });
+    // Insert at the beginning of fields (right after title)
+    const existingFields = coinEmbed.data.fields || [];
+    coinEmbed.data.fields = [
+      {
+        name: "💱 Trade",
+        value: buildTradingLinks(coin.address),
+        inline: false,
+      },
+      ...existingFields,
+    ];
   }
 
   const embeds: EmbedBuilder[] = [coinEmbed];

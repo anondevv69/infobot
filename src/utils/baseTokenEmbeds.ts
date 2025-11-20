@@ -72,6 +72,13 @@ export async function buildBaseTokenEmbed(
     .setTitle(`${titlePrefix} ${title}`)
     .setURL(embedUrl);
 
+  // Add trading links right below the title
+  embed.addFields({
+    name: "💱 Trade",
+    value: buildTradingLinks(contractAddress),
+    inline: false,
+  });
+
   // Add warning description for ApeStore tokens
   if (factoryName === "ApeStore") {
     embed.setDescription("⚠️ **We do not recommend ApeStore coins.**");
@@ -196,13 +203,6 @@ export async function buildBaseTokenEmbed(
       inline: false,
     });
   }
-
-  // Add trading links as a field in the embed
-  embed.addFields({
-    name: "💱 Trade",
-    value: buildTradingLinks(contractAddress),
-    inline: false,
-  });
 
   applyBranding(embed, "base token");
   

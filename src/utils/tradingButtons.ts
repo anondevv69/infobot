@@ -8,17 +8,17 @@ export function buildTradingLinks(contractAddress: string): string {
   // GMGN.ai link with referral
   const gmgnUrl = `https://gmgn.ai/token/base/${normalizedAddress}?ref=r_infobot`;
   
-  // Telegram bot link with referral
+  // Telegram bot link with referral (uses BaseBot)
   const telegramUrl = `https://t.me/based_eth_bot?start=r_infobot_${normalizedAddress}`;
   
-  // BaseBot trading link (Base chain DEX aggregator)
-  const basebotUrl = `https://basebot.xyz/trade/${normalizedAddress}`;
-  
-  // Farcaster Wallet - opens wallet with contract pre-filled for instant trading
-  const fcwUrl = `https://farcaster.xyz/trade/${normalizedAddress}?ref=2ORGMS`;
+  // Farcaster Wallet - opens wallet with pre-filled swap transaction
+  // Format: https://wallet.action/?chain=base&action=swap&tokenIn=0x...&tokenOut=0x...
+  // For buying, we'll use ETH (0x0000000000000000000000000000000000000000) as tokenIn and the contract as tokenOut
+  const ETH_ADDRESS = "0x0000000000000000000000000000000000000000";
+  const fcwUrl = `https://wallet.action/?chain=base&action=swap&tokenIn=${ETH_ADDRESS}&tokenOut=${normalizedAddress}&ref=2ORGMS`;
 
-  // Return as clickable markdown links
-  return `[📊 GMGN](${gmgnUrl}) • [💬 Telegram](${telegramUrl}) • [🔄 BB](${basebotUrl}) • [💼 FCW](${fcwUrl})`;
+  // Return as clickable markdown links (GMGN, Telegram/BB, FCW)
+  return `[📊 GMGN](${gmgnUrl}) • [🔄 BB](${telegramUrl}) • [💼 FCW](${fcwUrl})`;
 }
 
 /**

@@ -301,15 +301,6 @@ export async function buildMultiChainTokenEmbed(
     }
   }
 
-  // Add trading links as a field in the embed (only for Base chain tokens)
-  if (tokenData.chainId === "8453" || tokenData.chainId === "base" || tokenData.chainId?.toLowerCase() === "base") {
-    embed.addFields({
-      name: "💱 Trade",
-      value: buildTradingLinks(contractAddress),
-      inline: false,
-    });
-  }
-
   applyBranding(embed, `${tokenData.chainName.toLowerCase()} token`);
   return { embed, components: [] };
 }
