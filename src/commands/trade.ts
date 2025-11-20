@@ -110,11 +110,8 @@ async function handleTrade(
     const embed = new EmbedBuilder()
       .setTitle("❌ No Trading Signer")
       .setDescription(
-        `You need to connect a trading signer to execute trades!\n\n` +
-        `**Step 1:** Connect your Farcaster account: \`/connect\` ✅\n` +
-        `**Step 2:** Add a trading signer: \`/connect-signer <private_key>\`\n\n` +
-        `The signer allows the bot to execute trades on your behalf.\n` +
-        `Your private key will be encrypted and stored securely.`
+        `Trading functionality is currently unavailable.\n\n` +
+        `Please check back later for trading features.`
       )
       .setColor(0xff9900);
 

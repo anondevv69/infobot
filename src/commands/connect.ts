@@ -61,10 +61,6 @@ export async function handleConnectCommand(
         `**Farcaster ID:** ${existingSession.fid}\n` +
         `**Username:** ${existingSession.username || "N/A"}\n` +
         `**Custody Wallet:** \`${existingSession.custodyAddress}\`\n\n` +
-        (hasSigner
-          ? `✅ **Trading Signer:** Connected (\`${signerAddress.slice(0, 10)}...${signerAddress.slice(-8)}\`)\n\n`
-          : `⚠️ **Trading Signer:** Not connected\n\n` +
-            `To enable trading, run \`/connect-signer <private_key>\`\n\n`) +
         `Use \`/disconnect\` to disconnect your account.`
       )
       .setColor(hasSigner ? 0x00ff00 : 0xff9900);

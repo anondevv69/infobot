@@ -63,24 +63,6 @@ async function registerCommands(): Promise<void> {
           .setDescription("Full transaction link (e.g., https://basescan.org/tx/0x...) or transaction hash")
           .setRequired(true),
       ),
-    new SlashCommandBuilder()
-      .setName("debug")
-      .setDescription("Debug SIWF URL generation and check deployment status."),
-    new SlashCommandBuilder()
-      .setName("connect-signer")
-      .setDescription("Connect a trading signer to enable automated trading.")
-      .addStringOption((option) =>
-        option
-          .setName("private_key")
-          .setDescription("Your private key (will be encrypted and stored securely)")
-          .setRequired(true),
-      ),
-    new SlashCommandBuilder()
-      .setName("disconnect-signer")
-      .setDescription("Remove your trading signer."),
-    new SlashCommandBuilder()
-      .setName("stats")
-      .setDescription("View bot statistics (servers, users, searches, etc.)"),
   ].map((command) => command.toJSON());
 
   const rest = new REST({ version: "10" }).setToken(token);

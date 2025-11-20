@@ -21,10 +21,6 @@ import {
   extractTransactionHash,
   detectChainFromLink,
 } from "../../../services/relay";
-import {
-  handleTelegramConnectSigner,
-  handleTelegramDisconnectSigner,
-} from "./trading";
 
 export async function handleTelegramCommand(
   bot: TelegramBot,
@@ -317,16 +313,6 @@ Just send:
         await bot.sendChatAction(chatId, "typing");
         
         await handleCastsQuery(bot, chatId, query);
-        break;
-      }
-
-      case "connect-signer": {
-        await handleTelegramConnectSigner(bot, msg, query || undefined);
-        break;
-      }
-
-      case "disconnect-signer": {
-        await handleTelegramDisconnectSigner(bot, msg);
         break;
       }
 

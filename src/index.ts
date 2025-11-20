@@ -28,9 +28,6 @@ import { handleXAccountMessage } from "./handlers/xAccount";
 import { handleCopyValueButton } from "./handlers/copyValueButton";
 import { handleClankerCommand, handleClankerPagination } from "./commands/clanker";
 import { handleRelayCommand } from "./commands/relay";
-import { handleDebugCommand } from "./commands/debug";
-import { handleConnectSignerCommand } from "./commands/connectSigner";
-import { handleDisconnectSignerCommand } from "./commands/disconnectSigner";
 import { parsePaginationButton } from "./utils/pagination";
 import { handleGeneralPagination } from "./handlers/pagination";
 import { showDiscordTypingIndicator, showDiscordCommandTyping } from "./utils/typingIndicator";
@@ -318,15 +315,6 @@ async function handleChatCommand(
       break;
     case "relay":
       await handleRelayCommand(interaction);
-      break;
-    case "debug":
-      await handleDebugCommand(interaction);
-      break;
-    case "connect-signer":
-      await handleConnectSignerCommand(interaction);
-      break;
-    case "disconnect-signer":
-      await handleDisconnectSignerCommand(interaction);
       break;
     default:
       await interaction.reply({
