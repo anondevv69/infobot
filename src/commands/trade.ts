@@ -91,34 +91,24 @@ async function handleTrade(
     return;
   }
 
-  // Check if user has a signer for trading
-  let signerInfo: { address: string; hasSigner: boolean } | null = null;
-  try {
-    const signerResponse = await fetch(`${env.backendUrl}/api/siwf/signer?userId=${userId}&platform=discord`);
-    if (signerResponse.ok) {
-      const signerData = await signerResponse.json();
-      signerInfo = {
-        address: signerData.signerAddress || "",
-        hasSigner: !!signerData.signerAddress,
-      };
-    }
-  } catch (error) {
-    console.error("[Trade] Failed to check signer:", error);
-  }
-
-  if (!signerInfo?.hasSigner) {
-    const embed = new EmbedBuilder()
-      .setTitle("❌ No Trading Signer")
-      .setDescription(
-        `Trading functionality is currently unavailable.\n\n` +
-        `Please check back later for trading features.`
-      )
-      .setColor(0xff9900);
-
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-    return;
-  }
-
+  // Trading functionality is currently unavailable
+  await interaction.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setTitle("❌ Trading Unavailable")
+        .setDescription(
+          `Trading functionality is currently unavailable.\n\n` +
+          `Please check back later for trading features.`
+        )
+        .setColor(0xff9900),
+    ],
+    ephemeral: true,
+  });
+  return;
+  
+  // Trading code disabled - functionality unavailable
+  // All code below is unreachable but kept for reference
+  /*
   await interaction.deferReply({ ephemeral: true });
 
   try {
@@ -298,8 +288,8 @@ async function handleTrade(
             inline: false,
           },
           {
-            name: "Signer Address",
-            value: `\`${signerInfo.address}\``,
+            name: "Note",
+            value: `Trading execution is currently unavailable.`,
             inline: false,
           }
         )
@@ -319,5 +309,6 @@ async function handleTrade(
       ],
     });
   }
+  */
 }
 

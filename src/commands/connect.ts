@@ -40,20 +40,6 @@ export async function handleConnectCommand(
   }
   
   if (existingSession) {
-    // Check if user has a signer
-    let hasSigner = false;
-    let signerAddress = "";
-    try {
-      const signerResponse = await fetch(`${env.backendUrl}/api/siwf/signer?userId=${userId}&platform=discord`);
-      if (signerResponse.ok) {
-        const signerData = await signerResponse.json();
-        hasSigner = !!signerData.signerAddress;
-        signerAddress = signerData.signerAddress || "";
-      }
-    } catch (error) {
-      console.error("[Connect] Failed to check signer:", error);
-    }
-
     const embed = new EmbedBuilder()
       .setTitle("✅ Already Connected")
       .setDescription(
@@ -63,7 +49,7 @@ export async function handleConnectCommand(
         `**Custody Wallet:** \`${existingSession.custodyAddress}\`\n\n` +
         `Use \`/disconnect\` to disconnect your account.`
       )
-      .setColor(hasSigner ? 0x00ff00 : 0xff9900);
+      .setColor(0x00ff00);
 
     await interaction.reply({ embeds: [embed], ephemeral: true });
     return;
