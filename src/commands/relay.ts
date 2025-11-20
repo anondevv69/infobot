@@ -6,6 +6,7 @@ import {
   type RelayTransaction,
 } from "../services/relay";
 import { isEthAddress, isSolAddress } from "../utils/address";
+import { applyBranding } from "../utils/branding";
 
 export async function handleRelayCommand(
   interaction: ChatInputCommandInteraction,
@@ -42,7 +43,7 @@ export async function handleRelayCommand(
         return;
       }
       
-      const embed = buildRelayTransactionEmbed(transaction);
+      const embed = await buildRelayTransactionEmbed(transaction);
       await interaction.editReply({
         embeds: [embed],
       });
@@ -173,7 +174,7 @@ export async function handleRelayCommand(
     }
 
     // Build embed with transaction details
-    const embed = buildRelayTransactionEmbed(transaction);
+    const embed = await buildRelayTransactionEmbed(transaction);
 
     await interaction.editReply({
       embeds: [embed],
@@ -207,9 +208,6 @@ function buildRelayTransactionEmbed(transaction: RelayTransaction): EmbedBuilder
         inline: false,
       },
     )
-    .setFooter({
-      text: `Transaction Hash: ${transaction.txHash.slice(0, 10)}...${transaction.txHash.slice(-8)}`,
-    })
     .setTimestamp(transaction.timestamp ? new Date(transaction.timestamp * 1000) : undefined);
 
   if (transaction.amount) {
@@ -257,6 +255,18 @@ function buildRelayTransactionEmbed(transaction: RelayTransaction): EmbedBuilder
         inline: false,
       });
     }
+  }
+
+  // Apply InfoBot branding (version, rayblanco.eth, icon)
+  applyBranding(embed, "relay transaction");
+  
+  // Append transaction hash to footer
+  const currentFooter = embed.data.footer;
+  if (currentFooter) {
+    embed.setFooter({
+      text: `${currentFooter.text} • TX: ${transaction.txHash.slice(0, 10)}...${transaction.txHash.slice(-8)}`,
+      iconURL: currentFooter.icon_url ?? undefined,
+    });
   }
 
   return embed;

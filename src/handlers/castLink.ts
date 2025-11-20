@@ -11,6 +11,7 @@ import {
   NeynarLookupError,
 } from "../services/neynar";
 import { buildFarcasterProfileUrl, buildCastUrl } from "../utils/farcasterLinks";
+import { applyBranding } from "../utils/branding";
 
 const CAST_URL_REGEX =
   /(https?:\/\/(?:www\.)?(?:warpcast\.com|fcast\.me|farcaster\.xyz)\/[^\s]+)/i;
@@ -258,8 +259,18 @@ export function buildCastEmbed(
     });
   }
 
+  // Apply InfoBot branding (version, rayblanco.eth, icon)
+  // If custom footer is provided, append it to the branding
+  applyBranding(embed, "cast");
   if (options?.footer) {
-    embed.setFooter({ text: options.footer });
+    // Append custom footer text to branding
+    const currentFooter = embed.data.footer;
+    if (currentFooter) {
+      embed.setFooter({
+        text: `${currentFooter.text} • ${options.footer}`,
+        iconURL: currentFooter.icon_url ?? undefined,
+      });
+    }
   }
 
   return embed;

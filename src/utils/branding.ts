@@ -15,7 +15,7 @@ export function applyBranding(
   badge?: string | null,
 ): EmbedBuilder {
   const parts: string[] = [];
-  const name = env.brandName ?? "WarpBot";
+  const name = env.brandName ?? "InfoBot";
   const version = env.appVersion ?? "dev";
   parts.push(`${name} v${version}`);
   parts.push("built by rayblanco.eth");
@@ -25,6 +25,7 @@ export function applyBranding(
   }
 
   const text = parts.join(" • ");
+  // Always include icon URL if available
   if (env.brandIconUrl) {
     embed.setFooter({ text, iconURL: env.brandIconUrl });
   } else {

@@ -18,6 +18,8 @@ import { splitClankerTokens } from "../utils/clankerAssociation";
 import { sortClankerTokens, formatClankerTokenDetails } from "../utils/clankerEmbeds";
 import { isEthAddress, isSolAddress } from "../utils/address";
 import { buildFarcasterProfileUrl } from "../utils/farcasterLinks";
+import { applyBranding } from "../utils/branding";
+import { buildTradingButtons } from "../utils/tradingButtons";
 
 const WALLET_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 const TOKENS_PER_PAGE = 8; // Reduced to prevent field value length issues
@@ -329,6 +331,9 @@ function buildClankerPage(
     }
   }
 
+  // Apply branding to embed
+  applyBranding(embed, "clanker");
+
   const components: ActionRowBuilder<ButtonBuilder>[] = [];
 
   if (totalPages > 1) {
@@ -417,6 +422,9 @@ function buildClankerTokenEmbed(
       inline: false,
     });
   }
+
+  // Apply branding
+  applyBranding(embed, "clanker");
 
   return embed;
 }

@@ -105,7 +105,8 @@ export function splitEmbedIntoPages(
       .setDescription(i === 0 ? embed.data.description ?? null : null)
       .setThumbnail(i === 0 ? embed.data.thumbnail?.url ?? null : null)
       .setURL(i === 0 ? embed.data.url ?? null : null)
-      .setFooter(i === totalPages - 1 ? (embed.data.footer ? { text: embed.data.footer.text, iconURL: embed.data.footer.icon_url ?? undefined } : null) : null)
+      // Preserve footer on all pages (branding should be on all pages)
+      .setFooter(embed.data.footer ? { text: embed.data.footer.text, iconURL: embed.data.footer.icon_url ?? undefined } : null)
       .addFields(pageFields);
 
     pages.push(pageEmbed);

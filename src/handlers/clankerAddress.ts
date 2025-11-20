@@ -40,6 +40,7 @@ import { storeEmbedForPagination } from "../handlers/pagination";
 import { addProfileSection, appendWalletFields, formatRecentCastSummary, getClankerDisplayEntries, formatClankerTokenDetails } from "../utils/clankerEmbeds";
 import { appendZoraSummaryFields } from "../utils/zoraEmbeds";
 import { applyBranding } from "../utils/branding";
+import { buildTradingButtons } from "../utils/tradingButtons";
 
 export async function handleClankerAddressMessage(message: Message): Promise<boolean> {
   if (message.author.bot || !message.content) {
@@ -270,6 +271,12 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
         pageLabels.push({ label: hasWallets && hasZora ? "Wallets & Zora" : hasWallets ? "Wallets" : "Zora" }); // Page 3
       }
       components.push(...buildPaginationButtons(0, totalPages, identifier, pageLabels));
+    }
+    
+    // Add trading buttons for Base chain tokens
+    if (primaryToken.contract_address && primaryToken.chain_id === 8453) {
+      const tradingButtons = buildTradingButtons(primaryToken.contract_address);
+      components.push(...tradingButtons);
     }
 
     await message.reply({

@@ -1,4 +1,5 @@
 import { ChatInputCommandInteraction, EmbedBuilder } from "discord.js";
+import { applyBranding } from "../utils/branding";
 
 const HELP_MESSAGE = [
   "**Commands**",
@@ -40,8 +41,10 @@ export async function handleHelpCommand(
   const embed = new EmbedBuilder()
     .setTitle("📚 InfoBot Commands & Features")
     .setDescription(HELP_MESSAGE)
-    .setColor(0x5865f2)
-    .setFooter({ text: "InfoBot - Fast blockchain discovery" });
+    .setColor(0x5865f2);
+
+  // Apply InfoBot branding (version, rayblanco.eth, icon)
+  applyBranding(embed, "help");
 
   await interaction.reply({
     embeds: [embed],

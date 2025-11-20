@@ -37,6 +37,7 @@ import { splitEmbedIntoPages, buildPaginationButtons } from "../utils/pagination
 import { storeEmbedForPagination } from "../handlers/pagination";
 import { logger } from "../utils/logger";
 import { trackUser, trackSearch, trackResponseTime } from "../utils/botStats";
+import { applyBranding } from "../utils/branding";
 
 export async function handleSearchCommand(
   interaction: ChatInputCommandInteraction,
@@ -447,6 +448,9 @@ async function handleWalletSearch(
       text: `Address: ${address.slice(0, 10)}...${address.slice(-8)}`,
     });
 
+    // Apply branding before sending
+    applyBranding(embed, "address lookup");
+    
     await interaction.editReply({
       content: `No Farcaster profile, Clanker deployments, or Zora coins found for \`${address}\`, but found activity on the following chain(s):`,
       embeds: [embed],
@@ -718,6 +722,9 @@ async function handleTransactionSearch(
       text: `Transaction Hash: ${txHash.slice(0, 10)}...${txHash.slice(-8)}`,
     });
 
+  // Apply branding before sending
+  applyBranding(embed, "transaction lookup");
+  
   await interaction.editReply({
     embeds: [embed],
   });

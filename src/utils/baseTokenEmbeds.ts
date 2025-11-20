@@ -10,6 +10,7 @@ import { applyBranding } from "./branding";
 import { getContractCreation } from "../services/basescan";
 import { findUserByWallet } from "../services/neynar";
 import { findBestZoraSummary } from "../services/zora";
+import { buildTradingButtons } from "./tradingButtons";
 
 function formatCurrency(value?: number | null): string {
   if (value == null) return "N/A";
@@ -197,7 +198,11 @@ export async function buildBaseTokenEmbed(
   }
 
   applyBranding(embed, "base token");
-  return { embed, components: [] };
+  
+  // Add trading buttons
+  const components = buildTradingButtons(contractAddress);
+  
+  return { embed, components };
 }
 
 
