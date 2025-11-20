@@ -7,6 +7,7 @@ import { MultiChainTokenData } from "../services/dexscreener";
 import { applyBranding } from "./branding";
 import { findUserByWallet } from "../services/neynar";
 import { findBestZoraSummary } from "../services/zora";
+import { buildTradingLinks } from "./tradingButtons";
 
 function formatCurrency(value?: number | null): string {
   if (value == null) return "N/A";
@@ -298,6 +299,15 @@ export async function buildMultiChainTokenEmbed(
         inline: false,
       });
     }
+  }
+
+  // Add trading links as a field in the embed (only for Base chain tokens)
+  if (tokenData.chainId === "8453" || tokenData.chainId === "base" || tokenData.chainId?.toLowerCase() === "base") {
+    embed.addFields({
+      name: "💱 Trade",
+      value: buildTradingLinks(contractAddress),
+      inline: false,
+    });
   }
 
   applyBranding(embed, `${tokenData.chainName.toLowerCase()} token`);

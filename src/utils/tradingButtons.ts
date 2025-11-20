@@ -1,10 +1,8 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
-
 /**
- * Build trading buttons for a token contract
- * Includes links to GMGN, Telegram bot, Farcaster, BaseBot, and Farcaster Wallet
+ * Build trading links as markdown text for embedding in token cards
+ * Returns a formatted string with clickable links
  */
-export function buildTradingButtons(contractAddress: string): ActionRowBuilder<ButtonBuilder>[] {
+export function buildTradingLinks(contractAddress: string): string {
   const normalizedAddress = contractAddress.toLowerCase();
   
   // GMGN.ai link with referral
@@ -17,31 +15,10 @@ export function buildTradingButtons(contractAddress: string): ActionRowBuilder<B
   const basebotUrl = `https://basebot.xyz/trade/${normalizedAddress}`;
   
   // Farcaster Wallet - opens wallet with contract pre-filled for instant trading
-  // Using Farcaster Wallet deep link format
   const fcwUrl = `https://farcaster.xyz/trade/${normalizedAddress}?ref=2ORGMS`;
 
-  // All buttons in one row (Discord allows up to 5 buttons per row)
-  const row = new ActionRowBuilder<ButtonBuilder>()
-    .addComponents(
-      new ButtonBuilder()
-        .setLabel("📊 GMGN")
-        .setURL(gmgnUrl)
-        .setStyle(ButtonStyle.Link),
-      new ButtonBuilder()
-        .setLabel("💬 Telegram")
-        .setURL(telegramUrl)
-        .setStyle(ButtonStyle.Link),
-      new ButtonBuilder()
-        .setLabel("🔄 BB")
-        .setURL(basebotUrl)
-        .setStyle(ButtonStyle.Link),
-      new ButtonBuilder()
-        .setLabel("💼 FCW")
-        .setURL(fcwUrl)
-        .setStyle(ButtonStyle.Link),
-    );
-
-  return [row];
+  // Return as clickable markdown links
+  return `[📊 GMGN](${gmgnUrl}) • [💬 Telegram](${telegramUrl}) • [🔄 BB](${basebotUrl}) • [💼 FCW](${fcwUrl})`;
 }
 
 /**

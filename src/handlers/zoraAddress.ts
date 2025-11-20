@@ -19,7 +19,7 @@ import { safeFetchMostRecentCast } from "../utils/farcasterHelpers";
 import { applyBranding } from "../utils/branding";
 import { buildCreatorCoinField, getZoraCoinUrl, formatAddress, formatCompactNumber } from "../utils/zoraEmbeds";
 import { fetchBaseTokenData } from "../services/dexscreener";
-import { buildTradingButtons } from "../utils/tradingButtons";
+import { buildTradingLinks } from "../utils/tradingButtons";
 
 const BASE_CHAIN_ID = 8453;
 
@@ -215,6 +215,15 @@ export async function buildZoraCoinResponse(
       includeCreatorWallets: false, // Don't include wallets on page 1
     },
   );
+  
+  // Add trading links for Base chain tokens
+  if (coin.chainId === 8453 || coin.chainId === BASE_CHAIN_ID) {
+    coinEmbed.addFields({
+      name: "💱 Trade",
+      value: buildTradingLinks(coin.address),
+      inline: false,
+    });
+  }
 
   const embeds: EmbedBuilder[] = [coinEmbed];
   let totalPages = 1;
@@ -355,12 +364,6 @@ export async function buildZoraCoinResponse(
       { label: finalCreatorCoinData && farcasterUser ? "Creator Coin & Farcaster" : finalCreatorCoinData ? "Creator Coin" : "Farcaster Profile" }, // Page 2
     ];
     components.push(...buildPaginationButtons(0, totalPages, identifier, pageLabels));
-  }
-  
-  // Add trading buttons (only for Base chain tokens)
-  if (coin.chainId === 8453 || coin.chainId === BASE_CHAIN_ID) {
-    const tradingButtons = buildTradingButtons(coin.address);
-    components.push(...tradingButtons);
   }
 
   // Store both embeds for pagination

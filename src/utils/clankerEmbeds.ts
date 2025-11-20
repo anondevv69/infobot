@@ -397,9 +397,37 @@ export async function buildTokenEmbed(
     });
   }
 
+  // Add trading links for Base chain tokens
+  if (token.contract_address && (token.chain_id === 8453 || token.chain_id === BASE_CHAIN_ID)) {
+    const { buildTradingLinks } = await import("./tradingButtons");
+    embed.addFields({
+      name: "💱 Trade",
+      value: buildTradingLinks(token.contract_address),
+      inline: false,
+    });
+  }
+
   applyBranding(embed, "clanker");
 
   return embed;
+}
+
+/**
+ * Add trading links to a Clanker token embed
+ */
+export function addTradingLinksToEmbed(embed: EmbedBuilder, contractAddress: string, chainId?: number | string | null): void {
+  // Only add trading links for Base chain tokens
+  const isBaseChain = chainId === 8453 || chainId === "8453" || chainId === "base";
+  if (!isBaseChain) {
+    return;
+  }
+
+  const { buildTradingLinks } = require("./tradingButtons");
+  embed.addFields({
+    name: "💱 Trade",
+    value: buildTradingLinks(contractAddress),
+    inline: false,
+  });
 }
 
 export async function resolveUserFromToken(

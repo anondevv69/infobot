@@ -10,7 +10,7 @@ import { applyBranding } from "./branding";
 import { getContractCreation } from "../services/basescan";
 import { findUserByWallet } from "../services/neynar";
 import { findBestZoraSummary } from "../services/zora";
-import { buildTradingButtons } from "./tradingButtons";
+import { buildTradingLinks } from "./tradingButtons";
 
 function formatCurrency(value?: number | null): string {
   if (value == null) return "N/A";
@@ -197,12 +197,16 @@ export async function buildBaseTokenEmbed(
     });
   }
 
+  // Add trading links as a field in the embed
+  embed.addFields({
+    name: "💱 Trade",
+    value: buildTradingLinks(contractAddress),
+    inline: false,
+  });
+
   applyBranding(embed, "base token");
   
-  // Add trading buttons
-  const components = buildTradingButtons(contractAddress);
-  
-  return { embed, components };
+  return { embed, components: [] };
 }
 
 
