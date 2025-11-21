@@ -379,9 +379,12 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
     const after = originalValue.substring(ethMatch.index + ethMatch[0].length);
     
     // Skip if it's already in an HTML link (check both before and after)
-    const beforeContext = before.substring(Math.max(0, before.length - 100));
-    const afterContext = after.substring(0, 100);
-    if (beforeContext.includes('<a href') || afterContext.includes('</a>')) {
+    // Use larger context to catch links that span further
+    const beforeContext = before.substring(Math.max(0, before.length - 200));
+    const afterContext = after.substring(0, 200);
+    
+    // More robust check: if we see <a href before and </a> after, skip
+    if (beforeContext.includes('<a href') && afterContext.includes('</a>')) {
       continue;
     }
     
@@ -392,8 +395,14 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
     }
     
     // Skip if it's inside an href attribute (already part of a link URL)
+    // Check if the address is between href=" and the closing quote
     const fullContext = beforeContext + ethMatch[0] + afterContext;
-    if (/href=["'][^"']*0x[^"']*$/i.test(fullContext)) {
+    if (/href=["'][^"']*0x[^"']*["']/i.test(fullContext)) {
+      continue;
+    }
+    
+    // Additional check: skip if it's inside any HTML tag (including <a> tags)
+    if (/<[^>]*0x[^>]*>/i.test(fullContext)) {
       continue;
     }
     
