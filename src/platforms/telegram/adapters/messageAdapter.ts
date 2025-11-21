@@ -205,8 +205,12 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
       if (field.value) {
         // Special handling for trading links field - bypass complex processing
         // Trading links are simple markdown that should convert directly to HTML
+        // Check if field contains trading links (by content, not just name)
         let value: string;
-        if (field.name && /Trade|💱/i.test(field.name)) {
+        const isTradingLinksField = (field.name && /Trade|💱/i.test(field.name)) || 
+                                    (field.value && /💱 Trade.*\[GMGN\]|\[BB\]|\[FCW\]/.test(field.value));
+        
+        if (isTradingLinksField) {
           // For trading links, use a simpler, safer conversion
           value = markdownLinkToHtml(field.value);
           // Only escape non-HTML text parts
