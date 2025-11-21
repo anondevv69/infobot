@@ -1261,7 +1261,24 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
     }
     // In groups, we already filtered out non-mentions above
   } catch (error) {
+    const { logger } = await import("../../../utils/logger");
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    logger.error(`[Telegram] Error in processMessage:`, error, {
+      chatId: chatId.toString(),
+      text: text.substring(0, 100), // First 100 chars of text
+      errorMessage,
+      errorStack: errorStack?.substring(0, 500), // First 500 chars of stack
+    });
+    
     console.error(`[Telegram] Error in processMessage:`, error);
+    console.error(`[Telegram] Error details:`, {
+      message: errorMessage,
+      stack: errorStack,
+      text: text.substring(0, 100),
+    });
+    
     // Try to send a generic error message to the user
     try {
       await bot.sendMessage(chatId, "❌ An error occurred while processing your request. Please try again.", {

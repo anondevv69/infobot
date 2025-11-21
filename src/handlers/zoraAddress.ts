@@ -218,26 +218,16 @@ export async function buildZoraCoinResponse(
   
   // Add trading links right after contract field for Base chain tokens
   if (coin.chainId === 8453 || coin.chainId === BASE_CHAIN_ID) {
-    // Find the Contract field and insert Trade field right after it
-    const existingFields = coinEmbed.data.fields || [];
-    const contractIndex = existingFields.findIndex(field => 
-      field.name === "Contract" || field.name?.toLowerCase().includes("contract")
-    );
-    
-    if (contractIndex >= 0) {
-      // Use spliceFields to insert at the right position
-      coinEmbed.spliceFields(contractIndex + 1, 0, {
-        name: "\u200b", // Zero-width space to make it appear on same line
-        value: buildTradingLinks(coin.address),
-        inline: false,
-      });
-    } else {
-      // If no contract field found, add at the end
+    try {
+      // Simply add trading links at the end - this is safer and works reliably
       coinEmbed.addFields({
         name: "\u200b", // Zero-width space to make it appear on same line
         value: buildTradingLinks(coin.address),
         inline: false,
       });
+    } catch (error) {
+      // If adding trading links fails, just log and continue without them
+      console.error(`[Zora] Failed to add trading links:`, error);
     }
   }
 
