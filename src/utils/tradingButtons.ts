@@ -14,8 +14,8 @@ export function buildTradingLinks(contractAddress: string): string {
   // Farcaster Wallet - opens Farcaster wallet with contract pre-filled for trading
   const fcwUrl = `https://warpcast.com/~/wallet/swap?token=${normalizedAddress}&chain=base&ref=2ORGMS`;
 
-  // Return as plain text links in one row
-  return `[GMGN](${gmgnUrl}) • [BB](${telegramUrl}) • [FCW](${fcwUrl})`;
+  // Return as plain text links in one row with Trade label
+  return `💱 Trade [GMGN](${gmgnUrl}) • [BB](${telegramUrl}) • [FCW](${fcwUrl})`;
 }
 
 /**

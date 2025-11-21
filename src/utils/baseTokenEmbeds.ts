@@ -126,7 +126,7 @@ export async function buildBaseTokenEmbed(
 
   // Add trading links right after Token Details (which contains the contract address)
   embed.addFields({
-    name: "💱 Trade",
+    name: "\u200b", // Zero-width space to make it appear on same line
     value: buildTradingLinks(contractAddress),
     inline: false,
   });

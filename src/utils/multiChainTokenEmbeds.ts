@@ -165,7 +165,7 @@ export async function buildMultiChainTokenEmbed(
   // Add trading links right after contract address (only for Base chain tokens)
   if (tokenData.chainId === "8453" || tokenData.chainId === "base" || tokenData.chainId?.toLowerCase() === "base") {
     embed.addFields({
-      name: "💱 Trade",
+      name: "\u200b", // Zero-width space to make it appear on same line
       value: buildTradingLinks(contractAddress),
       inline: false,
     });

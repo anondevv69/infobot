@@ -344,7 +344,7 @@ export async function buildTokenEmbed(
   if (token.contract_address && (token.chain_id === 8453 || token.chain_id === BASE_CHAIN_ID)) {
     const { buildTradingLinks } = await import("./tradingButtons");
     embed.addFields({
-      name: "💱 Trade",
+      name: "\u200b", // Zero-width space to make it appear on same line
       value: buildTradingLinks(token.contract_address),
       inline: false,
     });
