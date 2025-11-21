@@ -18,8 +18,33 @@ function escapeHtml(text: string): string {
 function markdownLinkToHtml(markdown: string): string {
   const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
   return markdown.replace(linkRegex, (_, text, url) => {
+    // Validate URL - must not be empty
+    if (!url || url.trim() === "") {
+      // If URL is empty, just return the text without a link
+      return escapeHtml(text);
+    }
+    
+    // URL encode the href to ensure it's valid HTML
+    // Only encode if it's not already encoded
+    let encodedUrl = url.trim();
+    try {
+      // Check if URL is already properly formatted
+      new URL(encodedUrl);
+      // URL is valid, but we need to escape special HTML characters in the href
+      encodedUrl = encodedUrl
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    } catch {
+      // If URL parsing fails, try to encode it
+      encodedUrl = encodeURI(encodedUrl)
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+    
     const escapedText = escapeHtml(text);
-    return `<a href="${url}">${escapedText}</a>`;
+    return `<a href="${encodedUrl}">${escapedText}</a>`;
   });
 }
 
