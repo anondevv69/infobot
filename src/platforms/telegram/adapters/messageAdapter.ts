@@ -505,11 +505,15 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
 
   // Escape any remaining text (but HTML tags are already in place)
   // We need to be careful - don't escape HTML tags
-  // Split by HTML tags, escape text parts, keep HTML tags
+  // Use a more robust regex that matches complete HTML tags including attributes
+  // This regex matches: <tag> or <tag attr="value"> or <tag attr='value'> or <tag attr=value>
   const htmlTagRegex = /<[^>]+>/g;
   const parts: Array<{ type: 'text' | 'html'; content: string }> = [];
   let lastIndex = 0;
   let match;
+  
+  // Reset regex lastIndex to ensure we match from the start
+  htmlTagRegex.lastIndex = 0;
   
   while ((match = htmlTagRegex.exec(value)) !== null) {
     // Add text before tag
@@ -519,7 +523,7 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
         parts.push({ type: 'text', content: textPart });
       }
     }
-    // Add HTML tag as-is
+    // Add HTML tag as-is (including <a href="..."> tags)
     parts.push({ type: 'html', content: match[0] });
     lastIndex = match.index + match[0].length;
   }
