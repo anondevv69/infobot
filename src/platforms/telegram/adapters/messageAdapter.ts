@@ -63,7 +63,12 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
     
     // If embed has a URL, make the title clickable
     if (data.url) {
-      title = `<b><a href="${data.url}">${escapedTitle}</a></b>`;
+      // Escape the URL properly for HTML href attribute
+      const escapedUrl = data.url
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+      title = `<b><a href="${escapedUrl}">${escapedTitle}</a></b>`;
     } else {
       title = `<b>${escapedTitle}</b>`;
     }
@@ -361,7 +366,12 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
       url = `https://basescan.org/address/${address}`;
     }
     
-    value = value.substring(0, index) + `<a href="${url}">${escapeHtml(address)}</a>` + value.substring(index + address.length);
+    // Escape the URL properly for HTML href attribute
+    const escapedUrl = url
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+    value = value.substring(0, index) + `<a href="${escapedUrl}">${escapeHtml(address)}</a>` + value.substring(index + address.length);
   }
   
   // Convert Solana addresses
@@ -403,7 +413,12 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
   // Convert labeled usernames (Handle:, Farcaster:, Username:)
   value = value.replace(/(Handle|Farcaster|Username):\s*@([a-zA-Z0-9_]+)/g, (match, label, username) => {
     const url = buildFarcasterProfileUrl(username);
-    return `${escapeHtml(label)}: <a href="${url}">${escapeHtml(username)}</a>`;
+    // Escape the URL properly for HTML href attribute
+    const escapedUrl = url
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+    return `${escapeHtml(label)}: <a href="${escapedUrl}">${escapeHtml(username)}</a>`;
   });
   
   // Handle standalone @username patterns
@@ -441,7 +456,12 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
   for (let i = usernameMatches.length - 1; i >= 0; i--) {
     const { match: matchStr, username, offset } = usernameMatches[i];
     const url = buildFarcasterProfileUrl(username);
-    value = value.substring(0, offset) + `<a href="${url}">${escapeHtml(username)}</a>` + value.substring(offset + matchStr.length);
+    // Escape the URL properly for HTML href attribute
+    const escapedUrl = url
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+    value = value.substring(0, offset) + `<a href="${escapedUrl}">${escapeHtml(username)}</a>` + value.substring(offset + matchStr.length);
   }
 
   // Clean up separators and extra formatting
