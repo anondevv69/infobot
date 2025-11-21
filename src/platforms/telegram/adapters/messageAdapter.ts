@@ -263,7 +263,12 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
       // Check if it's a Solana address
       if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(trimmed)) {
         const solscanUrl = `https://solscan.io/account/${trimmed}`;
-        return `<a href="${solscanUrl}">${escapeHtml(trimmed)}</a>`;
+        // Escape the URL properly for HTML href attribute
+        const escapedSolscanUrl = solscanUrl
+          .replace(/&/g, "&amp;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+        return `<a href="${escapedSolscanUrl}">${escapeHtml(trimmed)}</a>`;
       }
       // Not an address, keep as code
       return `<code>${escapeHtml(trimmed)}</code>`;
@@ -301,13 +306,22 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
     const before = originalValue.substring(0, ethMatch.index);
     const after = originalValue.substring(ethMatch.index + ethMatch[0].length);
     
-    // Skip if it's already in an HTML link
-    if (before.includes('<a href') && after.includes('</a>')) {
+    // Skip if it's already in an HTML link (check both before and after)
+    const beforeContext = before.substring(Math.max(0, before.length - 100));
+    const afterContext = after.substring(0, 100);
+    if (beforeContext.includes('<a href') || afterContext.includes('</a>')) {
       continue;
     }
     
-    // Skip if it's in a URL
-    if (/https?:\/\/[^\s]*$/.test(before)) {
+    // Skip if it's in a URL (check if there's a URL pattern before it)
+    // This includes checking for href="..." patterns
+    if (/https?:\/\/[^\s]*$/i.test(before) || /href=["'][^"']*$/i.test(beforeContext)) {
+      continue;
+    }
+    
+    // Skip if it's inside an href attribute (already part of a link URL)
+    const fullContext = beforeContext + ethMatch[0] + afterContext;
+    if (/href=["'][^"']*0x[^"']*$/i.test(fullContext)) {
       continue;
     }
     
