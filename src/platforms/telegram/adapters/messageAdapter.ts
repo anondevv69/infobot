@@ -24,27 +24,26 @@ function markdownLinkToHtml(markdown: string): string {
       return escapeHtml(text);
     }
     
-    // URL encode the href to ensure it's valid HTML
-    // Only encode if it's not already encoded
-    let encodedUrl = url.trim();
-    try {
-      // Check if URL is already properly formatted
-      new URL(encodedUrl);
-      // URL is valid, but we need to escape special HTML characters in the href
-      encodedUrl = encodedUrl
-        .replace(/&/g, "&amp;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-    } catch {
-      // If URL parsing fails, try to encode it
-      encodedUrl = encodeURI(encodedUrl)
-        .replace(/&/g, "&amp;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-    }
+    // Clean and validate URL
+    let cleanUrl = url.trim();
+    
+    // Remove any existing HTML entities that might cause issues
+    // Then properly escape HTML special characters in the href attribute
+    // In HTML attributes, we MUST escape: &, ", <, >
+    // The order matters - escape & first!
+    cleanUrl = cleanUrl
+      .replace(/&amp;/g, "&")  // First, normalize any existing &amp;
+      .replace(/&/g, "&amp;")  // Then escape all & to &amp;
+      .replace(/"/g, "&quot;")  // Escape quotes
+      .replace(/'/g, "&#39;")   // Escape single quotes
+      .replace(/</g, "&lt;")    // Escape <
+      .replace(/>/g, "&gt;");   // Escape >
     
     const escapedText = escapeHtml(text);
-    return `<a href="${encodedUrl}">${escapedText}</a>`;
+    
+    // Ensure the href attribute is properly quoted with double quotes
+    // Telegram requires proper HTML attribute quoting
+    return `<a href="${cleanUrl}">${escapedText}</a>`;
   });
 }
 
