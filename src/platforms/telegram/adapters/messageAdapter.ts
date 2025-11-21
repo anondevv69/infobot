@@ -278,19 +278,29 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
   // Handle inline code (`code`) - convert addresses/contracts to clickable links
   value = value.replace(/`([^`]+)`/g, (match, content) => {
     const trimmed = content.trim();
-    // Check if it's an Ethereum address/contract
-    if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
-      // If it's in a Contract field, link to Clanker, otherwise Basescan
-      const url = isContractField 
-        ? `https://www.clanker.world/clanker/${trimmed}`
-        : `https://basescan.org/address/${trimmed}`;
-      return `<a href="${url}">${escapeHtml(trimmed)}</a>`;
-    }
-    // Check if it's a Solana address
-    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(trimmed)) {
-      const solscanUrl = `https://solscan.io/account/${trimmed}`;
-      return `<a href="${solscanUrl}">${escapeHtml(trimmed)}</a>`;
-    }
+      // Check if it's an Ethereum address/contract
+      if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
+        // If it's in a Contract field, link to Clanker, otherwise Basescan
+        const url = isContractField 
+          ? `https://www.clanker.world/clanker/${trimmed}`
+          : `https://basescan.org/address/${trimmed}`;
+        // Escape the URL properly for HTML href attribute
+        const escapedUrl = url
+          .replace(/&/g, "&amp;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+        return `<a href="${escapedUrl}">${escapeHtml(trimmed)}</a>`;
+      }
+      // Check if it's a Solana address
+      if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(trimmed)) {
+        const solscanUrl = `https://solscan.io/account/${trimmed}`;
+        // Escape the URL properly for HTML href attribute
+        const escapedSolscanUrl = solscanUrl
+          .replace(/&/g, "&amp;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+        return `<a href="${escapedSolscanUrl}">${escapeHtml(trimmed)}</a>`;
+      }
     // Not an address, keep as code
     return `<code>${escapeHtml(trimmed)}</code>`;
   });
