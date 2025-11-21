@@ -16,12 +16,32 @@ function escapeHtml(text: string): string {
  * Convert markdown link [text](url) to HTML link <a href="url">text</a>
  */
 function markdownLinkToHtml(markdown: string): string {
+  // Match markdown links: [text](url)
+  // Use a more robust regex that handles URLs with parentheses and special characters
   const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-  return markdown.replace(linkRegex, (_, text, url) => {
+  let result = markdown;
+  let match;
+  const matches: Array<{ full: string; text: string; url: string; index: number }> = [];
+  
+  // Find all matches first (we need to process from end to start to preserve indices)
+  while ((match = linkRegex.exec(markdown)) !== null) {
+    matches.push({
+      full: match[0],
+      text: match[1],
+      url: match[2],
+      index: match.index,
+    });
+  }
+  
+  // Process from end to start to preserve indices
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const { full, text, url } = matches[i];
+    
     // Validate URL - must not be empty
     if (!url || url.trim() === "") {
       // If URL is empty, just return the text without a link
-      return escapeHtml(text);
+      result = result.substring(0, matches[i].index) + escapeHtml(text) + result.substring(matches[i].index + full.length);
+      continue;
     }
     
     // Clean and validate URL
@@ -43,8 +63,11 @@ function markdownLinkToHtml(markdown: string): string {
     
     // Ensure the href attribute is properly quoted with double quotes
     // Telegram requires proper HTML attribute quoting
-    return `<a href="${cleanUrl}">${escapedText}</a>`;
-  });
+    const htmlLink = `<a href="${cleanUrl}">${escapedText}</a>`;
+    result = result.substring(0, matches[i].index) + htmlLink + result.substring(matches[i].index + full.length);
+  }
+  
+  return result;
 }
 
 /**
