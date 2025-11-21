@@ -1264,19 +1264,41 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
     const { logger } = await import("../../../utils/logger");
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
+    const errorName = error instanceof Error ? error.name : "UnknownError";
     
-    logger.error(`[Telegram] Error in processMessage:`, error, {
-      chatId: chatId.toString(),
-      text: text.substring(0, 100), // First 100 chars of text
-      errorMessage,
-      errorStack: errorStack?.substring(0, 500), // First 500 chars of stack
-    });
+    // Build detailed error message for webhook
+    const errorDetails = [
+      `**Error:** ${errorName}`,
+      `**Message:** ${errorMessage}`,
+      `**Chat ID:** ${chatId}`,
+      `**Input:** ${text.substring(0, 200)}`,
+    ];
+    
+    if (errorStack) {
+      // Get first few lines of stack trace
+      const stackLines = errorStack.split('\n').slice(0, 5).join('\n');
+      errorDetails.push(`**Stack:**\n\`\`\`\n${stackLines}\n\`\`\``);
+    }
+    
+    // Log full error details to webhook
+    logger.error(
+      `[Telegram] Error in processMessage:\n\n${errorDetails.join('\n')}`,
+      error,
+      {
+        chatId: chatId.toString(),
+        text: text.substring(0, 200),
+        errorMessage,
+        errorName,
+        errorStack: errorStack?.substring(0, 1000),
+      }
+    );
     
     console.error(`[Telegram] Error in processMessage:`, error);
     console.error(`[Telegram] Error details:`, {
+      name: errorName,
       message: errorMessage,
       stack: errorStack,
-      text: text.substring(0, 100),
+      text: text.substring(0, 200),
     });
     
     // Try to send a generic error message to the user
