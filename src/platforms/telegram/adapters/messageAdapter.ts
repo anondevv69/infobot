@@ -263,7 +263,12 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
         const url = isContractField 
           ? `https://www.clanker.world/clanker/${trimmed}`
           : `https://basescan.org/address/${trimmed}`;
-        return `<a href="${url}">${escapeHtml(trimmed)}</a>`;
+        // Escape the URL properly for HTML href attribute
+        const escapedUrl = url
+          .replace(/&/g, "&amp;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+        return `<a href="${escapedUrl}">${escapeHtml(trimmed)}</a>`;
       }
       // Check if it's a Solana address
       if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(trimmed)) {
