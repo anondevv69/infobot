@@ -203,7 +203,46 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
       }
 
       if (field.value) {
-        const value = formatFieldValueForHtml(field.value, field.name);
+        // Special handling for trading links field - bypass complex processing
+        // Trading links are simple markdown that should convert directly to HTML
+        let value: string;
+        if (field.name && /Trade|💱/i.test(field.name)) {
+          // For trading links, use a simpler, safer conversion
+          value = markdownLinkToHtml(field.value);
+          // Only escape non-HTML text parts
+          const htmlTagRegex = /<[^>]+>/g;
+          const parts: Array<{ type: 'text' | 'html'; content: string }> = [];
+          let lastIndex = 0;
+          let match;
+          htmlTagRegex.lastIndex = 0;
+          
+          while ((match = htmlTagRegex.exec(value)) !== null) {
+            if (match.index > lastIndex) {
+              const textPart = value.substring(lastIndex, match.index);
+              if (textPart) {
+                parts.push({ type: 'text', content: escapeHtml(textPart) });
+              }
+            }
+            parts.push({ type: 'html', content: match[0] });
+            lastIndex = match.index + match[0].length;
+          }
+          
+          if (lastIndex < value.length) {
+            const textPart = value.substring(lastIndex);
+            if (textPart) {
+              parts.push({ type: 'text', content: escapeHtml(textPart) });
+            }
+          }
+          
+          value = parts.map(part => 
+            part.type === 'html' ? part.content : part.content
+          ).join('');
+          
+          console.log("[Telegram] Trading links field - final value:", value);
+        } else {
+          value = formatFieldValueForHtml(field.value, field.name);
+        }
+        
         if (value.trim()) {
           parts.push(value);
         }
