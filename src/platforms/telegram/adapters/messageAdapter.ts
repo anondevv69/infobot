@@ -293,7 +293,13 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
   value = value.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
   
   // Convert markdown links to HTML first
+  // This MUST happen before any other processing that might break the links
   value = markdownLinkToHtml(value);
+  
+  // Debug: Log the value after markdown link conversion (for trading links)
+  if (value.includes("💱 Trade") || value.includes("GMGN") || value.includes("BB") || value.includes("FCW")) {
+    console.log("[Telegram] After markdownLinkToHtml:", value);
+  }
   
   // Handle code blocks (```address```) - convert addresses/contracts to clickable links
   // Check if we're in a "Contract" field to determine if it's a Clanker contract
