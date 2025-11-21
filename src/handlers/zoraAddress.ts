@@ -1,4 +1,4 @@
-import { EmbedBuilder, Message, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+import { EmbedBuilder, Message, ActionRowBuilder, ButtonBuilder, ButtonStyle, APIEmbed } from "discord.js";
 import type { User } from "@neynar/nodejs-sdk/build/api";
 import {
   fetchZoraCoin,
@@ -224,22 +224,21 @@ export async function buildZoraCoinResponse(
       field.name === "Contract" || field.name?.toLowerCase().includes("contract")
     );
     
-      if (contractIndex >= 0) {
-        // Insert right after contract field
-        existingFields.splice(contractIndex + 1, 0, {
-          name: "\u200b", // Zero-width space to make it appear on same line
-          value: buildTradingLinks(coin.address),
-          inline: false,
-        });
-        coinEmbed.data.fields = existingFields;
-      } else {
-        // If no contract field found, add at the end
-        coinEmbed.addFields({
-          name: "\u200b", // Zero-width space to make it appear on same line
-          value: buildTradingLinks(coin.address),
-          inline: false,
-        });
-      }
+    if (contractIndex >= 0) {
+      // Use spliceFields to insert at the right position
+      coinEmbed.spliceFields(contractIndex + 1, 0, {
+        name: "\u200b", // Zero-width space to make it appear on same line
+        value: buildTradingLinks(coin.address),
+        inline: false,
+      });
+    } else {
+      // If no contract field found, add at the end
+      coinEmbed.addFields({
+        name: "\u200b", // Zero-width space to make it appear on same line
+        value: buildTradingLinks(coin.address),
+        inline: false,
+      });
+    }
   }
 
   const embeds: EmbedBuilder[] = [coinEmbed];
