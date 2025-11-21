@@ -520,8 +520,8 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
 
   // Escape any remaining text (but HTML tags are already in place)
   // We need to be careful - don't escape HTML tags
-  // Use a more robust regex that matches complete HTML tags including attributes
-  // This regex matches: <tag> or <tag attr="value"> or <tag attr='value'> or <tag attr=value>
+  // Use a more robust approach: split by HTML tags and preserve them
+  // This regex matches: <tag> or <tag attr="value"> including tags with escaped characters
   const htmlTagRegex = /<[^>]+>/g;
   const parts: Array<{ type: 'text' | 'html'; content: string }> = [];
   let lastIndex = 0;
@@ -530,17 +530,28 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
   // Reset regex lastIndex to ensure we match from the start
   htmlTagRegex.lastIndex = 0;
   
+  // Find all HTML tags first
+  const tagMatches: Array<{ index: number; length: number; content: string }> = [];
   while ((match = htmlTagRegex.exec(value)) !== null) {
+    tagMatches.push({
+      index: match.index,
+      length: match[0].length,
+      content: match[0],
+    });
+  }
+  
+  // Process tags and text between them
+  for (const tagMatch of tagMatches) {
     // Add text before tag
-    if (match.index > lastIndex) {
-      const textPart = value.substring(lastIndex, match.index);
+    if (tagMatch.index > lastIndex) {
+      const textPart = value.substring(lastIndex, tagMatch.index);
       if (textPart) {
         parts.push({ type: 'text', content: textPart });
       }
     }
-    // Add HTML tag as-is (including <a href="..."> tags)
-    parts.push({ type: 'html', content: match[0] });
-    lastIndex = match.index + match[0].length;
+    // Add HTML tag as-is (including <a href="..."> tags with escaped URLs)
+    parts.push({ type: 'html', content: tagMatch.content });
+    lastIndex = tagMatch.index + tagMatch.length;
   }
   
   // Add remaining text
