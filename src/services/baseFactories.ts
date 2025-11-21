@@ -33,6 +33,8 @@ export const TOKEN_FACTORY_MAP: Record<string, string> = {
   "0xabefbc9fd2f806065b4f3c237d4b59d9a97bcac7": "Zora",
   // Virtuals
   "0x42f4f5a3389ca0bed694de339f4d432acddb1ea9": "Virtuals",
+  // Paragraph
+  "0x9e68675b4bbaa7c281e07496cf24bae65e8450ec": "Paragraph",
 };
 
 export const BASE_FACTORIES: Record<string, BaseFactory> = {
