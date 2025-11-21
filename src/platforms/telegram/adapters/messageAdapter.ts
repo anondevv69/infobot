@@ -15,11 +15,45 @@ function escapeHtml(text: string): string {
 /**
  * Convert markdown link [text](url) to HTML link <a href="url">text</a>
  */
+/**
+ * Safe link builder - guarantees valid Telegram HTML
+ * Telegram requires: <a href="url">text</a> with NO extra attributes
+ */
+function buildTelegramLink(label: string, url: string | null | undefined): string {
+  // If URL is missing or empty, return just the label (no link)
+  if (!url || url.trim() === "") {
+    return escapeHtml(label);
+  }
+  
+  // Clean URL: remove quotes, trim whitespace
+  let cleanUrl = url.trim().replace(/"/g, "");
+  
+  // Escape HTML special characters in the href attribute
+  // In HTML attributes, we MUST escape: &, ", <, >
+  // The order matters - escape & first!
+  cleanUrl = cleanUrl
+    .replace(/&amp;/g, "&")  // First, normalize any existing &amp;
+    .replace(/&/g, "&amp;")   // Then escape all & to &amp;
+    .replace(/"/g, "&quot;")  // Escape quotes (shouldn't be any after replace above, but safety)
+    .replace(/'/g, "&#39;")   // Escape single quotes
+    .replace(/</g, "&lt;")    // Escape <
+    .replace(/>/g, "&gt;");   // Escape >
+  
+  const escapedLabel = escapeHtml(label);
+  
+  // Telegram-safe format: <a href="url">text</a>
+  // NO extra attributes, NO classes, NO target, NO title
+  return `<a href="${cleanUrl}">${escapedLabel}</a>`;
+}
+
+/**
+ * Convert markdown link [text](url) to HTML link <a href="url">text</a>
+ * Uses safe link builder to guarantee valid Telegram HTML
+ */
 function markdownLinkToHtml(markdown: string): string {
   if (!markdown) return "";
   
   // Match markdown links: [text](url)
-  // Use a more robust regex that handles URLs with parentheses and special characters
   const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
   let result = markdown;
   const matches: Array<{ full: string; text: string; url: string; index: number }> = [];
@@ -47,34 +81,8 @@ function markdownLinkToHtml(markdown: string): string {
   for (let i = matches.length - 1; i >= 0; i--) {
     const { full, text, url, index } = matches[i];
     
-    // Validate URL - must not be empty
-    if (!url || url.trim() === "") {
-      // If URL is empty, just return the text without a link
-      result = result.substring(0, index) + escapeHtml(text) + result.substring(index + full.length);
-      continue;
-    }
-    
-    // Clean and validate URL
-    let cleanUrl = url.trim();
-    
-    // Remove any existing HTML entities that might cause issues
-    // Then properly escape HTML special characters in the href attribute
-    // In HTML attributes, we MUST escape: &, ", <, >
-    // The order matters - escape & first!
-    cleanUrl = cleanUrl
-      .replace(/&amp;/g, "&")  // First, normalize any existing &amp;
-      .replace(/&/g, "&amp;")  // Then escape all & to &amp;
-      .replace(/"/g, "&quot;")  // Escape quotes
-      .replace(/'/g, "&#39;")   // Escape single quotes
-      .replace(/</g, "&lt;")    // Escape <
-      .replace(/>/g, "&gt;");   // Escape >
-    
-    const escapedText = escapeHtml(text);
-    
-    // Ensure the href attribute is properly quoted with double quotes
-    // Telegram requires proper HTML attribute quoting
-    // Format: <a href="url">text</a>
-    const htmlLink = `<a href="${cleanUrl}">${escapedText}</a>`;
+    // Use safe link builder - guarantees valid Telegram HTML
+    const htmlLink = buildTelegramLink(text, url);
     
     // Replace the markdown link with HTML link
     // Use the original index from the markdown string

@@ -11,6 +11,17 @@ export function embedsToTelegram(embeds: EmbedBuilder[]): string[] {
   for (const embed of embeds) {
     const message = convertToTelegramMessage(embed);
     
+    // Debug: Log final HTML message before sending (only for trading links)
+    // This helps identify malformed <a> tags
+    if (message.includes("💱 Trade") || message.includes("<a href")) {
+      console.log("[Telegram] FINAL HTML MESSAGE:", message);
+      // Also log just the trading links section for easier debugging
+      const tradeMatch = message.match(/💱 Trade.*?(?=\n|$)/s);
+      if (tradeMatch) {
+        console.log("[Telegram] TRADE LINKS SECTION:", tradeMatch[0]);
+      }
+    }
+    
     // If message is too long, split it
     if (message.length > 4000) {
       // Split by fields or lines
