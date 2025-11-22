@@ -95,13 +95,80 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
       }
     }
     
-    // If API endpoint returns 404, try alternative: look up coin directly from known contract
-    // Since we know this post has a token, we can try to find it via contract address search
+    // If API endpoint returns 404, the endpoint might not exist or require different structure
+    // Try fallback: fetch HTML and extract contract address, then use contract lookup
     if (!post) {
-      logger.warn(`[Paragraph] Post not found via API endpoint for ${publicationSlug}/${slug} - API may not support this endpoint`);
-      logger.debug(`[Paragraph] Attempting fallback: will let contract address handler process if contract is in message`, {}, true);
-      // Return false so the contract address handler can try to find it
-      // The user can also paste the contract address directly
+      logger.warn(`[Paragraph] Post not found via API endpoint for ${publicationSlug}/${slug} - trying HTML fallback`, {
+        url: postUrl,
+        apiBase: "https://public.api.paragraph.com/api",
+      });
+      
+      try {
+        // Fallback: Fetch the HTML page and extract contract address
+        logger.debug(`[Paragraph] Fetching HTML from ${postUrl} to extract contract address`, {}, true);
+        const htmlResponse = await fetch(postUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+        });
+        
+        if (htmlResponse.ok) {
+          const html = await htmlResponse.text();
+          // Look for contract address in the HTML (common patterns)
+          const contractMatch = html.match(/0x[a-fA-F0-9]{40}/);
+          if (contractMatch) {
+            const extractedAddress = contractMatch[0];
+            logger.debug(`[Paragraph] ✅ Extracted contract address from HTML: ${extractedAddress}`, {}, true);
+            
+            // Now use the contract address to look up the coin
+            const coin = await getCoinByContract(extractedAddress);
+            if (coin) {
+              // We found the coin! Now build the token embed
+              logger.debug(`[Paragraph] ✅ Found Paragraph coin via contract address`, {}, true);
+              
+              // Get token data and build embed
+              const [baseTokenData, factory, contractCreation, creationTx] = await Promise.all([
+                fetchBaseTokenData(extractedAddress),
+                detectTokenFactory(extractedAddress),
+                getContractCreation(extractedAddress).catch(() => null),
+                getContractCreationTx(extractedAddress, "base", env.basescanApiKey).catch(() => null),
+              ]);
+              
+              // Get author info
+              let paragraphPostAuthor = null;
+              if (contractCreation?.contractCreator) {
+                paragraphPostAuthor = await getUserByWallet(contractCreation.contractCreator).catch(() => null);
+              }
+              
+              const tokenName = baseTokenData?.tokenName ?? null;
+              const tokenSymbol = baseTokenData?.tokenSymbol ?? coin.symbol ?? null;
+              
+              const { embed, components } = await buildBaseTokenEmbed(
+                extractedAddress,
+                tokenName,
+                tokenSymbol,
+                baseTokenData,
+                factory,
+                contractCreation?.contractCreator ?? null,
+                contractCreation?.createdAt ?? null,
+                creationTx?.hash ?? null,
+                coin,
+                paragraphPostAuthor ?? undefined,
+                postUrl, // Use the original URL
+              );
+              
+              await message.reply({ embeds: [embed], components });
+              logger.debug(`[Paragraph] ✅ Sent token embed via HTML fallback`, {}, true);
+              return true;
+            }
+          }
+        }
+      } catch (error) {
+        logger.warn(`[Paragraph] HTML fallback failed`, { error: error instanceof Error ? error.message : String(error) });
+      }
+      
+      // If all methods fail, return false
+      logger.warn(`[Paragraph] All methods failed to get post/coin for ${publicationSlug}/${slug}`);
       return false;
     }
     
