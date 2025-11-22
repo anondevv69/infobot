@@ -134,13 +134,13 @@ export async function buildBaseTokenEmbed(
 
   // Add Paragraph post info if available
   if (paragraphCoin) {
-    // Try to construct the Paragraph post URL
-    // The postId might be a full ID or a slug, so we'll try both formats
+    // The postId from the API is the post slug/ID, use it directly in the URL
+    // Format: https://paragraph.com/@post/{postId}
     const paragraphPostUrl = `https://paragraph.com/@post/${paragraphCoin.postId}`;
     const paragraphLines: string[] = [];
     paragraphLines.push(`**Post:** [View on Paragraph](${paragraphPostUrl})`);
-    paragraphLines.push(`**Coin ID:** ${paragraphCoin.id}`);
     paragraphLines.push(`**Symbol:** ${paragraphCoin.symbol}`);
+    paragraphLines.push(`**Coin ID:** ${paragraphCoin.id}`);
     
     embed.addFields({
       name: "📝 Paragraph Post",

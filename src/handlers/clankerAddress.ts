@@ -489,7 +489,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
         const finalParagraphCoin = paragraphCoin ?? await import("../services/paragraph").then(m => 
           m.getCoinByContract(address)
         ).catch(() => null);
-        
+
         const { embed, components } = await buildBaseTokenEmbed(
           address,
           baseTokenData?.tokenName ?? null, // Token name from DexScreener

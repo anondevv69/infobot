@@ -133,10 +133,12 @@ export async function getCoinByContract(contractAddress: string): Promise<Paragr
     }
 
     const coin = await response.json() as ParagraphCoin;
+    console.log(`[Paragraph] ✅ Found coin for ${contractAddress}: ${coin.symbol} (postId: ${coin.postId})`);
     return coin;
   } catch (error) {
     // Don't throw - just log and return null (graceful degradation)
     if (error instanceof Error && error.message.includes("404")) {
+      console.log(`[Paragraph] No coin found for contract ${contractAddress} (404)`);
       return null;
     }
     console.warn(`[Paragraph] Failed to fetch coin for contract ${contractAddress}:`, error);
