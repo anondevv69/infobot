@@ -81,10 +81,12 @@ export async function buildBaseTokenEmbed(
   }
 
   // Factory Information (moved to top section)
+  // Hide factory for Paragraph tokens (check if paragraphCoin exists)
   const finalFactoryName = factory?.name ?? metrics?.factoryName ?? null;
   const isKnownFactory = factory !== null;
+  const isParagraphToken = paragraphCoin !== null;
   let factoryDisplay = "";
-  if (finalFactoryName) {
+  if (finalFactoryName && !isParagraphToken) {
     const cleanFactoryName = finalFactoryName.startsWith("Factory: ") 
       ? finalFactoryName.replace(/^Factory: /, "")
       : finalFactoryName;
@@ -208,9 +210,12 @@ export async function buildBaseTokenEmbed(
       let finalParagraphPublicationId: string | null = null;
       
       // First, check if paragraphPostAuthor matches the creator address
-      if (paragraphPostAuthor && 'walletAddress' in paragraphPostAuthor) {
+      // paragraphPostAuthor comes from getUserByWallet, which returns ParagraphUser with walletAddress
+      if (paragraphPostAuthor?.publicationId) {
         const postAuthorWallet = (paragraphPostAuthor as any).walletAddress?.toLowerCase();
-        if (postAuthorWallet === finalCreatorAddress.toLowerCase() && paragraphPostAuthor.publicationId) {
+        // If we have walletAddress, check if it matches creator
+        // If we don't have walletAddress but have publicationId, use it (it's from the post author lookup)
+        if (!postAuthorWallet || postAuthorWallet === finalCreatorAddress.toLowerCase()) {
           finalParagraphPublicationId = paragraphPostAuthor.publicationId;
         }
       }

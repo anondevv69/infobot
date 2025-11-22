@@ -491,7 +491,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
         ).catch(() => null);
 
         // If we have a Paragraph coin, try to get the post details and author
-        let paragraphPostAuthor: { name?: string | null; bio?: string | null; farcaster?: { username: string } | null; publicationId?: string | null } | null = null;
+        let paragraphPostAuthor: { name?: string | null; bio?: string | null; farcaster?: { username: string } | null; publicationId?: string | null; walletAddress?: string } | null = null;
         let paragraphPostUrl: string | null = null;
         if (finalParagraphCoin) {
           try {
