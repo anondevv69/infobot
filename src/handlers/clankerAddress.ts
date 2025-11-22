@@ -533,7 +533,8 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
               logger.warn(`[Paragraph] Cannot construct proper URL - missing author publicationId`, { slug: post.slug });
             }
           } catch (error) {
-            console.warn(`[Paragraph] Failed to get post details for ${finalParagraphCoin.postId}:`, error);
+            const { logger } = await import("../utils/logger");
+            logger.warn(`[Paragraph] Failed to get post details for ${finalParagraphCoin.postId}`, { error: error instanceof Error ? error.message : String(error) });
           }
         }
 
