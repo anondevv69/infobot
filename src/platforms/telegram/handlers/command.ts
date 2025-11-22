@@ -396,6 +396,85 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
           return;
         }
 
+        // Final fallback: Try to get basic address information across chains (same as Discord)
+        const { lookupAddress } = await import("../../../services/addressLookup");
+        const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
+        const { applyBranding } = await import("../../../utils/branding");
+        const { EmbedBuilder } = await import("discord.js");
+        
+        const addressInfo = await lookupAddress(address);
+        
+        if (addressInfo.length > 0) {
+          const embed = new EmbedBuilder()
+            .setTitle("🔍 Address Information")
+            .setDescription(`Found activity for \`${address}\` on ${addressInfo.length} chain(s)`)
+            .setColor(0x00d4ff);
+
+          for (const info of addressInfo) {
+            let value = "";
+            if (info.isContract) {
+              value += "📄 **Contract**\n";
+            } else {
+              value += "👤 **EOA (Externally Owned Account)**\n";
+            }
+
+            if (info.balance) {
+              try {
+                const balanceWei = BigInt(info.balance);
+                const balanceEth = Number(balanceWei) / 1e18;
+                if (balanceEth > 0) {
+                  value += `💰 Balance: ${balanceEth.toFixed(6)} ETH\n`;
+                }
+              } catch (error) {
+                // Ignore balance parsing errors
+              }
+            }
+
+            if (info.transactionCount !== null) {
+              value += `📊 Transactions: ${info.transactionCount.toLocaleString()}\n`;
+            }
+
+            value += `🔗 [View on ${info.chainName} Explorer](${info.explorerUrl})`;
+
+            embed.addFields({
+              name: `${info.chainName} (Chain ID: ${info.chainId})`,
+              value,
+              inline: false,
+            });
+          }
+
+          // Apply branding first (this sets the footer with branding)
+          applyBranding(embed, "address lookup");
+          
+          // Append address to footer (preserving branding)
+          const currentFooter = embed.data.footer;
+          if (currentFooter) {
+            embed.setFooter({
+              text: `${currentFooter.text} • Address: ${address.slice(0, 10)}...${address.slice(-8)}`,
+              iconURL: currentFooter.icon_url ?? undefined,
+            });
+          }
+          
+          // Convert Discord embed to Telegram message
+          const telegramMessages = await embedsToTelegram([embed]);
+          const telegramText = Array.isArray(telegramMessages) ? telegramMessages.join("\n\n") : telegramMessages;
+          
+          await bot.sendMessage(
+            chatId,
+            `No Farcaster profile, Clanker deployments, or Zora coins found for \`${address}\`, but found activity on the following chain(s):\n\n${telegramText}`,
+            {
+              parse_mode: "HTML",
+              disable_web_page_preview: true,
+            }
+          );
+          
+          logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+            success: true,
+            type: "wallet_address_lookup",
+          });
+          return;
+        }
+
         // Try wallet (need to find user first)
         try {
           const user = await findUserByWallet(address);
