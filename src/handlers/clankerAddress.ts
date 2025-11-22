@@ -500,7 +500,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
             
             // Get post details with full metadata (author, publication, content)
             logger.debug(`[Paragraph] Getting post by ID: ${finalParagraphCoin.postId}`, {}, true);
-            const post = await getPostById(finalParagraphCoin.postId, {
+            let post = await getPostById(finalParagraphCoin.postId, {
               includeAuthor: true,
               includePublication: true,
               includeContent: false, // We don't need the full content, just metadata
@@ -524,10 +524,50 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
               
               // PRIORITY 1: Use publicationSlug and slug directly from post API response (most reliable)
               // Check both direct field and nested publication object
-              const finalPublicationSlug = post.publicationSlug || post.publication?.slug || null;
+              let finalPublicationSlug = post.publicationSlug || post.publication?.slug || null;
+              
+              // FALLBACK: If publicationSlug is still missing, try to get it from the creator's wallet
+              if (!finalPublicationSlug && post.slug) {
+                logger.debug(`[Paragraph] publicationSlug missing, trying fallback via creator wallet`, {}, true);
+                
+                // Try to get publication from creator wallet
+                let creatorWallet: string | null = null;
+                if (post.ownerWalletAddress) {
+                  creatorWallet = post.ownerWalletAddress;
+                } else if (contractCreation?.contractCreator) {
+                  creatorWallet = contractCreation.contractCreator;
+                }
+                
+                if (creatorWallet) {
+                  logger.debug(`[Paragraph] Looking up creator wallet for publication: ${creatorWallet}`, {}, true);
+                  const creatorUser = await getUserByWallet(creatorWallet);
+                  if (creatorUser?.publicationId) {
+                    // Get publication details to get the slug
+                    const { getPublicationBySlug } = await import("../services/paragraph");
+                    // Try to get publication by ID (if we have it) or by slug
+                    // Since we have publicationId, we need to get the publication to find its slug
+                    // For now, try using the publicationId as the slug (often they're the same)
+                    const publication = await getPublicationBySlug(creatorUser.publicationId);
+                    if (publication) {
+                      finalPublicationSlug = publication.slug;
+                      logger.debug(`[Paragraph] ✅ Got publication slug from creator: ${finalPublicationSlug}`, {}, true);
+                      
+                      // Now fetch the full post using the publication slug + post slug endpoint
+                      const { getPostBySlug } = await import("../services/paragraph");
+                      const fullPost = await getPostBySlug(finalPublicationSlug, post.slug, false);
+                      if (fullPost) {
+                        // Use the full post data which has all metadata
+                        post = fullPost;
+                        logger.debug(`[Paragraph] ✅ Got full post data via publication slug endpoint`, {}, true);
+                      }
+                    }
+                  }
+                }
+              }
+              
               if (finalPublicationSlug && post.slug) {
                 paragraphPostUrl = `https://paragraph.com/@${finalPublicationSlug}/${post.slug}`;
-                logger.debug(`[Paragraph] ✅ Constructed post URL from post API: ${paragraphPostUrl}`, {}, true);
+                logger.debug(`[Paragraph] ✅ Constructed post URL: ${paragraphPostUrl}`, {}, true);
               }
               
               // Get author information for display
