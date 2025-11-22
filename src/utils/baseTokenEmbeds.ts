@@ -141,6 +141,20 @@ export async function buildBaseTokenEmbed(
     const paragraphLines: string[] = [];
     paragraphLines.push(`**Post:** [View on Paragraph](${paragraphPostUrl})`);
     
+    // Add post author information if available
+    if (paragraphPostAuthor) {
+      if (paragraphPostAuthor.name) {
+        paragraphLines.push(`**Author:** ${paragraphPostAuthor.name}`);
+      }
+      if (paragraphPostAuthor.farcaster) {
+        paragraphLines.push(`**Farcaster:** [@${paragraphPostAuthor.farcaster.username}](https://farcaster.xyz/${paragraphPostAuthor.farcaster.username})`);
+      }
+      if (paragraphPostAuthor.publicationId) {
+        const authorProfileUrl = `https://paragraph.xyz/@${paragraphPostAuthor.publicationId}`;
+        paragraphLines.push(`**Paragraph:** [View Profile](${authorProfileUrl})`);
+      }
+    }
+    
     embed.addFields({
       name: "📝 Paragraph Post",
       value: paragraphLines.join("\n"),
