@@ -490,6 +490,32 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           m.getCoinByContract(address)
         ).catch(() => null);
 
+        // If we have a Paragraph coin, try to get the post author
+        let paragraphPostAuthor: { name?: string | null; bio?: string | null; farcaster?: { username: string } | null; publicationId?: string | null } | null = null;
+        if (finalParagraphCoin) {
+          try {
+            const { getPostById, getUserByWallet } = await import("../services/paragraph");
+            const post = await getPostById(finalParagraphCoin.postId);
+            
+            // Try to get author from post owner wallet address
+            if (post?.ownerWalletAddress) {
+              const author = await getUserByWallet(post.ownerWalletAddress);
+              if (author) {
+                paragraphPostAuthor = author;
+              }
+            }
+            // Fallback: try ownerUserId if it's a wallet address format
+            else if (post?.ownerUserId && post.ownerUserId.startsWith("0x")) {
+              const author = await getUserByWallet(post.ownerUserId);
+              if (author) {
+                paragraphPostAuthor = author;
+              }
+            }
+          } catch (error) {
+            console.warn(`[Paragraph] Failed to get post author for ${finalParagraphCoin.postId}:`, error);
+          }
+        }
+
         const { embed, components } = await buildBaseTokenEmbed(
           address,
           baseTokenData?.tokenName ?? null, // Token name from DexScreener
@@ -500,6 +526,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           contractCreation?.createdAt ?? null, // Creation timestamp
           contractCreation?.txHash ?? null, // Creation transaction hash
           finalParagraphCoin ?? undefined, // Paragraph coin info if available
+          paragraphPostAuthor ?? undefined, // Paragraph post author if available
         );
 
         const factoryDisplayName = finalFactory ? ` (${finalFactory.name})` : "";

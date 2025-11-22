@@ -25,6 +25,15 @@ export interface ParagraphCoin {
   postId: string;
 }
 
+export interface ParagraphPost {
+  id: string;
+  title?: string | null;
+  slug?: string | null;
+  publicationId?: string | null;
+  ownerUserId?: string | null;
+  ownerWalletAddress?: string | null;
+}
+
 export interface ParagraphCoinHolder {
   walletAddress: string;
   userId?: string | null;
@@ -267,6 +276,40 @@ export async function getCoinHoldersById(
       return null;
     }
     console.warn(`[Paragraph] Failed to fetch coin holders for coin ID ${coinId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Get post by ID from Paragraph API
+ * Note: This endpoint may not be publicly documented, but we'll try it
+ */
+export async function getPostById(postId: string): Promise<ParagraphPost | null> {
+  try {
+    const url = `${PARAGRAPH_API_BASE}/v1/posts/${postId}`;
+    
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null; // Post not found
+      }
+      throw new Error(`Paragraph API error: ${response.status} ${response.statusText}`);
+    }
+
+    const post = await response.json() as ParagraphPost;
+    return post;
+  } catch (error) {
+    // Don't throw - just log and return null (graceful degradation)
+    if (error instanceof Error && error.message.includes("404")) {
+      return null;
+    }
+    console.warn(`[Paragraph] Failed to fetch post by ID ${postId}:`, error);
     return null;
   }
 }

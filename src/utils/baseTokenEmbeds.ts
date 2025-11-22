@@ -48,6 +48,7 @@ export async function buildBaseTokenEmbed(
   createdAt?: number | null,
   creationTxHash?: string | null,
   paragraphCoin?: { id: string; contractAddress: string; symbol: string; postId: string } | null,
+  paragraphPostAuthor?: { name?: string | null; bio?: string | null; farcaster?: { username: string } | null; publicationId?: string | null } | null,
 ): Promise<{
   embed: EmbedBuilder;
   components: ActionRowBuilder<ButtonBuilder>[];
@@ -139,8 +140,6 @@ export async function buildBaseTokenEmbed(
     const paragraphPostUrl = `https://paragraph.com/@post/${paragraphCoin.postId}`;
     const paragraphLines: string[] = [];
     paragraphLines.push(`**Post:** [View on Paragraph](${paragraphPostUrl})`);
-    paragraphLines.push(`**Symbol:** ${paragraphCoin.symbol}`);
-    paragraphLines.push(`**Coin ID:** ${paragraphCoin.id}`);
     
     embed.addFields({
       name: "📝 Paragraph Post",
