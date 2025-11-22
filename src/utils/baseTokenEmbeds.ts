@@ -195,10 +195,12 @@ export async function buildBaseTokenEmbed(
   // Removed Pool Info section as requested
 
   // Token Info Section (Creator, Creation Transaction, Farcaster, Zora)
-  const finalCreatorAddress = creatorAddress ?? metrics?.creatorAddress ?? null;
-  const tokenInfo: string[] = [];
-  
-  if (finalCreatorAddress) {
+  // Skip this section for Paragraph tokens until more blockchain investigation is added
+  if (!isParagraphToken) {
+    const finalCreatorAddress = creatorAddress ?? metrics?.creatorAddress ?? null;
+    const tokenInfo: string[] = [];
+    
+    if (finalCreatorAddress) {
     // Check for Paragraph, Farcaster, and Zora accounts
     try {
       const { getUserByWallet } = await import("../services/paragraph");
@@ -265,14 +267,15 @@ export async function buildBaseTokenEmbed(
       tokenInfo.push(`📱 Farcaster: None`);
       tokenInfo.push(`🎨 Zora: None`);
     }
-  }
-
-  if (tokenInfo.length > 0) {
-    embed.addFields({
-      name: "Token Info",
-      value: tokenInfo.join("\n"),
-      inline: false,
-    });
+    }
+    
+    if (tokenInfo.length > 0) {
+      embed.addFields({
+        name: "Token Info",
+        value: tokenInfo.join("\n"),
+        inline: false,
+      });
+    }
   }
 
   applyBranding(embed, "base token");
