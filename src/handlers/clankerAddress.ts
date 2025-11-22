@@ -544,9 +544,24 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
                 logger.warn(`[Paragraph] No author wallet found (post owner or contract creator)`);
               }
               
-              // Fallback: if we have post slug but no author, we can't construct the full URL
-              if (!paragraphPostUrl && post.slug) {
-                logger.warn(`[Paragraph] Cannot construct proper URL - missing author publicationId`, { slug: post.slug });
+              // Fallback: Check if post has publicationId in the response
+              if (!paragraphPostUrl && post.publicationId && post.slug) {
+                paragraphPostUrl = `https://paragraph.com/@${post.publicationId}/${post.slug}`;
+                logger.debug(`[Paragraph] ✅ Constructed post URL from post.publicationId: ${paragraphPostUrl}`, {}, true);
+              }
+              
+              // Final fallback: if we have post slug but no publicationId, try to get publication from contract creator
+              if (!paragraphPostUrl && post.slug && contractCreation?.contractCreator) {
+                logger.debug(`[Paragraph] Trying final fallback: get publication from contract creator`, {}, true);
+                // Try to get the user by wallet - if they have a Paragraph account, use their publicationId
+                const fallbackAuthor = await getUserByWallet(contractCreation.contractCreator);
+                if (fallbackAuthor?.publicationId) {
+                  paragraphPostAuthor = fallbackAuthor;
+                  paragraphPostUrl = `https://paragraph.com/@${fallbackAuthor.publicationId}/${post.slug}`;
+                  logger.debug(`[Paragraph] ✅ Constructed post URL from fallback author: ${paragraphPostUrl}`, {}, true);
+                } else {
+                  logger.warn(`[Paragraph] Cannot construct proper URL - missing author publicationId`, { slug: post.slug, contractCreator: contractCreation.contractCreator });
+                }
               }
             }
           } catch (error) {

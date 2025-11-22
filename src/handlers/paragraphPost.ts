@@ -192,6 +192,7 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
         logger.debug(`[Paragraph] ✅ Constructed proper post URL: ${finalPostUrl}`, {}, true);
       } else if (post.slug) {
         // If we have slug but no publicationId, use the publication slug from the original URL
+        // This is the most reliable fallback when we have the URL
         finalPostUrl = `https://paragraph.com/@${publicationSlug}/${post.slug}`;
         logger.debug(`[Paragraph] Using publication slug from URL with post slug: ${finalPostUrl}`, {}, true);
       }
