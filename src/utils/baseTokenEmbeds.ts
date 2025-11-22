@@ -47,6 +47,7 @@ export async function buildBaseTokenEmbed(
   creatorAddress?: string | null,
   createdAt?: number | null,
   creationTxHash?: string | null,
+  paragraphCoin?: { id: string; contractAddress: string; symbol: string; postId: string } | null,
 ): Promise<{
   embed: EmbedBuilder;
   components: ActionRowBuilder<ButtonBuilder>[];
@@ -130,6 +131,20 @@ export async function buildBaseTokenEmbed(
     value: buildTradingLinks(contractAddress),
     inline: false,
   });
+
+  // Add Paragraph post info if available
+  if (paragraphCoin) {
+    const paragraphPostUrl = `https://paragraph.xyz/@${paragraphCoin.postId}`;
+    const paragraphLines: string[] = [];
+    paragraphLines.push(`**Post:** [View on Paragraph](${paragraphPostUrl})`);
+    paragraphLines.push(`**Coin ID:** ${paragraphCoin.id}`);
+    
+    embed.addFields({
+      name: "📝 Paragraph Post",
+      value: paragraphLines.join("\n"),
+      inline: false,
+    });
+  }
 
   // Token Metrics section removed - market cap is shown in Token Details section
 

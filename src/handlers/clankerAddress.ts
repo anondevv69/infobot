@@ -283,10 +283,15 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
   }
 
   if (directClankerMatches.length === 0) {
-    // Check for Base network tokens (Rainbow, ApeStore, Fey, etc.)
+    // Check for Base network tokens (Rainbow, ApeStore, Fey, Paragraph, etc.)
     // ONLY if it's NOT a Zora coin and NOT a Clanker token
     // We already checked for Zora coins above, and Clanker tokens are filtered out here
     if (isEthAddress(address)) {
+      // Check for Paragraph coin first (tokenized posts)
+      const paragraphCoin = await import("../services/paragraph").then(m => 
+        m.getCoinByContract(address)
+      ).catch(() => null);
+      
       // First check if it's a Base token (using DexScreener - no rate limits)
       const [baseTokenData, factory] = await Promise.all([
         fetchBaseTokenData(address),
@@ -480,6 +485,11 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
         // Use detected token factory (not DEX factory)
         const finalFactory = detectedFactory;
 
+        // Re-fetch Paragraph coin if we didn't get it earlier
+        const finalParagraphCoin = paragraphCoin ?? await import("../services/paragraph").then(m => 
+          m.getCoinByContract(address)
+        ).catch(() => null);
+        
         const { embed, components } = await buildBaseTokenEmbed(
           address,
           baseTokenData?.tokenName ?? null, // Token name from DexScreener
@@ -489,6 +499,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           contractCreation?.contractCreator ?? null,
           contractCreation?.createdAt ?? null, // Creation timestamp
           contractCreation?.txHash ?? null, // Creation transaction hash
+          finalParagraphCoin ?? undefined, // Paragraph coin info if available
         );
 
         const factoryDisplayName = finalFactory ? ` (${finalFactory.name})` : "";

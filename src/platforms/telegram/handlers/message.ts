@@ -159,6 +159,10 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       // First check if it's a Base token (DexScreener - no rate limits)
       // Only check Base if it's an ETH address format (Base is an EVM chain)
       if (isEthFormat) {
+        // Check for Paragraph coin first (tokenized posts)
+        const { getCoinByContract } = await import("../../../services/paragraph");
+        const paragraphCoin = await getCoinByContract(address).catch(() => null);
+        
         const [baseTokenData, factory] = await Promise.all([
           fetchBaseTokenData(address),
           detectTokenFactory(address),
@@ -224,6 +228,9 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           baseTokenData.factoryName = detectedFactoryName ?? null;
           baseTokenData.createdAt = contractCreation?.createdAt ?? null;
 
+          // Re-fetch Paragraph coin if we didn't get it earlier
+          const finalParagraphCoin = paragraphCoin ?? await getCoinByContract(address).catch(() => null);
+
           const { embed } = await buildBaseTokenEmbed(
             address,
             baseTokenData?.tokenName ?? null, // Token name from DexScreener
@@ -233,6 +240,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             contractCreation?.contractCreator ?? null,
             contractCreation?.createdAt ?? null, // Creation timestamp
             contractCreation?.txHash ?? null, // Creation transaction hash
+            finalParagraphCoin ?? undefined, // Paragraph coin info if available
           );
 
           const factoryDisplayName = factory ? ` (${factory.name})` : "";
@@ -838,6 +846,10 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
               }
             }
 
+            // Check for Paragraph coin
+            const { getCoinByContract } = await import("../../../services/paragraph");
+            const paragraphCoin = await getCoinByContract(address).catch(() => null);
+            
             const { embed } = await buildBaseTokenEmbed(
               address,
               baseTokenData?.tokenName ?? null, // Token name
@@ -847,6 +859,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
               contractCreation?.contractCreator ?? null,
               contractCreation?.createdAt ?? null, // Creation timestamp
               contractCreation?.txHash ?? null, // Creation transaction hash
+              paragraphCoin ?? undefined, // Paragraph coin info if available
             );
 
             const factoryName = detectedFactory ? ` (${detectedFactory.name})` : "";
