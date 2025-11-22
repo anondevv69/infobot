@@ -817,7 +817,12 @@ function formatFieldValue(value: string): string {
   const { buildFarcasterProfileUrl } = require("../../../utils/farcasterLinks");
   
   // First, convert labeled usernames (Handle:, Farcaster:, Username:)
+  // Don't match wallet addresses (starting with 0x) as Farcaster usernames
   value = value.replace(/(Handle|Farcaster|Username):\s*@([a-zA-Z0-9_]+)/g, (match, label, username, offset, fullString) => {
+    // Skip if it looks like a wallet address (starts with 0x or is too long)
+    if (username.startsWith("0x") || username.length > 42) {
+      return match; // Return unchanged
+    }
     // Check if this is already inside a markdown link
     const before = fullString.substring(0, offset);
     const linkStart = before.lastIndexOf('[');

@@ -215,8 +215,22 @@ function formatChainName(chainId?: number | null): string {
 export function buildZoraProfileEmbed(summary: ZoraLookupResult): EmbedBuilder {
   const { profile, latestCoin } = summary;
   const title = profile.handle ? `@${profile.handle} • Zora Profile` : "Zora Profile";
+  
+  // Build Zora profile URL for the embed title
+  const profileUrl = profile.handle && !profile.handle.startsWith("0x") && profile.handle.length < 50
+    ? `https://zora.co/@${profile.handle}`
+    : profile.walletAddresses && profile.walletAddresses.length > 0
+    ? `https://zora.co/profile/${profile.walletAddresses[0]}`
+    : null;
 
-  const embed = new EmbedBuilder().setColor(0x4338ca).setTitle(title);
+  const embed = new EmbedBuilder()
+    .setColor(0x4338ca)
+    .setTitle(title);
+  
+  // Make title clickable if we have a valid profile URL
+  if (profileUrl) {
+    embed.setURL(profileUrl);
+  }
 
   if (profile.avatarUrl) {
     embed.setThumbnail(profile.avatarUrl);
@@ -225,7 +239,16 @@ export function buildZoraProfileEmbed(summary: ZoraLookupResult): EmbedBuilder {
   const fields: Array<{ name: string; value: string; inline?: boolean }> = [];
 
   if (profile.handle) {
-    fields.push({ name: "Handle", value: `@${profile.handle}`, inline: true });
+    // Don't add @ prefix for wallet addresses (handles starting with 0x)
+    const handleValue = profile.handle.startsWith("0x") 
+      ? profile.handle 
+      : `@${profile.handle}`;
+    // Make handle clickable if it's a valid Zora handle (not a wallet address)
+    const isValidHandle = profile.handle && !profile.handle.startsWith("0x") && profile.handle.length < 50;
+    const handleDisplay = isValidHandle 
+      ? `[${handleValue}](https://zora.co/@${profile.handle})`
+      : handleValue;
+    fields.push({ name: "Handle", value: handleDisplay, inline: true });
   }
 
   const farcasterLink =
