@@ -74,16 +74,29 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
   try {
     // Use the Paragraph API directly instead of scraping HTML
     // Flow: publicationSlug + postSlug -> getPostBySlug -> get coinId -> getCoinById -> get contractAddress
-    const { getPostBySlug, getCoinById } = await import("../services/paragraph");
+    // Alternative: If getPostBySlug fails, try to get publication first, then post
+    const { getPostBySlug, getCoinById, getPublicationBySlug, getPostById } = await import("../services/paragraph");
     
     logger.debug(`[Paragraph] Getting post via API: publicationSlug=${publicationSlug}, postSlug=${slug}`, {}, true);
     
-    // Step 1: Get post by publication slug + post slug
+    // Step 1: Try to get post by publication slug + post slug
     logger.debug(`[Paragraph] Calling getPostBySlug with publicationSlug=${publicationSlug}, slug=${slug}`, {}, true);
-    const post = await getPostBySlug(publicationSlug, slug, false);
+    let post = await getPostBySlug(publicationSlug, slug, false);
+    
+    // If that fails, try alternative approach: get publication first, then post
+    if (!post) {
+      logger.debug(`[Paragraph] getPostBySlug returned null, trying alternative approach via publication`, {}, true);
+      // Try to get publication first
+      const publication = await getPublicationBySlug(publicationSlug);
+      if (publication) {
+        logger.debug(`[Paragraph] Found publication: ${publication.slug}, trying getPostBySlug again`, {}, true);
+        // Try again with the publication slug from the API
+        post = await getPostBySlug(publication.slug, slug, false);
+      }
+    }
     
     if (!post) {
-      logger.warn(`[Paragraph] Post not found for ${publicationSlug}/${slug} - getPostBySlug returned null`);
+      logger.warn(`[Paragraph] Post not found for ${publicationSlug}/${slug} - all methods returned null`);
       return false;
     }
     
