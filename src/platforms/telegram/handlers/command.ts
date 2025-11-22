@@ -351,11 +351,7 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
   // Track response time
   const startTime = Date.now();
   
-  // Log initial search
-  logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
-    success: true,
-    type: "pending",
-  });
+  // Don't log initial search - only log if it fails or gets stuck
   
   try {
     // Try address first
