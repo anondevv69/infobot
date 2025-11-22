@@ -499,37 +499,38 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
             
             // Get post details to get the slug
             const post = await getPostById(finalParagraphCoin.postId);
-            console.log(`[Paragraph] Post details for ${finalParagraphCoin.postId}:`, {
+            const { logger } = await import("../utils/logger");
+            logger.debug(`[Paragraph] Post details for ${finalParagraphCoin.postId}`, {
               slug: post?.slug,
               title: post?.title,
-            });
+            }, true);
             
             // Get author from contract creator to get publicationId
             // The post API doesn't return publicationId, but the author's ParagraphUser does
             if (contractCreation?.contractCreator) {
-              console.log(`[Paragraph] Looking up author from contract creator: ${contractCreation.contractCreator}`);
+              logger.debug(`[Paragraph] Looking up author from contract creator: ${contractCreation.contractCreator}`, {}, true);
               const author = await getUserByWallet(contractCreation.contractCreator);
               if (author) {
-                console.log(`[Paragraph] Found author: ${author.name}, publicationId: ${author.publicationId}`);
+                logger.debug(`[Paragraph] Found author: ${author.name}, publicationId: ${author.publicationId}`, {}, true);
                 paragraphPostAuthor = author;
                 // Construct URL using author's publicationId and post slug
                 if (author.publicationId && post?.slug) {
                   paragraphPostUrl = `https://paragraph.com/@${author.publicationId}/${post.slug}`;
-                  console.log(`[Paragraph] ✅ Constructed post URL: ${paragraphPostUrl} from author publicationId: ${author.publicationId}, slug: ${post.slug}`);
+                  logger.debug(`[Paragraph] ✅ Constructed post URL: ${paragraphPostUrl} from author publicationId: ${author.publicationId}, slug: ${post.slug}`, {}, true);
                 } else {
-                  console.warn(`[Paragraph] Missing publicationId or slug. publicationId: ${author.publicationId}, slug: ${post?.slug}`);
+                  logger.warn(`[Paragraph] Missing publicationId or slug`, { publicationId: author.publicationId, slug: post?.slug });
                 }
               } else {
-                console.warn(`[Paragraph] Author not found for wallet: ${contractCreation.contractCreator}`);
+                logger.warn(`[Paragraph] Author not found for wallet: ${contractCreation.contractCreator}`);
               }
             } else {
-              console.warn(`[Paragraph] No contract creator found, cannot get author publicationId`);
+              logger.warn(`[Paragraph] No contract creator found, cannot get author publicationId`);
             }
             
             // Fallback: if we have post slug but no author, we can't construct the full URL
             // But we'll still show the postId format
             if (!paragraphPostUrl && post?.slug) {
-              console.warn(`[Paragraph] Cannot construct proper URL - missing author publicationId. Post slug: ${post.slug}`);
+              logger.warn(`[Paragraph] Cannot construct proper URL - missing author publicationId`, { slug: post.slug });
             }
           } catch (error) {
             console.warn(`[Paragraph] Failed to get post details for ${finalParagraphCoin.postId}:`, error);

@@ -7,6 +7,7 @@ import { getContractCreation } from "../services/basescan";
 import { getContractCreationTx } from "../services/contractCreation";
 import { env } from "../config";
 import { applyBranding } from "../utils/branding";
+import { logger } from "../utils/logger";
 
 const PARAGRAPH_URL_REGEX = /https?:\/\/(?:www\.)?paragraph\.(?:com|xyz)\/@([^\/]+)\/([^\s)]+)/i;
 
@@ -17,7 +18,7 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
 
   // Check if message contains paragraph.com or paragraph.xyz
   const hasParagraphUrl = /paragraph\.(?:com|xyz)/i.test(message.content);
-  console.log(`[Paragraph] Checking message: hasParagraphUrl=${hasParagraphUrl}, content="${message.content.substring(0, 200)}..."`);
+  logger.debug(`[Paragraph] Checking message: hasParagraphUrl=${hasParagraphUrl}, content="${message.content.substring(0, 200)}..."`, {}, true);
   
   // Discord might wrap URLs in angle brackets or markdown, so try to extract clean URL first
   let cleanContent = message.content;
@@ -39,23 +40,22 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
   let slug: string;
   
   if (!urlMatch) {
-    console.log(`[Paragraph] URL regex did not match. Original: "${message.content.substring(0, 200)}", Cleaned: "${cleanContent.substring(0, 200)}"`);
+    logger.debug(`[Paragraph] URL regex did not match. Original: "${message.content.substring(0, 200)}", Cleaned: "${cleanContent.substring(0, 200)}"`, {}, true);
     // Try a more lenient pattern to see what's in the message
     const anyUrlMatch = cleanContent.match(/paragraph\.(?:com|xyz)\/[^\s)]+/i) || message.content.match(/paragraph\.(?:com|xyz)\/[^\s)]+/i);
     if (anyUrlMatch) {
-      console.log(`[Paragraph] Found paragraph URL but regex didn't match: "${anyUrlMatch[0]}"`);
-      console.log(`[Paragraph] Regex pattern: ${PARAGRAPH_URL_REGEX}`);
+      logger.debug(`[Paragraph] Found paragraph URL but regex didn't match: "${anyUrlMatch[0]}"`, { regex: PARAGRAPH_URL_REGEX.toString() }, true);
       // Try to manually extract publication and slug
       const manualMatch = anyUrlMatch[0].match(/@([^\/]+)\/([^\s)]+)/);
       if (manualMatch) {
-        console.log(`[Paragraph] Manual extraction: publication=${manualMatch[1]}, slug=${manualMatch[2]}`);
+        logger.debug(`[Paragraph] Manual extraction: publication=${manualMatch[1]}, slug=${manualMatch[2]}`, {}, true);
         // Use the full URL from the match
         postUrl = anyUrlMatch[0].startsWith('http') ? anyUrlMatch[0] : `https://${anyUrlMatch[0]}`;
         publication = manualMatch[1];
         slug = manualMatch[2];
         
         // Continue with processing using manually extracted values
-        console.log(`[Paragraph] ✅ Using manually extracted URL: ${postUrl}, publication: ${publication}, slug: ${slug}`);
+        logger.debug(`[Paragraph] ✅ Using manually extracted URL: ${postUrl}, publication: ${publication}, slug: ${slug}`, {}, true);
       } else {
         return false;
       }
@@ -67,7 +67,7 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
     publication = urlMatch[1]; // e.g., "blog"
     slug = urlMatch[2]; // e.g., "writer-coins"
     
-    console.log(`[Paragraph] ✅ Matched URL: ${postUrl}, publication: ${publication}, slug: ${slug}`);
+    logger.debug(`[Paragraph] ✅ Matched URL: ${postUrl}, publication: ${publication}, slug: ${slug}`, {}, true);
   }
 
   try {
@@ -86,7 +86,7 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
     }
 
     const html = await response.text();
-    console.log(`[Paragraph] Fetched HTML for ${postUrl}, length: ${html.length}`);
+    logger.debug(`[Paragraph] Fetched HTML for ${postUrl}, length: ${html.length}`, {}, true);
     
     // Try to extract contract address from the page
     // Paragraph posts might have the contract in various formats
@@ -105,20 +105,19 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
         const matched = pattern.source.includes("(") && matches[1] ? matches[1] : matches[0];
         contractAddress = matched.replace(/["':=]/g, "").trim();
         if (contractAddress.startsWith("0x") && contractAddress.length === 42) {
-          console.log(`[Paragraph] ✅ Extracted contract address: ${contractAddress}`);
+          logger.debug(`[Paragraph] ✅ Extracted contract address: ${contractAddress}`, {}, true);
           break;
         }
       }
     }
 
     if (!contractAddress) {
-      console.warn(`[Paragraph] Unable to extract contract address from Paragraph post ${postUrl}`);
-      console.log(`[Paragraph] HTML snippet (first 2000 chars): ${html.substring(0, 2000)}`);
+      logger.warn(`[Paragraph] Unable to extract contract address from Paragraph post ${postUrl}`, { htmlSnippet: html.substring(0, 500) });
       // Still try to look up by coin if we can get the post ID somehow
       return false;
     }
     
-    console.log(`[Paragraph] ✅ Extracted contract: ${contractAddress} from ${postUrl}`);
+    logger.debug(`[Paragraph] ✅ Extracted contract: ${contractAddress} from ${postUrl}`, {}, true);
 
     // Now look up the coin by contract address
     const coin = await getCoinByContract(contractAddress);
@@ -198,7 +197,7 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
         }
       }
     } catch (error) {
-      console.warn(`[Paragraph] Failed to get post author for ${coin.postId}:`, error);
+      logger.warn(`[Paragraph] Failed to get post author for ${coin.postId}`, { error: error instanceof Error ? error.message : String(error) });
     }
 
     // Build full token embed with Paragraph coin info

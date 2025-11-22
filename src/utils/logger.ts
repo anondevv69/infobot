@@ -156,9 +156,19 @@ class Logger {
     });
   }
 
-  debug(message: string, meta?: Record<string, any>): void {
-    if (process.env.NODE_ENV === "development") {
+  debug(message: string, meta?: Record<string, any>, sendToWebhook: boolean = false): void {
+    const entry = this.createEntry("debug", message, meta);
+    
+    if (process.env.NODE_ENV === "development" || sendToWebhook) {
       console.debug(`[DEBUG] ${message}`);
+      
+      // Send to webhook if requested (for important debug messages)
+      if (sendToWebhook) {
+        const webhookMessage = this.formatMessage(entry);
+        this.sendToWebhook(webhookMessage).catch(() => {
+          // Ignore webhook errors
+        });
+      }
     }
   }
 
