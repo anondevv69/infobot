@@ -255,9 +255,22 @@ export function buildZoraProfileEmbed(summary: ZoraLookupResult): EmbedBuilder {
   }
 
   const creatorCoinAddress = profile.creatorCoinAddress;
+  let creatorCoinValue = "None";
+  if (creatorCoinAddress) {
+    // Link to Zora profile instead of contract address
+    const profileUrl = profile.handle 
+      ? `https://zora.co/@${profile.handle}`
+      : profile.walletAddresses && profile.walletAddresses.length > 0
+      ? `https://zora.co/profile/${profile.walletAddresses[0]}`
+      : null;
+    const addressDisplay = formatAddress(creatorCoinAddress, BASE_CHAIN_ID) ?? creatorCoinAddress;
+    creatorCoinValue = profileUrl 
+      ? `[${creatorCoinAddress.slice(0, 10)}...${creatorCoinAddress.slice(-8)}](${profileUrl})\n${addressDisplay}`
+      : addressDisplay;
+  }
   fields.push({
     name: "Creator Coin",
-    value: creatorCoinAddress ? formatAddress(creatorCoinAddress, BASE_CHAIN_ID) ?? creatorCoinAddress : "None",
+    value: creatorCoinValue,
     inline: true,
   });
 
@@ -395,7 +408,7 @@ export function buildCreatorCoinField(
       inline: false,
     };
   }
-  const formatted = formatCoinReference(creatorCoin ?? null, creatorCoinAddress, marketCap);
+  const formatted = formatCoinReference(creatorCoin ?? null, creatorCoinAddress, marketCap, profile);
   let title = "Creator Coin";
   if (marketCap != null && marketCap > 0) {
     const formattedMC = formatCompactNumber(marketCap);
@@ -464,10 +477,28 @@ function formatCoinReference(
   coin: ZoraCoin | null,
   fallbackAddress: string,
   marketCap?: number | null,
+  profile?: ZoraProfileSummary | null,
 ): string {
   const label =
     coin?.name ?? coin?.symbol ?? shortenAddress(fallbackAddress) ?? fallbackAddress;
-  const url = coin ? getZoraCoinUrl(coin) : null;
+  
+  // For creator coin, link to the Zora profile instead of the coin contract
+  let url: string | null = null;
+  if (profile) {
+    // Build Zora profile URL
+    if (profile.handle) {
+      url = `https://zora.co/@${profile.handle}`;
+    } else if (profile.walletAddresses && profile.walletAddresses.length > 0) {
+      // Fallback to wallet-based profile URL
+      url = `https://zora.co/profile/${profile.walletAddresses[0]}`;
+    }
+  }
+  
+  // If no profile URL, fall back to coin URL (for non-creator coin references)
+  if (!url && coin) {
+    url = getZoraCoinUrl(coin);
+  }
+  
   const addressLink = formatAddress(
     coin?.address ?? fallbackAddress,
     coin?.chainId ?? BASE_CHAIN_ID,
