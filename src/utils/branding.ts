@@ -18,8 +18,8 @@ export function applyBranding(
   const name = env.brandName ?? "InfoBot";
   const version = env.appVersion ?? "dev";
   parts.push(`${name} v${version}`);
-  // Make rayblanco.eth clickable link to Farcaster profile
-  parts.push(`built by [rayblanco.eth](https://farcaster.xyz/rayblanco.eth)`);
+  // Include Farcaster profile URL (Discord footers don't support markdown links)
+  parts.push(`built by rayblanco.eth • https://farcaster.xyz/rayblanco.eth`);
   parts.push(context);
   if (badge) {
     parts.push(badge);
