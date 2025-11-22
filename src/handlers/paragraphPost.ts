@@ -186,13 +186,17 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
         }
       }
       
-      // Step 2: Construct the proper post URL using publicationId and slug from the API
-      if (paragraphPostAuthor?.publicationId && post.slug) {
+      // Step 2: Construct the proper post URL
+      // Priority 1: Use publicationSlug directly from post API response (most reliable)
+      if (post.publicationSlug && post.slug) {
+        finalPostUrl = `https://paragraph.com/@${post.publicationSlug}/${post.slug}`;
+        logger.debug(`[Paragraph] ✅ Constructed proper post URL from post API: ${finalPostUrl}`, {}, true);
+      } else if (paragraphPostAuthor?.publicationId && post.slug) {
+        // Priority 2: Use author's publicationId
         finalPostUrl = `https://paragraph.com/@${paragraphPostAuthor.publicationId}/${post.slug}`;
-        logger.debug(`[Paragraph] ✅ Constructed proper post URL: ${finalPostUrl}`, {}, true);
+        logger.debug(`[Paragraph] ✅ Constructed proper post URL from author: ${finalPostUrl}`, {}, true);
       } else if (post.slug) {
-        // If we have slug but no publicationId, use the publication slug from the original URL
-        // This is the most reliable fallback when we have the URL
+        // Priority 3: Use the publication slug from the original URL (fallback)
         finalPostUrl = `https://paragraph.com/@${publicationSlug}/${post.slug}`;
         logger.debug(`[Paragraph] Using publication slug from URL with post slug: ${finalPostUrl}`, {}, true);
       }
