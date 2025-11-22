@@ -48,7 +48,7 @@ export async function buildBaseTokenEmbed(
   createdAt?: number | null,
   creationTxHash?: string | null,
   paragraphCoin?: { id: string; contractAddress: string; symbol: string; postId: string } | null,
-  paragraphPostAuthor?: { name?: string | null; bio?: string | null; farcaster?: { username: string } | null; publicationId?: string | null } | null,
+  paragraphPostAuthor?: { name?: string | null; bio?: string | null; farcaster?: { username: string } | null; publicationId?: string | null; walletAddress?: string } | null,
   paragraphPostUrl?: string | null, // Original Paragraph post URL (e.g., https://paragraph.com/@blog/writer-coins)
 ): Promise<{
   embed: EmbedBuilder;
@@ -203,10 +203,27 @@ export async function buildBaseTokenEmbed(
       ]);
       
       // Build creator line with Paragraph account if available
+      // Check both paragraphUser (from wallet lookup) and paragraphPostAuthor (from post author lookup)
+      // paragraphPostAuthor is a ParagraphUser from getUserByWallet, so it has walletAddress
+      let finalParagraphPublicationId: string | null = null;
+      
+      // First, check if paragraphPostAuthor matches the creator address
+      if (paragraphPostAuthor && 'walletAddress' in paragraphPostAuthor) {
+        const postAuthorWallet = (paragraphPostAuthor as any).walletAddress?.toLowerCase();
+        if (postAuthorWallet === finalCreatorAddress.toLowerCase() && paragraphPostAuthor.publicationId) {
+          finalParagraphPublicationId = paragraphPostAuthor.publicationId;
+        }
+      }
+      
+      // If not found from paragraphPostAuthor, use paragraphUser from wallet lookup
+      if (!finalParagraphPublicationId && paragraphUser?.publicationId) {
+        finalParagraphPublicationId = paragraphUser.publicationId;
+      }
+      
       let creatorLine = `👤 Creator: \`${finalCreatorAddress}\``;
-      if (paragraphUser?.publicationId) {
-        const paragraphProfileUrl = `https://paragraph.xyz/@${paragraphUser.publicationId}`;
-        creatorLine += ` • [${paragraphUser.publicationId}](${paragraphProfileUrl})`;
+      if (finalParagraphPublicationId) {
+        const paragraphProfileUrl = `https://paragraph.xyz/@${finalParagraphPublicationId}`;
+        creatorLine += ` • [${finalParagraphPublicationId}](${paragraphProfileUrl})`;
       }
       tokenInfo.push(creatorLine);
       
