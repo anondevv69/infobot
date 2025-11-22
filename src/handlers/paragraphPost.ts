@@ -90,38 +90,39 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
       postId: post.id,
       title: post.title,
       coinId: post.coinId,
-      slug: post.slug
+      slug: post.slug,
+      hasCoinId: !!post.coinId,
     }, true);
     
+    // If post doesn't have coinId, it's not tokenized - we can't show token info
+    if (!post.coinId) {
+      logger.warn(`[Paragraph] Post does not have a coinId (not tokenized) - postId: ${post.id}, title: ${post.title}`);
+      return false;
+    }
+    
     // Step 2: Get coin by coinId to get contract address
-    let contractAddress: string | null = null;
+    logger.debug(`[Paragraph] Getting coin by coinId: ${post.coinId}`, {}, true);
+    const coinById = await getCoinById(post.coinId);
     
-    if (post.coinId) {
-      logger.debug(`[Paragraph] Getting coin by coinId: ${post.coinId}`, {}, true);
-      const coin = await getCoinById(post.coinId);
-      if (coin) {
-        contractAddress = coin.contractAddress;
-        logger.debug(`[Paragraph] ✅ Got contract address from coin: ${contractAddress}`, {}, true);
-      } else {
-        logger.warn(`[Paragraph] Coin not found for coinId: ${post.coinId}`);
-      }
-    } else {
-      logger.warn(`[Paragraph] Post does not have a coinId (not tokenized)`);
-      // Post exists but isn't tokenized - we could still show post info, but no token data
+    if (!coinById) {
+      logger.warn(`[Paragraph] Coin not found for coinId: ${post.coinId}`);
       return false;
     }
     
+    const contractAddress = coinById.contractAddress;
     if (!contractAddress) {
-      logger.warn(`[Paragraph] Unable to get contract address for post ${post.id}`);
+      logger.warn(`[Paragraph] Coin ${post.coinId} does not have a contract address`);
       return false;
     }
     
-    logger.debug(`[Paragraph] ✅ Got contract address: ${contractAddress} from post ${post.id}`, {}, true);
+    logger.debug(`[Paragraph] ✅ Got contract address: ${contractAddress} from coin ${post.coinId}`, {}, true);
 
     // Step 3: Verify the coin by contract address (we already have it, but this ensures consistency)
+    logger.debug(`[Paragraph] Verifying coin by contract address: ${contractAddress}`, {}, true);
     const coin = await getCoinByContract(contractAddress);
     
     if (!coin) {
+      logger.warn(`[Paragraph] Coin not found by contract address, but we have it from coinId - this is unexpected`);
       // Even if not a Paragraph coin, still show as Base token if it exists
       const [baseTokenData, factory] = await Promise.all([
         fetchBaseTokenData(contractAddress),
@@ -129,6 +130,7 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
       ]);
 
       if (baseTokenData) {
+        logger.debug(`[Paragraph] Found as Base token, building embed`, {}, true);
         const [contractCreation, creationTx] = await Promise.all([
           getContractCreation(contractAddress).catch(() => null),
           getContractCreationTx(contractAddress, "base", env.basescanApiKey).catch(() => null),
@@ -147,11 +149,15 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
         );
 
         await message.reply({ embeds: [embed], components });
+        logger.debug(`[Paragraph] ✅ Sent Base token embed response`, {}, true);
         return true;
       }
       
+      logger.warn(`[Paragraph] No Base token data found for ${contractAddress}`);
       return false;
     }
+    
+    logger.debug(`[Paragraph] ✅ Verified coin by contract address`, {}, true);
 
     // Found a Paragraph coin - get the post author and show full token embed
     const [baseTokenData, factory, contractCreation, creationTx] = await Promise.all([
@@ -223,10 +229,16 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
       finalPostUrl, // Use the properly constructed post URL
     );
 
+    logger.debug(`[Paragraph] Building and sending token embed response`, {}, true);
     await message.reply({ embeds: [embed], components });
+    logger.debug(`[Paragraph] ✅ Successfully sent Paragraph token embed response`, {}, true);
     return true;
   } catch (error) {
-    console.error("Error handling Paragraph post:", error);
+    logger.error(`[Paragraph] Error handling Paragraph post:`, error, {
+      messageContent: message.content?.substring(0, 200),
+      publicationSlug,
+      slug,
+    });
     return false;
   }
 }
