@@ -9,7 +9,9 @@ export function buildTradingLinks(contractAddress: string): string {
   const gmgnUrl = `https://gmgn.ai/token/base/${normalizedAddress}?ref=r_infobot`;
   
   // Telegram bot link with referral (uses BaseBot)
-  const telegramUrl = `https://t.me/based_eth_bot?start=r_infobot_${normalizedAddress}`;
+  // Format: r_{referrer}_{action}_{address} where action 'b' = buy
+  // This matches Rick Bot's format: r_Rick_b_{address} for direct buy flow
+  const telegramUrl = `https://t.me/based_eth_bot?start=r_infobot_b_${normalizedAddress}`;
   
   // Farcaster Wallet - opens Farcaster wallet with contract pre-filled for trading
   const fcwUrl = `https://warpcast.com/~/wallet/swap?token=${normalizedAddress}&chain=base&ref=2ORGMS`;
@@ -25,7 +27,8 @@ export function buildTelegramTradingButtons(contractAddress: string): Array<Arra
   const normalizedAddress = contractAddress.toLowerCase();
   
   const gmgnUrl = `https://gmgn.ai/token/base/${normalizedAddress}?ref=r_infobot`;
-  const telegramUrl = `https://t.me/based_eth_bot?start=r_infobot_${normalizedAddress}`;
+  // Format: r_{referrer}_{action}_{address} where action 'b' = buy (matches Rick Bot format)
+  const telegramUrl = `https://t.me/based_eth_bot?start=r_infobot_b_${normalizedAddress}`;
   const basebotUrl = `https://basebot.xyz/trade/${normalizedAddress}`;
   const fcwUrl = `https://farcaster.xyz/trade/${normalizedAddress}?ref=2ORGMS`;
 
