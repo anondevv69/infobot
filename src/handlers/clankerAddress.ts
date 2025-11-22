@@ -496,27 +496,32 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
         if (finalParagraphCoin) {
           try {
             const { getPostById, getUserByWallet } = await import("../services/paragraph");
+            
+            // Get post details to get the slug
             const post = await getPostById(finalParagraphCoin.postId);
+            console.log(`[Paragraph] Post details for ${finalParagraphCoin.postId}:`, {
+              slug: post?.slug,
+              title: post?.title,
+            });
             
-            // Construct the proper post URL from post details
-            if (post?.publicationId && post?.slug) {
-              paragraphPostUrl = `https://paragraph.com/@${post.publicationId}/${post.slug}`;
-              console.log(`[Paragraph] Constructed post URL: ${paragraphPostUrl} from postId: ${finalParagraphCoin.postId}`);
-            }
-            
-            // Try to get author from post owner wallet address
-            if (post?.ownerWalletAddress) {
-              const author = await getUserByWallet(post.ownerWalletAddress);
+            // Get author from contract creator to get publicationId
+            // The post API doesn't return publicationId, but the author's ParagraphUser does
+            if (contractCreation?.contractCreator) {
+              const author = await getUserByWallet(contractCreation.contractCreator);
               if (author) {
                 paragraphPostAuthor = author;
+                // Construct URL using author's publicationId and post slug
+                if (author.publicationId && post?.slug) {
+                  paragraphPostUrl = `https://paragraph.com/@${author.publicationId}/${post.slug}`;
+                  console.log(`[Paragraph] ✅ Constructed post URL: ${paragraphPostUrl} from author publicationId: ${author.publicationId}, slug: ${post.slug}`);
+                }
               }
             }
-            // Fallback: try ownerUserId if it's a wallet address format
-            else if (post?.ownerUserId && post.ownerUserId.startsWith("0x")) {
-              const author = await getUserByWallet(post.ownerUserId);
-              if (author) {
-                paragraphPostAuthor = author;
-              }
+            
+            // Fallback: if we have post slug but no author, we can't construct the full URL
+            // But we'll still show the postId format
+            if (!paragraphPostUrl && post?.slug) {
+              console.warn(`[Paragraph] Cannot construct proper URL - missing author publicationId. Post slug: ${post.slug}`);
             }
           } catch (error) {
             console.warn(`[Paragraph] Failed to get post details for ${finalParagraphCoin.postId}:`, error);

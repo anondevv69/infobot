@@ -29,7 +29,15 @@ export interface ParagraphPost {
   id: string;
   title?: string | null;
   slug?: string | null;
-  publicationId?: string | null;
+  imageUrl?: string | null;
+  publishedAt?: string | null;
+  updatedAt?: string | null;
+  subtitle?: string | null;
+  staticHtml?: string | null;
+  json?: string | null;
+  markdown?: string | null;
+  coinId?: string | null;
+  publicationId?: string | null; // May not be in API response, but we'll try to get it
   ownerUserId?: string | null;
   ownerWalletAddress?: string | null;
 }
