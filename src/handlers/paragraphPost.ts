@@ -72,111 +72,53 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
   }
 
   try {
-    // First, try to get the publication to see if we can find the post
-    // We'll try both domain lookup and slug lookup
-    const { getPublicationByDomain, getPublicationBySlug } = await import("../services/paragraph");
-    let publication = await getPublicationByDomain(publicationSlug);
-    if (!publication) {
-      publication = await getPublicationBySlug(publicationSlug);
-    }
+    // Use the Paragraph API directly instead of scraping HTML
+    // Flow: publicationSlug + postSlug -> getPostBySlug -> get coinId -> getCoinById -> get contractAddress
+    const { getPostBySlug, getCoinById } = await import("../services/paragraph");
     
-    if (publication) {
-      logger.debug(`[Paragraph] Found publication: ${publication.name} (slug: ${publication.slug}, id: ${publication.id})`, {}, true);
-    }
+    logger.debug(`[Paragraph] Getting post via API: publicationSlug=${publicationSlug}, postSlug=${slug}`, {}, true);
     
-    // Fetch the Paragraph post page to extract contract address
-    // This is necessary because the API doesn't provide a way to get post by publication + slug
-    const response = await fetch(postUrl, {
-      headers: {
-        "User-Agent": "discord-bot/1.0",
-        Accept: "text/html,application/xhtml+xml",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-    });
-
-    if (!response.ok) {
-      logger.warn(`[Paragraph] Failed to fetch Paragraph post ${postUrl}: ${response.status} ${response.statusText}`);
+    // Step 1: Get post by publication slug + post slug
+    const post = await getPostBySlug(publicationSlug, slug, false);
+    
+    if (!post) {
+      logger.warn(`[Paragraph] Post not found for ${publicationSlug}/${slug}`);
       return false;
     }
-
-    const html = await response.text();
-    logger.debug(`[Paragraph] Fetched HTML for ${postUrl}, length: ${html.length}`, {}, true);
     
-    // Try to extract contract address from the page
-    // Paragraph posts might have the contract in various formats
-    const CONTRACT_PATTERNS = [
-      /"contractAddress"\s*:\s*"(0x[a-fA-F0-9]{40})"/i, // JSON format (most reliable)
-      /contractAddress["']?\s*[:=]\s*["']?(0x[a-fA-F0-9]{40})/i, // Various formats
-      /"coinId"\s*:\s*"([^"]+)"/i, // Try to get coinId first, then we can look up the coin
-    ];
-
+    logger.debug(`[Paragraph] ✅ Got post via API`, {
+      postId: post.id,
+      title: post.title,
+      coinId: post.coinId,
+      slug: post.slug
+    }, true);
+    
+    // Step 2: Get coin by coinId to get contract address
     let contractAddress: string | null = null;
-    let coinId: string | null = null;
     
-    logger.debug(`[Paragraph] Searching for contract address or coinId in HTML...`, {}, true);
-    
-    for (let i = 0; i < CONTRACT_PATTERNS.length; i++) {
-      const pattern = CONTRACT_PATTERNS[i];
-      const matches = html.match(pattern);
-      if (matches && matches.length > 0) {
-        // For patterns with capture groups, use the captured group
-        // For patterns without, use the full match
-        const matched = pattern.source.includes("(") && matches[1] ? matches[1] : matches[0];
-        const value = matched.replace(/["':=]/g, "").trim();
-        
-        if (pattern.source.includes("coinId")) {
-          coinId = value;
-          logger.debug(`[Paragraph] Found coinId in HTML: ${coinId}`, {}, true);
-        } else if (value.startsWith("0x") && value.length === 42) {
-          contractAddress = value;
-          logger.debug(`[Paragraph] ✅ Extracted contract address: ${contractAddress}`, {}, true);
-          break;
-        }
-      } else {
-        logger.debug(`[Paragraph] Pattern ${i + 1} did not match`, {}, true);
-      }
-    }
-
-    // If we found coinId but not contractAddress, try to get coin by ID
-    if (!contractAddress && coinId) {
-      logger.debug(`[Paragraph] Looking up coin by coinId: ${coinId}`, {}, true);
-      const { getCoinById } = await import("../services/paragraph");
-      const coin = await getCoinById(coinId);
+    if (post.coinId) {
+      logger.debug(`[Paragraph] Getting coin by coinId: ${post.coinId}`, {}, true);
+      const coin = await getCoinById(post.coinId);
       if (coin) {
         contractAddress = coin.contractAddress;
-        logger.debug(`[Paragraph] Got contract address from coinId: ${contractAddress}`, {}, true);
+        logger.debug(`[Paragraph] ✅ Got contract address from coin: ${contractAddress}`, {}, true);
       } else {
-        logger.warn(`[Paragraph] Coin not found for coinId: ${coinId}`);
+        logger.warn(`[Paragraph] Coin not found for coinId: ${post.coinId}`);
       }
-    }
-
-    if (!contractAddress) {
-      // Try a more aggressive search - look for any 0x address in JSON-like structures
-      logger.debug(`[Paragraph] Trying fallback: searching for any 0x address in JSON structures...`, {}, true);
-      const jsonMatch = html.match(/"0x[a-fA-F0-9]{40}"/);
-      if (jsonMatch) {
-        const potentialAddress = jsonMatch[0].replace(/"/g, "");
-        logger.debug(`[Paragraph] Found potential address in JSON: ${potentialAddress}`, {}, true);
-        // Verify it's actually a Paragraph coin
-        const coin = await getCoinByContract(potentialAddress);
-        if (coin) {
-          contractAddress = potentialAddress;
-          logger.debug(`[Paragraph] ✅ Verified contract address: ${contractAddress}`, {}, true);
-        }
-      }
-      
-      if (!contractAddress) {
-        logger.warn(`[Paragraph] Unable to extract contract address from Paragraph post ${postUrl}`, { 
-          htmlSnippet: html.substring(0, 1000),
-          hasCoinId: !!coinId 
-        });
-        return false;
-      }
+    } else {
+      logger.warn(`[Paragraph] Post does not have a coinId (not tokenized)`);
+      // Post exists but isn't tokenized - we could still show post info, but no token data
+      return false;
     }
     
-    logger.debug(`[Paragraph] ✅ Extracted contract: ${contractAddress} from ${postUrl}`, {}, true);
+    if (!contractAddress) {
+      logger.warn(`[Paragraph] Unable to get contract address for post ${post.id}`);
+      return false;
+    }
+    
+    logger.debug(`[Paragraph] ✅ Got contract address: ${contractAddress} from post ${post.id}`, {}, true);
 
-    // Now look up the coin by contract address
+    // Step 3: Verify the coin by contract address (we already have it, but this ensures consistency)
     const coin = await getCoinByContract(contractAddress);
     
     if (!coin) {
@@ -236,56 +178,39 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
       return true;
     }
 
-    // Get post details and author information using the API
-    // Flow: coin.postId -> getPostById -> get author -> construct proper URL
+    // Get post author information using the API
+    // We already have the post from getPostBySlug above, so use that
     let paragraphPostAuthor: { name?: string | null; bio?: string | null; farcaster?: { username: string } | null; publicationId?: string | null } | null = null;
     let finalPostUrl = postUrl; // Default to the URL we extracted from the message
     
     try {
-      const { getPostById } = await import("../services/paragraph");
-      
-      // Step 1: Get post by postId from the coin
-      logger.debug(`[Paragraph] Getting post by ID: ${coin.postId}`, {}, true);
-      const post = await getPostById(coin.postId);
-      
-      if (!post) {
-        logger.warn(`[Paragraph] Post not found for postId: ${coin.postId}`);
-      } else {
-        logger.debug(`[Paragraph] Got post by ID ${coin.postId}`, { 
-          slug: post.slug, 
-          title: post.title,
-          coinId: post.coinId,
-          hasOwnerWallet: !!post.ownerWalletAddress,
-          hasOwnerUserId: !!post.ownerUserId 
-        }, true);
-        
-        // Step 2: Get author from post owner to get publicationId
-        if (post.ownerWalletAddress) {
-          const author = await getUserByWallet(post.ownerWalletAddress);
-          if (author) {
-            paragraphPostAuthor = author;
-            logger.debug(`[Paragraph] Found author from ownerWalletAddress: ${author.name}, publicationId: ${author.publicationId}`, {}, true);
-          }
-        } else if (post.ownerUserId && post.ownerUserId.startsWith("0x")) {
-          const author = await getUserByWallet(post.ownerUserId);
-          if (author) {
-            paragraphPostAuthor = author;
-            logger.debug(`[Paragraph] Found author from ownerUserId: ${author.name}, publicationId: ${author.publicationId}`, {}, true);
-          }
+      // We already have the post from getPostBySlug above, so use it
+      // Step 1: Get author from post owner to get publicationId
+      if (post.ownerWalletAddress) {
+        const author = await getUserByWallet(post.ownerWalletAddress);
+        if (author) {
+          paragraphPostAuthor = author;
+          logger.debug(`[Paragraph] Found author from ownerWalletAddress: ${author.name}, publicationId: ${author.publicationId}`, {}, true);
         }
-        
-        // Step 3: Construct the proper post URL using publicationId and slug from the API
-        if (paragraphPostAuthor?.publicationId && post.slug) {
-          finalPostUrl = `https://paragraph.com/@${paragraphPostAuthor.publicationId}/${post.slug}`;
-          logger.debug(`[Paragraph] ✅ Constructed proper post URL: ${finalPostUrl}`, {}, true);
-        } else if (post.slug) {
-          // If we have slug but no publicationId, try using the publication from the original URL
-          finalPostUrl = `https://paragraph.com/@${publicationSlug}/${post.slug}`;
-          logger.debug(`[Paragraph] Using publication from URL with post slug: ${finalPostUrl}`, {}, true);
+      } else if (post.ownerUserId && post.ownerUserId.startsWith("0x")) {
+        const author = await getUserByWallet(post.ownerUserId);
+        if (author) {
+          paragraphPostAuthor = author;
+          logger.debug(`[Paragraph] Found author from ownerUserId: ${author.name}, publicationId: ${author.publicationId}`, {}, true);
         }
       }
+      
+      // Step 2: Construct the proper post URL using publicationId and slug from the API
+      if (paragraphPostAuthor?.publicationId && post.slug) {
+        finalPostUrl = `https://paragraph.com/@${paragraphPostAuthor.publicationId}/${post.slug}`;
+        logger.debug(`[Paragraph] ✅ Constructed proper post URL: ${finalPostUrl}`, {}, true);
+      } else if (post.slug) {
+        // If we have slug but no publicationId, use the publication slug from the original URL
+        finalPostUrl = `https://paragraph.com/@${publicationSlug}/${post.slug}`;
+        logger.debug(`[Paragraph] Using publication slug from URL with post slug: ${finalPostUrl}`, {}, true);
+      }
     } catch (error) {
-      logger.warn(`[Paragraph] Failed to get post author for ${coin.postId}`, { error: error instanceof Error ? error.message : String(error) });
+      logger.warn(`[Paragraph] Failed to get post author for ${post.id}`, { error: error instanceof Error ? error.message : String(error) });
     }
 
     // Build full token embed with Paragraph coin info

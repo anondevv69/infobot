@@ -368,13 +368,11 @@ export async function getPublicationByDomain(domain: string): Promise<ParagraphP
 
 /**
  * Get publication by slug from Paragraph API
- * Note: This endpoint may not be publicly documented, but we'll try it
+ * Reference: GET /v1/publications/slug/{slug}
  */
 export async function getPublicationBySlug(slug: string): Promise<ParagraphPublication | null> {
   try {
-    // Try the slug as if it were a domain first (some publications use slug as domain)
-    // If that fails, we might need to use a different endpoint
-    const url = `${PARAGRAPH_API_BASE}/v1/publications/domain/${encodeURIComponent(slug)}`;
+    const url = `${PARAGRAPH_API_BASE}/v1/publications/slug/${encodeURIComponent(slug)}`;
     
     const response = await fetch(url, {
       method: "GET",
@@ -398,6 +396,44 @@ export async function getPublicationBySlug(slug: string): Promise<ParagraphPubli
       return null;
     }
     console.warn(`[Paragraph] Failed to fetch publication by slug ${slug}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Get post by publication slug and post slug from Paragraph API
+ * Reference: GET /v1/publications/slug/{publicationSlug}/posts/slug/{postSlug}
+ */
+export async function getPostBySlug(
+  publicationSlug: string,
+  postSlug: string,
+  includeContent: boolean = false
+): Promise<ParagraphPost | null> {
+  try {
+    const url = `${PARAGRAPH_API_BASE}/v1/publications/slug/${encodeURIComponent(publicationSlug)}/posts/slug/${encodeURIComponent(postSlug)}${includeContent ? "?includeContent=true" : ""}`;
+    
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null; // Post not found
+      }
+      throw new Error(`Paragraph API error: ${response.status} ${response.statusText}`);
+    }
+
+    const post = await response.json() as ParagraphPost;
+    return post;
+  } catch (error) {
+    // Don't throw - just log and return null (graceful degradation)
+    if (error instanceof Error && error.message.includes("404")) {
+      return null;
+    }
+    console.warn(`[Paragraph] Failed to fetch post by slug ${publicationSlug}/${postSlug}:`, error);
     return null;
   }
 }
