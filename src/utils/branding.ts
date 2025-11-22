@@ -18,8 +18,8 @@ export function applyBranding(
   const name = env.brandName ?? "InfoBot";
   const version = env.appVersion ?? "dev";
   parts.push(`${name} v${version}`);
-  // Farcaster attribution
-  parts.push(`built by fc @rayblanco.eth`);
+  // Farcaster attribution (space after @ to prevent Telegram auto-linking)
+  parts.push(`built by fc @ rayblanco.eth`);
   parts.push(context);
   if (badge) {
     parts.push(badge);

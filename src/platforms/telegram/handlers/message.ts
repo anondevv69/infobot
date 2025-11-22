@@ -564,10 +564,11 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           try {
             const user = await findUserByWallet(query);
             if (user) {
-              const [tokens, latestCast, zoraSummary] = await Promise.all([
+              const [tokens, latestCast, zoraSummary, paragraphUser] = await Promise.all([
                 safeFetchTokensByFid(user.fid),
                 safeFetchMostRecentCast(user.fid),
                 findBestZoraSummary(collectZoraIdentifiers(user)),
+                import("../../../services/paragraph").then(m => m.getUserByWallet(query)).catch(() => null),
               ]);
               const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
 
@@ -577,6 +578,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
                 zoraSummary: associatedSummary,
                 clankerTokens: tokens,
                 latestCast,
+                paragraphUser: paragraphUser ?? undefined,
                 returnAllPages: true,
               });
 
@@ -912,16 +914,12 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           }
         }
 
-        // FOURTH: Try Farcaster user by wallet (after all token checks)
-        let user;
-        try {
-          user = await findUserByWallet(address);
-        } catch (error) {
-          // Continue with other lookups
-        }
-
-        // Fetch Zora summary for potential fallback
-        const zoraSummaryFromAddress = await findBestZoraSummary([address.toLowerCase()]);
+        // FOURTH: Try Farcaster user by wallet, Zora summary, and Paragraph user in parallel (after all token checks)
+        const [user, zoraSummaryFromAddress, paragraphUser] = await Promise.all([
+          findUserByWallet(address).catch(() => null),
+          findBestZoraSummary([address.toLowerCase()]),
+          import("../../../services/paragraph").then(m => m.getUserByWallet(address)).catch(() => null),
+        ]);
 
         // If we have a Farcaster user, show wallet profile with Farcaster info
         if (user) {
@@ -943,6 +941,7 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             zoraSummary: associatedSummary,
             clankerTokens: tokens,
             latestCast,
+            paragraphUser: paragraphUser ?? undefined,
             returnAllPages: true,
           });
 

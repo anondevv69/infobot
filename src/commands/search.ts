@@ -195,9 +195,10 @@ async function handleWalletSearch(
   channelId?: string,
 ): Promise<void> {
   // Run initial lookups in PARALLEL (major performance improvement)
-  const [zoraSummaryFromAddress, user] = await Promise.all([
+  const [zoraSummaryFromAddress, user, paragraphUser] = await Promise.all([
     findBestZoraSummary([address]).catch(() => null),
     findUserByWallet(address).catch(() => null),
+    import("../services/paragraph").then(m => m.getUserByWallet(address)).catch(() => null),
   ]);
 
   // If no user found but Zora has Farcaster handle, try that lookup (with timeout)
@@ -236,6 +237,7 @@ async function handleWalletSearch(
       zoraSummary: associatedSummary,
       clankerTokens: tokens,
       latestCast,
+      paragraphUser: paragraphUser ?? undefined,
     });
 
     await interaction.editReply({
@@ -282,6 +284,7 @@ async function handleWalletSearch(
         zoraSummary: associatedSummary,
         clankerTokens: creatorTokens,
         latestCast,
+        paragraphUser: paragraphUser ?? undefined,
       });
 
       await interaction.editReply({

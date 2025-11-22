@@ -604,10 +604,11 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
 
   if (user) {
     const identifiers = collectZoraIdentifiers(user, address);
-    const [fidTokens, latestCast, zoraSummary] = await Promise.all([
+    const [fidTokens, latestCast, zoraSummary, paragraphUser] = await Promise.all([
       safeFetchTokensByFid(user.fid),
       safeFetchMostRecentCast(user.fid),
       findBestZoraSummary(identifiers),
+      import("../services/paragraph").then(m => m.getUserByWallet(address)).catch(() => null),
     ]);
 
     const associatedSummary =
@@ -619,6 +620,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
       zoraSummary: associatedSummary,
       clankerTokens: fidTokens,
       latestCast,
+      paragraphUser: paragraphUser ?? undefined,
     });
 
     await message.reply({

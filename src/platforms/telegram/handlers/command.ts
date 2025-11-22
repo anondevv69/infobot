@@ -400,10 +400,11 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
         try {
           const user = await findUserByWallet(address);
           if (user) {
-            const [tokens, latestCast, zoraSummary] = await Promise.all([
+            const [tokens, latestCast, zoraSummary, paragraphUser] = await Promise.all([
               safeFetchTokensByFid(user.fid),
               safeFetchMostRecentCast(user.fid),
               findBestZoraSummary(collectZoraIdentifiers(user)),
+              import("../../../services/paragraph").then(m => m.getUserByWallet(address)).catch(() => null),
             ]);
             const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
             
@@ -413,6 +414,7 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
               zoraSummary: associatedSummary,
               clankerTokens: tokens,
               latestCast,
+              paragraphUser: paragraphUser ?? undefined,
               returnAllPages: true, // Get all pages for Telegram
             });
             if (walletResponse && walletResponse.embeds.length > 0) {

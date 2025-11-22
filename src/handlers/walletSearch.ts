@@ -42,16 +42,12 @@ export async function handleWalletSearchMessage(message: Message): Promise<boole
   try {
     const address = query;
 
-    // Try Farcaster user by wallet first
-    let user;
-    try {
-      user = await findUserByWallet(address);
-    } catch (error) {
-      console.warn("Failed Neynar wallet lookup, continuing with other lookups:", error);
-    }
-
-    // Try Zora summary
-    const zoraSummaryFromAddress = await findBestZoraSummary([address.toLowerCase()]);
+    // Try Farcaster user by wallet first, Zora summary, and Paragraph user in parallel
+    const [user, zoraSummaryFromAddress, paragraphUser] = await Promise.all([
+      findUserByWallet(address).catch(() => null),
+      findBestZoraSummary([address.toLowerCase()]),
+      import("../services/paragraph").then(m => m.getUserByWallet(address)).catch(() => null),
+    ]);
 
     // If we have a Farcaster user, show wallet profile with Farcaster info
     if (user) {
@@ -73,6 +69,7 @@ export async function handleWalletSearchMessage(message: Message): Promise<boole
         zoraSummary: associatedSummary,
         clankerTokens: tokens,
         latestCast,
+        paragraphUser: paragraphUser ?? undefined,
       });
 
       await message.reply({
@@ -107,6 +104,7 @@ export async function handleWalletSearchMessage(message: Message): Promise<boole
           zoraSummary: associatedSummary,
           clankerTokens: creatorTokens,
           latestCast,
+          paragraphUser: paragraphUser ?? undefined,
         });
 
         await message.reply({

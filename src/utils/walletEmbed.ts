@@ -3,6 +3,7 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder as Button, ButtonStyle } 
 import type { Cast, User } from "@neynar/nodejs-sdk/build/api";
 import type { ZoraLookupResult } from "../services/zora";
 import type { ClankerToken } from "../services/clanker";
+import type { ParagraphUser } from "../services/paragraph";
 import { splitClankerTokens } from "./clankerAssociation";
 import { applyBranding } from "./branding";
 import { buildUserClankerEmbed, getClankerDisplayEntries, formatClankerTokenDetails } from "./clankerEmbeds";
@@ -16,6 +17,7 @@ interface WalletProfileParams {
   zoraSummary?: ZoraLookupResult | null;
   clankerTokens?: ClankerToken[];
   latestCast?: Cast | null;
+  paragraphUser?: ParagraphUser | null;
   returnAllPages?: boolean; // If true, return all embeds instead of just first page
 }
 
@@ -35,7 +37,7 @@ type EmbedField = { name: string; value: string; inline: boolean };
 export async function buildWalletProfileResponse(
   params: WalletProfileParams,
 ): Promise<WalletProfileResponse> {
-  const { wallet, user, zoraSummary, latestCast } = params;
+  const { wallet, user, zoraSummary, latestCast, paragraphUser } = params;
   const shortWallet = formatShortWallet(wallet);
 
   const { deployed } = splitClankerTokens(params.clankerTokens ?? [], user);
@@ -47,6 +49,29 @@ export async function buildWalletProfileResponse(
 
   const existingFields = embed.data.fields ? [...embed.data.fields] : [];
   embed.setFields({ name: "Input Wallet", value: formatCodeBlock([wallet]), inline: false }, ...existingFields);
+
+  // Add Paragraph user info if available
+  if (paragraphUser) {
+    const paragraphLines: string[] = [];
+    if (paragraphUser.name) {
+      paragraphLines.push(`**Name:** ${paragraphUser.name}`);
+    }
+    if (paragraphUser.bio) {
+      paragraphLines.push(`**Bio:** ${paragraphUser.bio}`);
+    }
+    if (paragraphUser.farcaster) {
+      const fcUrl = `https://farcaster.xyz/${paragraphUser.farcaster.username}?ref=2ORGMS`;
+      paragraphLines.push(`**Farcaster:** [@${paragraphUser.farcaster.username}](${fcUrl})`);
+    }
+    const paragraphUrl = `https://paragraph.xyz/@${paragraphUser.publicationId}/${paragraphUser.id}`;
+    paragraphLines.push(`**Profile:** [View on Paragraph](${paragraphUrl})`);
+    
+    embed.addFields({
+      name: "📝 Paragraph",
+      value: paragraphLines.join("\n"),
+      inline: false,
+    });
+  }
 
   const zoraWallets = zoraSummary?.profile?.walletAddresses ?? [];
   if (zoraWallets.length > 0) {

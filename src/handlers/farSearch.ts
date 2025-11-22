@@ -30,10 +30,11 @@ export async function handleFarSearchMessage(message: Message): Promise<boolean>
     if (isEthAddress(query) || isSolAddress(query)) {
       const user = await findUserByWallet(query);
       if (user) {
-        const [tokens, latestCast, zoraSummary] = await Promise.all([
+        const [tokens, latestCast, zoraSummary, paragraphUser] = await Promise.all([
           safeFetchTokensByFid(user.fid),
           safeFetchMostRecentCast(user.fid),
           findBestZoraSummary(collectZoraIdentifiers(user)),
+          import("../services/paragraph").then(m => m.getUserByWallet(query)).catch(() => null),
         ]);
         const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
 
@@ -43,6 +44,7 @@ export async function handleFarSearchMessage(message: Message): Promise<boolean>
           zoraSummary: associatedSummary,
           clankerTokens: tokens,
           latestCast,
+          paragraphUser: paragraphUser ?? undefined,
         });
 
         await message.reply({
