@@ -444,12 +444,17 @@ async function handleWalletSearch(
       });
     }
 
-    embed.setFooter({
-      text: `Address: ${address.slice(0, 10)}...${address.slice(-8)}`,
-    });
-
-    // Apply branding before sending
+    // Apply branding first (this sets the footer with branding)
     applyBranding(embed, "address lookup");
+    
+    // Append address to footer (preserving branding)
+    const currentFooter = embed.data.footer;
+    if (currentFooter) {
+      embed.setFooter({
+        text: `${currentFooter.text} • Address: ${address.slice(0, 10)}...${address.slice(-8)}`,
+        iconURL: currentFooter.icon_url ?? undefined,
+      });
+    }
     
     await interaction.editReply({
       content: `No Farcaster profile, Clanker deployments, or Zora coins found for \`${address}\`, but found activity on the following chain(s):`,

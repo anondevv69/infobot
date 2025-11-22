@@ -260,7 +260,7 @@ function buildRelayTransactionEmbed(transaction: RelayTransaction): EmbedBuilder
   // Apply InfoBot branding (version, rayblanco.eth, icon)
   applyBranding(embed, "relay transaction");
   
-  // Append transaction hash to footer
+  // Append transaction hash to footer (preserving branding)
   const currentFooter = embed.data.footer;
   if (currentFooter) {
     embed.setFooter({
