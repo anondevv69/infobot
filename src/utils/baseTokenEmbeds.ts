@@ -144,6 +144,10 @@ export async function buildBaseTokenEmbed(
     
     if (finalParagraphPostUrl) {
       paragraphLines.push(`**Post:** [View on Paragraph](${finalParagraphPostUrl})`);
+    } else if (paragraphPostAuthor?.publicationId) {
+      // If we have the author's publicationId but no post URL, link to their profile
+      const authorProfileUrl = `https://paragraph.xyz/@${paragraphPostAuthor.publicationId}`;
+      paragraphLines.push(`**Post:** [View Creator on Paragraph](${authorProfileUrl})`);
     } else {
       // Don't show a broken link - just indicate it's a Paragraph post
       paragraphLines.push(`**Post:** Paragraph tokenized post`);
