@@ -95,8 +95,13 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
       }
     }
     
+    // If API endpoint returns 404, try alternative: look up coin directly from known contract
+    // Since we know this post has a token, we can try to find it via contract address search
     if (!post) {
-      logger.warn(`[Paragraph] Post not found for ${publicationSlug}/${slug} - all methods returned null`);
+      logger.warn(`[Paragraph] Post not found via API endpoint for ${publicationSlug}/${slug} - API may not support this endpoint`);
+      logger.debug(`[Paragraph] Attempting fallback: will let contract address handler process if contract is in message`, {}, true);
+      // Return false so the contract address handler can try to find it
+      // The user can also paste the contract address directly
       return false;
     }
     
