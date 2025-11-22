@@ -454,6 +454,9 @@ export async function getPostBySlug(
   try {
     const url = `${PARAGRAPH_API_BASE}/v1/publications/slug/${encodeURIComponent(publicationSlug)}/posts/slug/${encodeURIComponent(postSlug)}${includeContent ? "?includeContent=true" : ""}`;
     
+    const { logger } = await import("../utils/logger");
+    logger.debug(`[Paragraph] Fetching post from API: ${url}`, {}, true);
+    
     const response = await fetch(url, {
       method: "GET",
       headers: {
@@ -461,21 +464,38 @@ export async function getPostBySlug(
       },
     });
 
+    logger.debug(`[Paragraph] API response status: ${response.status}`, {}, true);
+
     if (!response.ok) {
       if (response.status === 404) {
+        logger.warn(`[Paragraph] Post not found (404) for ${publicationSlug}/${postSlug}`);
         return null; // Post not found
       }
-      throw new Error(`Paragraph API error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text().catch(() => response.statusText);
+      logger.warn(`[Paragraph] API error ${response.status}: ${errorText}`);
+      throw new Error(`Paragraph API error: ${response.status} ${errorText}`);
     }
 
     const post = await response.json() as ParagraphPost;
+    logger.debug(`[Paragraph] ✅ Got post from API`, {
+      postId: post.id,
+      title: post.title,
+      coinId: post.coinId,
+      slug: post.slug,
+      hasCoinId: !!post.coinId,
+    }, true);
     return post;
   } catch (error) {
     // Don't throw - just log and return null (graceful degradation)
+    const { logger } = await import("../utils/logger");
     if (error instanceof Error && error.message.includes("404")) {
+      logger.warn(`[Paragraph] Post not found (404) for ${publicationSlug}/${postSlug}`);
       return null;
     }
-    console.warn(`[Paragraph] Failed to fetch post by slug ${publicationSlug}/${postSlug}:`, error);
+    logger.warn(`[Paragraph] Failed to fetch post by slug ${publicationSlug}/${postSlug}`, {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return null;
   }
 }

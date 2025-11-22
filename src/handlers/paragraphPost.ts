@@ -79,10 +79,11 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
     logger.debug(`[Paragraph] Getting post via API: publicationSlug=${publicationSlug}, postSlug=${slug}`, {}, true);
     
     // Step 1: Get post by publication slug + post slug
+    logger.debug(`[Paragraph] Calling getPostBySlug with publicationSlug=${publicationSlug}, slug=${slug}`, {}, true);
     const post = await getPostBySlug(publicationSlug, slug, false);
     
     if (!post) {
-      logger.warn(`[Paragraph] Post not found for ${publicationSlug}/${slug}`);
+      logger.warn(`[Paragraph] Post not found for ${publicationSlug}/${slug} - getPostBySlug returned null`);
       return false;
     }
     
@@ -99,6 +100,8 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
       logger.warn(`[Paragraph] Post does not have a coinId (not tokenized) - postId: ${post.id}, title: ${post.title}`);
       return false;
     }
+    
+    logger.debug(`[Paragraph] Post has coinId: ${post.coinId}, proceeding to fetch coin`, {}, true);
     
     // Step 2: Get coin by coinId to get contract address
     logger.debug(`[Paragraph] Getting coin by coinId: ${post.coinId}`, {}, true);
