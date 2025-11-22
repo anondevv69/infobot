@@ -22,8 +22,14 @@ import { applyBranding } from "../utils/branding";
 
 const USERNAME_REGEX = /(^|[^<\w])@([a-z0-9][a-z0-9_.-]{0,31})/gi;
 const FARCASTER_PROFILE_REGEX = /https?:\/\/(?:www\.)?farcaster\.xyz\/([a-z0-9][a-z0-9_.-]{0,31})/gi;
+const PARAGRAPH_URL_REGEX = /https?:\/\/(?:www\.)?paragraph\.(?:com|xyz)\/@/i;
 
 function extractCandidateUsernames(content: string): string[] {
+  // Skip username extraction if it's a Paragraph URL (to avoid matching @username in URLs)
+  if (PARAGRAPH_URL_REGEX.test(content)) {
+    return [];
+  }
+  
   const candidates = new Set<string>();
   let match: RegExpExecArray | null;
   while ((match = USERNAME_REGEX.exec(content)) !== null) {

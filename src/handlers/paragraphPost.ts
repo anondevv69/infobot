@@ -17,12 +17,15 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
 
   const urlMatch = message.content.match(PARAGRAPH_URL_REGEX);
   if (!urlMatch) {
+    console.log(`[Paragraph] URL regex did not match: ${message.content}`);
     return false;
   }
 
   const postUrl = urlMatch[0];
   const publication = urlMatch[1]; // e.g., "blog"
   const slug = urlMatch[2]; // e.g., "writer-coins"
+  
+  console.log(`[Paragraph] ✅ Matched URL: ${postUrl}, publication: ${publication}, slug: ${slug}`);
 
   try {
     // Fetch the Paragraph post page to extract contract address
@@ -40,29 +43,33 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
     }
 
     const html = await response.text();
+    console.log(`[Paragraph] Fetched HTML for ${postUrl}, length: ${html.length}`);
     
     // Try to extract contract address from the page
     // Paragraph posts might have the contract in various formats
     const CONTRACT_PATTERNS = [
-      /0x[a-fA-F0-9]{40}/g, // Direct address
-      /"contractAddress"\s*:\s*"(0x[a-fA-F0-9]{40})"/i, // JSON format
+      /"contractAddress"\s*:\s*"(0x[a-fA-F0-9]{40})"/i, // JSON format (most reliable)
       /contractAddress["']?\s*[:=]\s*["']?(0x[a-fA-F0-9]{40})/i, // Various formats
+      /0x[a-fA-F0-9]{40}/g, // Direct address (fallback - might match multiple)
     ];
 
     let contractAddress: string | null = null;
     for (const pattern of CONTRACT_PATTERNS) {
       const matches = html.match(pattern);
       if (matches && matches.length > 0) {
-        // Take the first match that looks like a valid address
-        contractAddress = matches[0].replace(/["':=]/g, "").trim();
+        // For patterns with capture groups, use the captured group
+        // For patterns without, use the full match
+        const matched = pattern.source.includes("(") && matches[1] ? matches[1] : matches[0];
+        contractAddress = matched.replace(/["':=]/g, "").trim();
         if (contractAddress.startsWith("0x") && contractAddress.length === 42) {
+          console.log(`[Paragraph] ✅ Extracted contract address: ${contractAddress}`);
           break;
         }
       }
     }
 
     if (!contractAddress) {
-      console.warn(`Unable to extract contract address from Paragraph post ${postUrl}`);
+      console.warn(`[Paragraph] Unable to extract contract address from Paragraph post ${postUrl}`);
       // Still try to look up by coin if we can get the post ID somehow
       return false;
     }

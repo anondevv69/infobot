@@ -247,12 +247,13 @@ async function main(): Promise<void> {
       await showDiscordTypingIndicator(message);
     }
 
-    await handleUsernameMessage(message);
-    if (await handleXAccountMessage(message)) {
+    // Check Paragraph URLs FIRST to avoid false matches with @username in URLs
+    if (await handleParagraphPostMessage(message)) {
       return;
     }
-    // Check Paragraph URLs BEFORE Zora/Farcaster profile lookups to avoid false matches
-    if (await handleParagraphPostMessage(message)) {
+    
+    await handleUsernameMessage(message);
+    if (await handleXAccountMessage(message)) {
       return;
     }
     if (await handleBasePostMessage(message)) {
