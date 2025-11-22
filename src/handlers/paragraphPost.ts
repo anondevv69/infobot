@@ -153,7 +153,7 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
       return false;
     }
 
-    // Found a Paragraph coin - get the post author and show enhanced embed
+    // Found a Paragraph coin - get the post author and show full token embed
     const [baseTokenData, factory, contractCreation, creationTx] = await Promise.all([
       fetchBaseTokenData(contractAddress),
       detectTokenFactory(contractAddress),
@@ -161,22 +161,8 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
       getContractCreationTx(contractAddress, "base", env.basescanApiKey).catch(() => null),
     ]);
 
-    if (!baseTokenData) {
-      // Create a simple embed for Paragraph coin without token data
-      const embed = new EmbedBuilder()
-        .setColor(0x0052ff)
-        .setTitle(`📝 Paragraph Post Token`)
-        .setURL(postUrl)
-        .addFields({
-          name: "Post Information",
-          value: `**Publication:** @${publicationSlug}\n**Post:** ${slug}\n**Contract:** \`${contractAddress}\`\n**Symbol:** ${coin.symbol}`,
-          inline: false,
-        });
-
-      applyBranding(embed, "paragraph post");
-      await message.reply({ embeds: [embed] });
-      return true;
-    }
+    // Always show the full token embed, even if baseTokenData is null
+    // We'll use the coin symbol and post title as fallbacks
 
     // Get post author information using the API
     // We already have the post from getPostBySlug above, so use that
@@ -214,11 +200,15 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
     }
 
     // Build full token embed with Paragraph coin info
+    // Use post title and coin symbol as fallbacks if baseTokenData is not available
+    const tokenName = baseTokenData?.tokenName ?? post.title ?? null;
+    const tokenSymbol = baseTokenData?.tokenSymbol ?? coin.symbol ?? null;
+    
     const { embed, components } = await buildBaseTokenEmbed(
       contractAddress,
-      null,
-      null,
-      baseTokenData,
+      tokenName,
+      tokenSymbol,
+      baseTokenData, // May be null, but we have fallbacks above
       factory,
       contractCreation?.contractCreator ?? null,
       contractCreation?.createdAt ?? null,

@@ -136,10 +136,16 @@ export async function buildBaseTokenEmbed(
 
   // Add Paragraph post info if available
   if (paragraphCoin) {
-    // Use the original post URL if provided, otherwise construct from postId
-    const finalParagraphPostUrl = paragraphPostUrl || `https://paragraph.com/@post/${paragraphCoin.postId}`;
+    // Only show the link if we have the proper URL (not the postId format)
+    const finalParagraphPostUrl = paragraphPostUrl && !paragraphPostUrl.includes("/@post/") ? paragraphPostUrl : null;
     const paragraphLines: string[] = [];
-    paragraphLines.push(`**Post:** [View on Paragraph](${finalParagraphPostUrl})`);
+    
+    if (finalParagraphPostUrl) {
+      paragraphLines.push(`**Post:** [View on Paragraph](${finalParagraphPostUrl})`);
+    } else {
+      // Don't show a broken link - just indicate it's a Paragraph post
+      paragraphLines.push(`**Post:** Paragraph tokenized post`);
+    }
     
     // Add post author information if available
     if (paragraphPostAuthor) {
