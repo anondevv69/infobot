@@ -17,13 +17,20 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
 
   // Check if message contains paragraph.com or paragraph.xyz
   const hasParagraphUrl = /paragraph\.(?:com|xyz)/i.test(message.content);
-  console.log(`[Paragraph] Checking message: hasParagraphUrl=${hasParagraphUrl}, content="${message.content.substring(0, 100)}..."`);
+  console.log(`[Paragraph] Checking message: hasParagraphUrl=${hasParagraphUrl}, content="${message.content.substring(0, 200)}..."`);
   
-  const urlMatch = message.content.match(PARAGRAPH_URL_REGEX);
+  // Discord might wrap URLs in angle brackets or markdown, so try to extract clean URL first
+  let cleanContent = message.content;
+  // Remove markdown links: [text](url) -> url
+  cleanContent = cleanContent.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$2');
+  // Remove angle brackets: <url> -> url
+  cleanContent = cleanContent.replace(/<([^>]+)>/g, '$1');
+  
+  const urlMatch = cleanContent.match(PARAGRAPH_URL_REGEX);
   if (!urlMatch) {
-    console.log(`[Paragraph] URL regex did not match. Content: "${message.content}"`);
+    console.log(`[Paragraph] URL regex did not match. Original: "${message.content.substring(0, 200)}", Cleaned: "${cleanContent.substring(0, 200)}"`);
     // Try a more lenient pattern to see what's in the message
-    const anyUrlMatch = message.content.match(/paragraph\.(?:com|xyz)\/[^\s)]+/i);
+    const anyUrlMatch = cleanContent.match(/paragraph\.(?:com|xyz)\/[^\s)]+/i);
     if (anyUrlMatch) {
       console.log(`[Paragraph] Found paragraph URL but regex didn't match: "${anyUrlMatch[0]}"`);
     }
