@@ -490,12 +490,19 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           m.getCoinByContract(address)
         ).catch(() => null);
 
-        // If we have a Paragraph coin, try to get the post author
+        // If we have a Paragraph coin, try to get the post details and author
         let paragraphPostAuthor: { name?: string | null; bio?: string | null; farcaster?: { username: string } | null; publicationId?: string | null } | null = null;
+        let paragraphPostUrl: string | null = null;
         if (finalParagraphCoin) {
           try {
             const { getPostById, getUserByWallet } = await import("../services/paragraph");
             const post = await getPostById(finalParagraphCoin.postId);
+            
+            // Construct the proper post URL from post details
+            if (post?.publicationId && post?.slug) {
+              paragraphPostUrl = `https://paragraph.com/@${post.publicationId}/${post.slug}`;
+              console.log(`[Paragraph] Constructed post URL: ${paragraphPostUrl} from postId: ${finalParagraphCoin.postId}`);
+            }
             
             // Try to get author from post owner wallet address
             if (post?.ownerWalletAddress) {
@@ -512,7 +519,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
               }
             }
           } catch (error) {
-            console.warn(`[Paragraph] Failed to get post author for ${finalParagraphCoin.postId}:`, error);
+            console.warn(`[Paragraph] Failed to get post details for ${finalParagraphCoin.postId}:`, error);
           }
         }
 
@@ -527,7 +534,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           contractCreation?.txHash ?? null, // Creation transaction hash
           finalParagraphCoin ?? undefined, // Paragraph coin info if available
           paragraphPostAuthor ?? undefined, // Paragraph post author if available
-          undefined, // No original post URL when detected from contract address
+          paragraphPostUrl ?? undefined, // Constructed post URL from post API
         );
 
         const factoryDisplayName = finalFactory ? ` (${finalFactory.name})` : "";

@@ -70,9 +70,12 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
 
     if (!contractAddress) {
       console.warn(`[Paragraph] Unable to extract contract address from Paragraph post ${postUrl}`);
+      console.log(`[Paragraph] HTML snippet (first 2000 chars): ${html.substring(0, 2000)}`);
       // Still try to look up by coin if we can get the post ID somehow
       return false;
     }
+    
+    console.log(`[Paragraph] ✅ Extracted contract: ${contractAddress} from ${postUrl}`);
 
     // Now look up the coin by contract address
     const coin = await getCoinByContract(contractAddress);
