@@ -15,9 +15,18 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
     return false;
   }
 
+  // Check if message contains paragraph.com or paragraph.xyz
+  const hasParagraphUrl = /paragraph\.(?:com|xyz)/i.test(message.content);
+  console.log(`[Paragraph] Checking message: hasParagraphUrl=${hasParagraphUrl}, content="${message.content.substring(0, 100)}..."`);
+  
   const urlMatch = message.content.match(PARAGRAPH_URL_REGEX);
   if (!urlMatch) {
-    console.log(`[Paragraph] URL regex did not match: ${message.content}`);
+    console.log(`[Paragraph] URL regex did not match. Content: "${message.content}"`);
+    // Try a more lenient pattern to see what's in the message
+    const anyUrlMatch = message.content.match(/paragraph\.(?:com|xyz)\/[^\s)]+/i);
+    if (anyUrlMatch) {
+      console.log(`[Paragraph] Found paragraph URL but regex didn't match: "${anyUrlMatch[0]}"`);
+    }
     return false;
   }
 
