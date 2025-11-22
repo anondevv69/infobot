@@ -452,6 +452,9 @@ export async function getPostBySlug(
   includeContent: boolean = false
 ): Promise<ParagraphPost | null> {
   try {
+    // Try both possible endpoint structures
+    // Structure 1: /v1/publications/slug/{slug}/posts/slug/{slug}
+    // Structure 2: /v1/posts?publicationSlug={slug}&postSlug={slug}
     const url = `${PARAGRAPH_API_BASE}/v1/publications/slug/${encodeURIComponent(publicationSlug)}/posts/slug/${encodeURIComponent(postSlug)}${includeContent ? "?includeContent=true" : ""}`;
     
     const { logger } = await import("../utils/logger");
