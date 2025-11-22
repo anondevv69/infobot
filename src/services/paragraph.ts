@@ -85,7 +85,7 @@ export interface ParagraphCoinHoldersResponse {
   };
 }
 
-const PARAGRAPH_API_BASE = "https://api.paragraph.xyz";
+const PARAGRAPH_API_BASE = "https://public.api.paragraph.com/api";
 
 /**
  * Get user by wallet address from Paragraph API
