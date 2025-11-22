@@ -39,7 +39,8 @@ export async function handleTelegramMessage(
     // Only process if it mentions the bot OR is clearly an address/username/X link/Farcaster link
     const hasXLink = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^\s<>()]+/gi.test(text);
     const hasFarcasterLink = /https?:\/\/(?:www\.)?farcaster\.xyz\/[^\s<>()]+/gi.test(text);
-    if (!mentionsBot && !isEthAddress(text) && !text.startsWith("@") && !text.includes("zora.co") && !hasXLink && !hasFarcasterLink) {
+    const hasParagraphLink = /https?:\/\/(?:www\.)?paragraph\.(?:com|xyz)\/[^\s<>()]+/gi.test(text);
+    if (!mentionsBot && !isEthAddress(text) && !text.startsWith("@") && !text.includes("zora.co") && !hasXLink && !hasFarcasterLink && !hasParagraphLink) {
       return; // Ignore messages in groups that don't mention the bot
     }
     
@@ -230,6 +231,59 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
 
           // Re-fetch Paragraph coin if we didn't get it earlier
           const finalParagraphCoin = paragraphCoin ?? await getCoinByContract(address).catch(() => null);
+          
+          // If we have a Paragraph coin, get post details and author to construct proper URL
+          let paragraphPostAuthor: { name?: string | null; bio?: string | null; farcaster?: { username: string } | null; publicationId?: string | null } | null = null;
+          let paragraphPostUrl: string | null = null;
+          if (finalParagraphCoin) {
+            try {
+              const { getPostById, getUserByWallet } = await import("../../../services/paragraph");
+              const { logger } = await import("../../../utils/logger");
+              
+              // Get post details to get the slug
+              logger.debug(`[Paragraph] [Telegram] Getting post by ID: ${finalParagraphCoin.postId}`, {}, true);
+              const post = await getPostById(finalParagraphCoin.postId);
+              
+              if (!post) {
+                logger.warn(`[Paragraph] [Telegram] Post not found for postId: ${finalParagraphCoin.postId}`);
+              } else {
+                logger.debug(`[Paragraph] [Telegram] Post details for ${finalParagraphCoin.postId}`, {
+                  slug: post.slug,
+                  title: post.title,
+                  hasOwnerWallet: !!post.ownerWalletAddress,
+                  hasOwnerUserId: !!post.ownerUserId,
+                }, true);
+                
+                // Get author from post owner (more reliable than contract creator)
+                let authorWallet: string | null = null;
+                if (post.ownerWalletAddress) {
+                  authorWallet = post.ownerWalletAddress;
+                } else if (post.ownerUserId && post.ownerUserId.startsWith("0x")) {
+                  authorWallet = post.ownerUserId;
+                } else if (contractCreation?.contractCreator) {
+                  // Fallback to contract creator if post owner not available
+                  authorWallet = contractCreation.contractCreator;
+                }
+                
+                if (authorWallet) {
+                  logger.debug(`[Paragraph] [Telegram] Looking up author from wallet: ${authorWallet}`, {}, true);
+                  const author = await getUserByWallet(authorWallet);
+                  if (author) {
+                    logger.debug(`[Paragraph] [Telegram] Found author: ${author.name}, publicationId: ${author.publicationId}`, {}, true);
+                    paragraphPostAuthor = author;
+                    // Construct URL using author's publicationId and post slug
+                    if (author.publicationId && post.slug) {
+                      paragraphPostUrl = `https://paragraph.com/@${author.publicationId}/${post.slug}`;
+                      logger.debug(`[Paragraph] [Telegram] ✅ Constructed post URL: ${paragraphPostUrl}`, {}, true);
+                    }
+                  }
+                }
+              }
+            } catch (error) {
+              const { logger } = await import("../../../utils/logger");
+              logger.warn(`[Paragraph] [Telegram] Failed to get post details for ${finalParagraphCoin.postId}`, { error: error instanceof Error ? error.message : String(error) });
+            }
+          }
 
           const { embed } = await buildBaseTokenEmbed(
             address,
@@ -241,6 +295,8 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             contractCreation?.createdAt ?? null, // Creation timestamp
             contractCreation?.txHash ?? null, // Creation transaction hash
             finalParagraphCoin ?? undefined, // Paragraph coin info if available
+            paragraphPostAuthor ?? undefined, // Paragraph post author if available
+            paragraphPostUrl ?? undefined, // Constructed post URL from post API
           );
 
           const factoryDisplayName = factory ? ` (${factory.name})` : "";
@@ -850,6 +906,42 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
             const { getCoinByContract } = await import("../../../services/paragraph");
             const paragraphCoin = await getCoinByContract(address).catch(() => null);
             
+            // If we have a Paragraph coin, get post details and author to construct proper URL
+            let paragraphPostAuthor: { name?: string | null; bio?: string | null; farcaster?: { username: string } | null; publicationId?: string | null } | null = null;
+            let paragraphPostUrl: string | null = null;
+            if (paragraphCoin) {
+              try {
+                const { getPostById, getUserByWallet } = await import("../../../services/paragraph");
+                const { logger } = await import("../../../utils/logger");
+                
+                // Get post details to get the slug
+                logger.debug(`[Paragraph] [Telegram] Getting post by ID: ${paragraphCoin.postId}`, {}, true);
+                const post = await getPostById(paragraphCoin.postId);
+                
+                if (post) {
+                  // Get author from post owner
+                  let authorWallet: string | null = null;
+                  if (post.ownerWalletAddress) {
+                    authorWallet = post.ownerWalletAddress;
+                  } else if (post.ownerUserId && post.ownerUserId.startsWith("0x")) {
+                    authorWallet = post.ownerUserId;
+                  } else if (contractCreation?.contractCreator) {
+                    authorWallet = contractCreation.contractCreator;
+                  }
+                  
+                  if (authorWallet) {
+                    const author = await getUserByWallet(authorWallet);
+                    if (author && author.publicationId && post.slug) {
+                      paragraphPostAuthor = author;
+                      paragraphPostUrl = `https://paragraph.com/@${author.publicationId}/${post.slug}`;
+                    }
+                  }
+                }
+              } catch (error) {
+                // Silently fail - not critical
+              }
+            }
+            
             const { embed } = await buildBaseTokenEmbed(
               address,
               baseTokenData?.tokenName ?? null, // Token name
@@ -860,6 +952,8 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
               contractCreation?.createdAt ?? null, // Creation timestamp
               contractCreation?.txHash ?? null, // Creation transaction hash
               paragraphCoin ?? undefined, // Paragraph coin info if available
+              paragraphPostAuthor ?? undefined, // Paragraph post author if available
+              paragraphPostUrl ?? undefined, // Constructed post URL from post API
             );
 
             const factoryName = detectedFactory ? ` (${detectedFactory.name})` : "";
@@ -1059,60 +1153,55 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       }
     }
 
-    // Check if it's a Paragraph post link
-    const paragraphUrlRegex = /https?:\/\/(?:www\.)?paragraph\.(?:com|xyz)\/@([^\/]+)\/([^\s)]+)/i;
+    // Check if it's a Paragraph post link - use API directly (same as Discord)
+    const paragraphUrlRegex = /https?:\/\/(?:www\.)?paragraph\.(?:com|xyz)\/@([^\/\s\)]+)\/([^\s\)]+)/i;
     if (paragraphUrlRegex.test(text)) {
       try {
         const match = text.match(paragraphUrlRegex);
         if (match) {
-          const postUrl = match[0];
-          const publication = match[1];
-          const slug = match[2];
+          const publicationSlug = match[1]; // e.g., "blog"
+          const postSlug = match[2]; // e.g., "writer-coins"
           
-          // Fetch the Paragraph post page to extract contract address
-          const response = await fetch(postUrl, {
-            headers: {
-              "User-Agent": "telegram-bot/1.0",
-              Accept: "text/html,application/xhtml+xml",
-            },
-          });
+          const { getPostBySlug, getCoinById } = await import("../../../services/paragraph");
+          const { logger } = await import("../../../utils/logger");
           
-          if (response.ok) {
-            const html = await response.text();
-            
-            // Extract contract address
-            const CONTRACT_PATTERNS = [
-              /0x[a-fA-F0-9]{40}/g,
-              /"contractAddress"\s*:\s*"(0x[a-fA-F0-9]{40})"/i,
-              /contractAddress["']?\s*[:=]\s*["']?(0x[a-fA-F0-9]{40})/i,
-            ];
-            
-            let contractAddress: string | null = null;
-            for (const pattern of CONTRACT_PATTERNS) {
-              const matches = html.match(pattern);
-              if (matches && matches.length > 0) {
-                contractAddress = matches[0].replace(/["':=]/g, "").trim();
-                if (contractAddress.startsWith("0x") && contractAddress.length === 42) {
-                  break;
-                }
-              }
-            }
-            
-            if (contractAddress) {
-              // Look up the coin and show token info
-              const { getCoinByContract } = await import("../../../services/paragraph");
-              const coin = await getCoinByContract(contractAddress).catch(() => null);
-              
+          logger.debug(`[Paragraph] [Telegram] Getting post via API: publicationSlug=${publicationSlug}, postSlug=${postSlug}`, {}, true);
+          
+          // Step 1: Get post by publication slug + post slug
+          const post = await getPostBySlug(publicationSlug, postSlug, false);
+          
+          if (!post) {
+            logger.warn(`[Paragraph] [Telegram] Post not found for ${publicationSlug}/${postSlug}`);
+            return;
+          }
+          
+          logger.debug(`[Paragraph] [Telegram] ✅ Got post via API`, {
+            postId: post.id,
+            title: post.title,
+            coinId: post.coinId,
+            slug: post.slug
+          }, true);
+          
+          // Step 2: Get coin by coinId to get contract address
+          if (post.coinId) {
+            logger.debug(`[Paragraph] [Telegram] Getting coin by coinId: ${post.coinId}`, {}, true);
+            const coin = await getCoinById(post.coinId);
+            if (coin && coin.contractAddress) {
+              logger.debug(`[Paragraph] [Telegram] ✅ Got contract address from coin: ${coin.contractAddress}`, {}, true);
               // Process as a token address (will go through normal token detection)
-              // Just trigger the address detection flow
-              await processMessage(bot, chatId, contractAddress);
+              await processMessage(bot, chatId, coin.contractAddress);
               return;
             }
+          } else {
+            logger.warn(`[Paragraph] [Telegram] Post does not have a coinId (not tokenized)`);
           }
         }
       } catch (error) {
-        console.error("[Telegram] Error handling Paragraph post:", error);
-        // Continue to other handlers
+        const { logger } = await import("../../../utils/logger");
+        logger.error(`[Telegram] Error handling Paragraph post`, error, {
+          text: text.substring(0, 200),
+          chatId: chatId.toString(),
+        });
       }
     }
 

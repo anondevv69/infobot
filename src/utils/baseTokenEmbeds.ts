@@ -187,20 +187,28 @@ export async function buildBaseTokenEmbed(
   const tokenInfo: string[] = [];
   
   if (finalCreatorAddress) {
-    tokenInfo.push(`👤 Creator: \`${finalCreatorAddress}\``);
-    
-    // Creation Transaction (moved right after creator)
-    if (creationTxHash && creationTxHash.trim() !== "") {
-      const txLink = `https://basescan.org/tx/${creationTxHash}`;
-      tokenInfo.push(`🔗 [Creation Transaction](${txLink})`);
-    }
-    
-    // Check for Farcaster and Zora accounts
+    // Check for Paragraph, Farcaster, and Zora accounts
     try {
-      const [farcasterUser, zoraSummary] = await Promise.all([
+      const { getUserByWallet } = await import("../services/paragraph");
+      const [paragraphUser, farcasterUser, zoraSummary] = await Promise.all([
+        getUserByWallet(finalCreatorAddress).catch(() => null),
         findUserByWallet(finalCreatorAddress).catch(() => null),
         findBestZoraSummary([finalCreatorAddress.toLowerCase()]).catch(() => null),
       ]);
+      
+      // Build creator line with Paragraph account if available
+      let creatorLine = `👤 Creator: \`${finalCreatorAddress}\``;
+      if (paragraphUser?.publicationId) {
+        const paragraphProfileUrl = `https://paragraph.xyz/@${paragraphUser.publicationId}`;
+        creatorLine += ` • [${paragraphUser.publicationId}](${paragraphProfileUrl})`;
+      }
+      tokenInfo.push(creatorLine);
+      
+      // Creation Transaction (moved right after creator)
+      if (creationTxHash && creationTxHash.trim() !== "") {
+        const txLink = `https://basescan.org/tx/${creationTxHash}`;
+        tokenInfo.push(`🔗 [Creation Transaction](${txLink})`);
+      }
       
       // Farcaster account
       if (farcasterUser) {
