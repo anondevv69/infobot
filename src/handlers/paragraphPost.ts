@@ -26,22 +26,49 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
   // Remove angle brackets: <url> -> url
   cleanContent = cleanContent.replace(/<([^>]+)>/g, '$1');
   
-  const urlMatch = cleanContent.match(PARAGRAPH_URL_REGEX);
+  // Try matching on cleaned content first
+  let urlMatch = cleanContent.match(PARAGRAPH_URL_REGEX);
+  
+  // If that fails, try the original content (in case our cleaning broke something)
+  if (!urlMatch) {
+    urlMatch = message.content.match(PARAGRAPH_URL_REGEX);
+  }
+  
+  let postUrl: string;
+  let publication: string;
+  let slug: string;
+  
   if (!urlMatch) {
     console.log(`[Paragraph] URL regex did not match. Original: "${message.content.substring(0, 200)}", Cleaned: "${cleanContent.substring(0, 200)}"`);
     // Try a more lenient pattern to see what's in the message
-    const anyUrlMatch = cleanContent.match(/paragraph\.(?:com|xyz)\/[^\s)]+/i);
+    const anyUrlMatch = cleanContent.match(/paragraph\.(?:com|xyz)\/[^\s)]+/i) || message.content.match(/paragraph\.(?:com|xyz)\/[^\s)]+/i);
     if (anyUrlMatch) {
       console.log(`[Paragraph] Found paragraph URL but regex didn't match: "${anyUrlMatch[0]}"`);
+      console.log(`[Paragraph] Regex pattern: ${PARAGRAPH_URL_REGEX}`);
+      // Try to manually extract publication and slug
+      const manualMatch = anyUrlMatch[0].match(/@([^\/]+)\/([^\s)]+)/);
+      if (manualMatch) {
+        console.log(`[Paragraph] Manual extraction: publication=${manualMatch[1]}, slug=${manualMatch[2]}`);
+        // Use the full URL from the match
+        postUrl = anyUrlMatch[0].startsWith('http') ? anyUrlMatch[0] : `https://${anyUrlMatch[0]}`;
+        publication = manualMatch[1];
+        slug = manualMatch[2];
+        
+        // Continue with processing using manually extracted values
+        console.log(`[Paragraph] ✅ Using manually extracted URL: ${postUrl}, publication: ${publication}, slug: ${slug}`);
+      } else {
+        return false;
+      }
+    } else {
+      return false;
     }
-    return false;
+  } else {
+    postUrl = urlMatch[0].startsWith('http') ? urlMatch[0] : `https://${urlMatch[0]}`;
+    publication = urlMatch[1]; // e.g., "blog"
+    slug = urlMatch[2]; // e.g., "writer-coins"
+    
+    console.log(`[Paragraph] ✅ Matched URL: ${postUrl}, publication: ${publication}, slug: ${slug}`);
   }
-
-  const postUrl = urlMatch[0];
-  const publication = urlMatch[1]; // e.g., "blog"
-  const slug = urlMatch[2]; // e.g., "writer-coins"
-  
-  console.log(`[Paragraph] ✅ Matched URL: ${postUrl}, publication: ${publication}, slug: ${slug}`);
 
   try {
     // Fetch the Paragraph post page to extract contract address

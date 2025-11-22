@@ -507,15 +507,23 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
             // Get author from contract creator to get publicationId
             // The post API doesn't return publicationId, but the author's ParagraphUser does
             if (contractCreation?.contractCreator) {
+              console.log(`[Paragraph] Looking up author from contract creator: ${contractCreation.contractCreator}`);
               const author = await getUserByWallet(contractCreation.contractCreator);
               if (author) {
+                console.log(`[Paragraph] Found author: ${author.name}, publicationId: ${author.publicationId}`);
                 paragraphPostAuthor = author;
                 // Construct URL using author's publicationId and post slug
                 if (author.publicationId && post?.slug) {
                   paragraphPostUrl = `https://paragraph.com/@${author.publicationId}/${post.slug}`;
                   console.log(`[Paragraph] ✅ Constructed post URL: ${paragraphPostUrl} from author publicationId: ${author.publicationId}, slug: ${post.slug}`);
+                } else {
+                  console.warn(`[Paragraph] Missing publicationId or slug. publicationId: ${author.publicationId}, slug: ${post?.slug}`);
                 }
+              } else {
+                console.warn(`[Paragraph] Author not found for wallet: ${contractCreation.contractCreator}`);
               }
+            } else {
+              console.warn(`[Paragraph] No contract creator found, cannot get author publicationId`);
             }
             
             // Fallback: if we have post slug but no author, we can't construct the full URL
