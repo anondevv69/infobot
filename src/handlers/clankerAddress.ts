@@ -507,13 +507,21 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
             } else {
               logger.debug(`[Paragraph] Post details for ${finalParagraphCoin.postId}`, {
                 slug: post.slug,
+                publicationSlug: post.publicationSlug,
                 title: post.title,
+                authorId: post.authorId,
                 hasOwnerWallet: !!post.ownerWalletAddress,
                 hasOwnerUserId: !!post.ownerUserId,
               }, true);
               
-              // Get author from post owner (more reliable than contract creator)
-              // Try post.ownerWalletAddress first, then post.ownerUserId
+              // PRIORITY 1: Use publicationSlug and slug directly from post API response (most reliable)
+              if (post.publicationSlug && post.slug) {
+                paragraphPostUrl = `https://paragraph.com/@${post.publicationSlug}/${post.slug}`;
+                logger.debug(`[Paragraph] ✅ Constructed post URL from post API: ${paragraphPostUrl}`, {}, true);
+              }
+              
+              // Get author information for display
+              // Try post.ownerWalletAddress first, then post.ownerUserId, then contract creator
               let authorWallet: string | null = null;
               if (post.ownerWalletAddress) {
                 authorWallet = post.ownerWalletAddress;
@@ -530,13 +538,6 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
                 if (author) {
                   logger.debug(`[Paragraph] Found author: ${author.name}, publicationId: ${author.publicationId}`, {}, true);
                   paragraphPostAuthor = author;
-                  // Construct URL using author's publicationId and post slug
-                  if (author.publicationId && post.slug) {
-                    paragraphPostUrl = `https://paragraph.com/@${author.publicationId}/${post.slug}`;
-                    logger.debug(`[Paragraph] ✅ Constructed post URL: ${paragraphPostUrl} from author publicationId: ${author.publicationId}, slug: ${post.slug}`, {}, true);
-                  } else {
-                    logger.warn(`[Paragraph] Missing publicationId or slug`, { publicationId: author.publicationId, slug: post.slug });
-                  }
                 } else {
                   logger.warn(`[Paragraph] Author not found for wallet: ${authorWallet} - wallet may not have Paragraph account`);
                 }
@@ -544,39 +545,23 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
                 logger.warn(`[Paragraph] No author wallet found (post owner or contract creator)`);
               }
               
-              // Fallback 1: Check if post has publicationId in the response (API might include it)
-              if (!paragraphPostUrl && post.publicationId && post.slug) {
-                paragraphPostUrl = `https://paragraph.com/@${post.publicationId}/${post.slug}`;
-                logger.debug(`[Paragraph] ✅ Constructed post URL from post.publicationId: ${paragraphPostUrl}`, {}, true);
-              }
-              
-              // Fallback 2: Try to get publication by searching for the contract creator's Paragraph account
-              // This is already done above, but we're checking again here as a final fallback
-              if (!paragraphPostUrl && post.slug && contractCreation?.contractCreator) {
-                // Only try this if we haven't already tried this wallet
-                const alreadyTriedWallet = authorWallet === contractCreation.contractCreator;
-                if (!alreadyTriedWallet) {
-                  logger.debug(`[Paragraph] Trying final fallback: get publication from contract creator (different wallet)`, {}, true);
-                  const fallbackAuthor = await getUserByWallet(contractCreation.contractCreator);
-                  if (fallbackAuthor?.publicationId) {
-                    paragraphPostAuthor = fallbackAuthor;
-                    paragraphPostUrl = `https://paragraph.com/@${fallbackAuthor.publicationId}/${post.slug}`;
-                    logger.debug(`[Paragraph] ✅ Constructed post URL from fallback author: ${paragraphPostUrl}`, {}, true);
-                  } else {
-                    logger.warn(`[Paragraph] Final fallback failed - contract creator has no Paragraph account`, { contractCreator: contractCreation.contractCreator });
-                  }
-                }
-              }
-              
-              // If we still don't have a URL, log what we have
+              // Fallback: If we still don't have URL, try using publicationId from post or author
               if (!paragraphPostUrl && post.slug) {
-                logger.warn(`[Paragraph] ⚠️ Cannot construct proper URL - will show generic message`, { 
-                  slug: post.slug, 
-                  hasPostPublicationId: !!post.publicationId,
-                  contractCreator: contractCreation?.contractCreator,
-                  postOwnerWallet: post.ownerWalletAddress,
-                  postOwnerUserId: post.ownerUserId
-                });
+                if (post.publicationId) {
+                  paragraphPostUrl = `https://paragraph.com/@${post.publicationId}/${post.slug}`;
+                  logger.debug(`[Paragraph] ✅ Constructed post URL from post.publicationId: ${paragraphPostUrl}`, {}, true);
+                } else if (paragraphPostAuthor?.publicationId) {
+                  paragraphPostUrl = `https://paragraph.com/@${paragraphPostAuthor.publicationId}/${post.slug}`;
+                  logger.debug(`[Paragraph] ✅ Constructed post URL from author publicationId: ${paragraphPostUrl}`, {}, true);
+                } else {
+                  logger.warn(`[Paragraph] ⚠️ Cannot construct proper URL - will show generic message`, { 
+                    slug: post.slug, 
+                    hasPublicationSlug: !!post.publicationSlug,
+                    hasPostPublicationId: !!post.publicationId,
+                    hasAuthorPublicationId: !!paragraphPostAuthor?.publicationId,
+                    contractCreator: contractCreation?.contractCreator,
+                  });
+                }
               }
             }
           } catch (error) {

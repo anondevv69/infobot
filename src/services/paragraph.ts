@@ -28,7 +28,8 @@ export interface ParagraphCoin {
 export interface ParagraphPost {
   id: string;
   title?: string | null;
-  slug?: string | null;
+  slug?: string | null; // postSlug
+  publicationSlug?: string | null; // publication slug (e.g., "blog")
   imageUrl?: string | null;
   publishedAt?: string | null;
   updatedAt?: string | null;
@@ -37,7 +38,8 @@ export interface ParagraphPost {
   json?: string | null;
   markdown?: string | null;
   coinId?: string | null;
-  publicationId?: string | null; // May not be in API response, but we'll try to get it
+  publicationId?: string | null; // Publication ID (internal)
+  authorId?: string | null; // Author user ID
   ownerUserId?: string | null;
   ownerWalletAddress?: string | null;
 }
