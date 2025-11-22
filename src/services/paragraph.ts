@@ -29,7 +29,7 @@ export interface ParagraphPost {
   id: string;
   title?: string | null;
   slug?: string | null; // postSlug
-  publicationSlug?: string | null; // publication slug (e.g., "blog")
+  publicationSlug?: string | null; // publication slug (e.g., "blog") - from includePublication
   imageUrl?: string | null;
   publishedAt?: string | null;
   updatedAt?: string | null;
@@ -38,10 +38,25 @@ export interface ParagraphPost {
   json?: string | null;
   markdown?: string | null;
   coinId?: string | null;
-  publicationId?: string | null; // Publication ID (internal)
-  authorId?: string | null; // Author user ID
+  publicationId?: string | null; // Publication ID (internal) - from includePublication
+  authorId?: string | null; // Author user ID - from includeAuthor
   ownerUserId?: string | null;
   ownerWalletAddress?: string | null;
+  // Nested objects when includeAuthor and includePublication are true
+  author?: {
+    id: string;
+    username?: string | null;
+    wallet?: string | null;
+    walletAddress?: string | null;
+    name?: string | null;
+    publicationId?: string | null;
+  } | null;
+  publication?: {
+    id: string;
+    slug: string;
+    name?: string | null;
+    subscribers?: number | null;
+  } | null;
 }
 
 export interface ParagraphPublication {
@@ -70,7 +85,7 @@ export interface ParagraphCoinHoldersResponse {
   };
 }
 
-const PARAGRAPH_API_BASE = "https://public.api.paragraph.com/api";
+const PARAGRAPH_API_BASE = "https://api.paragraph.xyz";
 
 /**
  * Get user by wallet address from Paragraph API

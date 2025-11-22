@@ -512,41 +512,89 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
               logger.debug(`[Paragraph] Post details for ${finalParagraphCoin.postId}`, {
                 slug: post.slug,
                 publicationSlug: post.publicationSlug,
+                publicationSlugFromNested: post.publication?.slug,
                 title: post.title,
                 authorId: post.authorId,
+                authorIdFromNested: post.author?.id,
                 hasOwnerWallet: !!post.ownerWalletAddress,
                 hasOwnerUserId: !!post.ownerUserId,
+                hasAuthor: !!post.author,
+                hasPublication: !!post.publication,
               }, true);
               
               // PRIORITY 1: Use publicationSlug and slug directly from post API response (most reliable)
-              if (post.publicationSlug && post.slug) {
-                paragraphPostUrl = `https://paragraph.com/@${post.publicationSlug}/${post.slug}`;
+              // Check both direct field and nested publication object
+              const finalPublicationSlug = post.publicationSlug || post.publication?.slug || null;
+              if (finalPublicationSlug && post.slug) {
+                paragraphPostUrl = `https://paragraph.com/@${finalPublicationSlug}/${post.slug}`;
                 logger.debug(`[Paragraph] ✅ Constructed post URL from post API: ${paragraphPostUrl}`, {}, true);
               }
               
               // Get author information for display
-              // Try post.ownerWalletAddress first, then post.ownerUserId, then contract creator
-              let authorWallet: string | null = null;
-              if (post.ownerWalletAddress) {
-                authorWallet = post.ownerWalletAddress;
-              } else if (post.ownerUserId && post.ownerUserId.startsWith("0x")) {
-                authorWallet = post.ownerUserId;
-              } else if (contractCreation?.contractCreator) {
-                // Fallback to contract creator if post owner not available
-                authorWallet = contractCreation.contractCreator;
-              }
-              
-              if (authorWallet) {
-                logger.debug(`[Paragraph] Looking up author from wallet: ${authorWallet}`, {}, true);
-                const author = await getUserByWallet(authorWallet);
-                if (author) {
-                  logger.debug(`[Paragraph] Found author: ${author.name}, publicationId: ${author.publicationId}`, {}, true);
-                  paragraphPostAuthor = author;
+              // Priority 1: Use nested author object from post API (when includeAuthor=true)
+              // Priority 2: Use ownerWalletAddress or ownerUserId from post
+              // Priority 3: Fallback to contract creator
+              if (post.author) {
+                // Use the nested author object if available
+                logger.debug(`[Paragraph] Using nested author object from post API`, {
+                  authorId: post.author.id,
+                  username: post.author.username,
+                  wallet: post.author.wallet || post.author.walletAddress,
+                  publicationId: post.author.publicationId,
+                }, true);
+                
+                // Convert nested author to ParagraphUser format
+                if (post.author.wallet || post.author.walletAddress) {
+                  const authorWallet = (post.author.wallet || post.author.walletAddress)!.toLowerCase();
+                  // Try to get full author details by wallet
+                  const fullAuthor = await getUserByWallet(authorWallet);
+                  if (fullAuthor) {
+                    paragraphPostAuthor = fullAuthor;
+                    logger.debug(`[Paragraph] Found full author details: ${fullAuthor.name}, publicationId: ${fullAuthor.publicationId}`, {}, true);
+                  } else {
+                    // Use partial author info from nested object
+                    paragraphPostAuthor = {
+                      name: post.author.name || post.author.username || null,
+                      publicationId: post.author.publicationId || null,
+                      walletAddress: authorWallet,
+                    };
+                    logger.debug(`[Paragraph] Using partial author info from nested object`, {}, true);
+                  }
                 } else {
-                  logger.warn(`[Paragraph] Author not found for wallet: ${authorWallet} - wallet may not have Paragraph account`);
+                  // No wallet in author object, use what we have
+                  paragraphPostAuthor = {
+                    name: post.author.name || post.author.username || null,
+                    publicationId: post.author.publicationId || null,
+                  };
                 }
               } else {
-                logger.warn(`[Paragraph] No author wallet found (post owner or contract creator)`);
+                // Fallback: Try to get author from wallet
+                let authorWallet: string | null = null;
+                
+                if (post.ownerWalletAddress) {
+                  authorWallet = post.ownerWalletAddress;
+                  logger.debug(`[Paragraph] Using post.ownerWalletAddress: ${authorWallet}`, {}, true);
+                } else if (post.ownerUserId && post.ownerUserId.startsWith("0x")) {
+                  authorWallet = post.ownerUserId;
+                  logger.debug(`[Paragraph] Using post.ownerUserId: ${authorWallet}`, {}, true);
+                } else if (contractCreation?.contractCreator) {
+                  // Fallback to contract creator if post owner not available
+                  authorWallet = contractCreation.contractCreator;
+                  logger.debug(`[Paragraph] Using contract creator as fallback: ${authorWallet}`, {}, true);
+                }
+                
+                if (authorWallet) {
+                  logger.debug(`[Paragraph] Looking up author from wallet: ${authorWallet}`, {}, true);
+                  const author = await getUserByWallet(authorWallet);
+                  if (author) {
+                    logger.debug(`[Paragraph] Found author: ${author.name}, publicationId: ${author.publicationId}`, {}, true);
+                    paragraphPostAuthor = author;
+                  } else {
+                    logger.warn(`[Paragraph] Author not found for wallet: ${authorWallet} - wallet may not have Paragraph account`);
+                  }
+                } else {
+                  logger.warn(`[Paragraph] No author wallet found (post owner or contract creator)`);
+                }
               }
               
               // Fallback: If we still don't have URL, try using publicationId from post or author
