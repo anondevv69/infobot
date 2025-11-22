@@ -42,6 +42,16 @@ export interface ParagraphPost {
   ownerWalletAddress?: string | null;
 }
 
+export interface ParagraphPublication {
+  id: string;
+  name: string;
+  ownerUserId: string;
+  slug: string;
+  customDomain?: string | null;
+  summary?: string | null;
+  logoUrl?: string | null;
+}
+
 export interface ParagraphCoinHolder {
   walletAddress: string;
   userId?: string | null;
@@ -290,11 +300,11 @@ export async function getCoinHoldersById(
 
 /**
  * Get post by ID from Paragraph API
- * Note: This endpoint may not be publicly documented, but we'll try it
+ * Reference: https://paragraph.com/docs/api-reference/posts/get-post-by-id
  */
-export async function getPostById(postId: string): Promise<ParagraphPost | null> {
+export async function getPostById(postId: string, includeContent: boolean = false): Promise<ParagraphPost | null> {
   try {
-    const url = `${PARAGRAPH_API_BASE}/v1/posts/${postId}`;
+    const url = `${PARAGRAPH_API_BASE}/v1/posts/${postId}${includeContent ? "?includeContent=true" : ""}`;
     
     const response = await fetch(url, {
       method: "GET",
@@ -318,6 +328,76 @@ export async function getPostById(postId: string): Promise<ParagraphPost | null>
       return null;
     }
     console.warn(`[Paragraph] Failed to fetch post by ID ${postId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Get publication by custom domain from Paragraph API
+ * Reference: https://paragraph.com/docs/api-reference/publications/get-publication-by-custom-domain
+ */
+export async function getPublicationByDomain(domain: string): Promise<ParagraphPublication | null> {
+  try {
+    const url = `${PARAGRAPH_API_BASE}/v1/publications/domain/${encodeURIComponent(domain)}`;
+    
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null; // Publication not found
+      }
+      throw new Error(`Paragraph API error: ${response.status} ${response.statusText}`);
+    }
+
+    const publication = await response.json() as ParagraphPublication;
+    return publication;
+  } catch (error) {
+    // Don't throw - just log and return null (graceful degradation)
+    if (error instanceof Error && error.message.includes("404")) {
+      return null;
+    }
+    console.warn(`[Paragraph] Failed to fetch publication by domain ${domain}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Get publication by slug from Paragraph API
+ * Note: This endpoint may not be publicly documented, but we'll try it
+ */
+export async function getPublicationBySlug(slug: string): Promise<ParagraphPublication | null> {
+  try {
+    // Try the slug as if it were a domain first (some publications use slug as domain)
+    // If that fails, we might need to use a different endpoint
+    const url = `${PARAGRAPH_API_BASE}/v1/publications/domain/${encodeURIComponent(slug)}`;
+    
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null; // Publication not found
+      }
+      throw new Error(`Paragraph API error: ${response.status} ${response.statusText}`);
+    }
+
+    const publication = await response.json() as ParagraphPublication;
+    return publication;
+  } catch (error) {
+    // Don't throw - just log and return null (graceful degradation)
+    if (error instanceof Error && error.message.includes("404")) {
+      return null;
+    }
+    console.warn(`[Paragraph] Failed to fetch publication by slug ${slug}:`, error);
     return null;
   }
 }
