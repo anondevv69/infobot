@@ -113,7 +113,10 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
     let contractAddress: string | null = null;
     let coinId: string | null = null;
     
-    for (const pattern of CONTRACT_PATTERNS) {
+    logger.debug(`[Paragraph] Searching for contract address or coinId in HTML...`, {}, true);
+    
+    for (let i = 0; i < CONTRACT_PATTERNS.length; i++) {
+      const pattern = CONTRACT_PATTERNS[i];
       const matches = html.match(pattern);
       if (matches && matches.length > 0) {
         // For patterns with capture groups, use the captured group
@@ -129,22 +132,46 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
           logger.debug(`[Paragraph] ✅ Extracted contract address: ${contractAddress}`, {}, true);
           break;
         }
+      } else {
+        logger.debug(`[Paragraph] Pattern ${i + 1} did not match`, {}, true);
       }
     }
 
     // If we found coinId but not contractAddress, try to get coin by ID
     if (!contractAddress && coinId) {
+      logger.debug(`[Paragraph] Looking up coin by coinId: ${coinId}`, {}, true);
       const { getCoinById } = await import("../services/paragraph");
       const coin = await getCoinById(coinId);
       if (coin) {
         contractAddress = coin.contractAddress;
         logger.debug(`[Paragraph] Got contract address from coinId: ${contractAddress}`, {}, true);
+      } else {
+        logger.warn(`[Paragraph] Coin not found for coinId: ${coinId}`);
       }
     }
 
     if (!contractAddress) {
-      logger.warn(`[Paragraph] Unable to extract contract address from Paragraph post ${postUrl}`, { htmlSnippet: html.substring(0, 500) });
-      return false;
+      // Try a more aggressive search - look for any 0x address in JSON-like structures
+      logger.debug(`[Paragraph] Trying fallback: searching for any 0x address in JSON structures...`, {}, true);
+      const jsonMatch = html.match(/"0x[a-fA-F0-9]{40}"/);
+      if (jsonMatch) {
+        const potentialAddress = jsonMatch[0].replace(/"/g, "");
+        logger.debug(`[Paragraph] Found potential address in JSON: ${potentialAddress}`, {}, true);
+        // Verify it's actually a Paragraph coin
+        const coin = await getCoinByContract(potentialAddress);
+        if (coin) {
+          contractAddress = potentialAddress;
+          logger.debug(`[Paragraph] ✅ Verified contract address: ${contractAddress}`, {}, true);
+        }
+      }
+      
+      if (!contractAddress) {
+        logger.warn(`[Paragraph] Unable to extract contract address from Paragraph post ${postUrl}`, { 
+          htmlSnippet: html.substring(0, 1000),
+          hasCoinId: !!coinId 
+        });
+        return false;
+      }
     }
     
     logger.debug(`[Paragraph] ✅ Extracted contract: ${contractAddress} from ${postUrl}`, {}, true);
