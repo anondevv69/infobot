@@ -538,30 +538,45 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
                     logger.warn(`[Paragraph] Missing publicationId or slug`, { publicationId: author.publicationId, slug: post.slug });
                   }
                 } else {
-                  logger.warn(`[Paragraph] Author not found for wallet: ${authorWallet}`);
+                  logger.warn(`[Paragraph] Author not found for wallet: ${authorWallet} - wallet may not have Paragraph account`);
                 }
               } else {
                 logger.warn(`[Paragraph] No author wallet found (post owner or contract creator)`);
               }
               
-              // Fallback: Check if post has publicationId in the response
+              // Fallback 1: Check if post has publicationId in the response (API might include it)
               if (!paragraphPostUrl && post.publicationId && post.slug) {
                 paragraphPostUrl = `https://paragraph.com/@${post.publicationId}/${post.slug}`;
                 logger.debug(`[Paragraph] ✅ Constructed post URL from post.publicationId: ${paragraphPostUrl}`, {}, true);
               }
               
-              // Final fallback: if we have post slug but no publicationId, try to get publication from contract creator
+              // Fallback 2: Try to get publication by searching for the contract creator's Paragraph account
+              // This is already done above, but we're checking again here as a final fallback
               if (!paragraphPostUrl && post.slug && contractCreation?.contractCreator) {
-                logger.debug(`[Paragraph] Trying final fallback: get publication from contract creator`, {}, true);
-                // Try to get the user by wallet - if they have a Paragraph account, use their publicationId
-                const fallbackAuthor = await getUserByWallet(contractCreation.contractCreator);
-                if (fallbackAuthor?.publicationId) {
-                  paragraphPostAuthor = fallbackAuthor;
-                  paragraphPostUrl = `https://paragraph.com/@${fallbackAuthor.publicationId}/${post.slug}`;
-                  logger.debug(`[Paragraph] ✅ Constructed post URL from fallback author: ${paragraphPostUrl}`, {}, true);
-                } else {
-                  logger.warn(`[Paragraph] Cannot construct proper URL - missing author publicationId`, { slug: post.slug, contractCreator: contractCreation.contractCreator });
+                // Only try this if we haven't already tried this wallet
+                const alreadyTriedWallet = authorWallet === contractCreation.contractCreator;
+                if (!alreadyTriedWallet) {
+                  logger.debug(`[Paragraph] Trying final fallback: get publication from contract creator (different wallet)`, {}, true);
+                  const fallbackAuthor = await getUserByWallet(contractCreation.contractCreator);
+                  if (fallbackAuthor?.publicationId) {
+                    paragraphPostAuthor = fallbackAuthor;
+                    paragraphPostUrl = `https://paragraph.com/@${fallbackAuthor.publicationId}/${post.slug}`;
+                    logger.debug(`[Paragraph] ✅ Constructed post URL from fallback author: ${paragraphPostUrl}`, {}, true);
+                  } else {
+                    logger.warn(`[Paragraph] Final fallback failed - contract creator has no Paragraph account`, { contractCreator: contractCreation.contractCreator });
+                  }
                 }
+              }
+              
+              // If we still don't have a URL, log what we have
+              if (!paragraphPostUrl && post.slug) {
+                logger.warn(`[Paragraph] ⚠️ Cannot construct proper URL - will show generic message`, { 
+                  slug: post.slug, 
+                  hasPostPublicationId: !!post.publicationId,
+                  contractCreator: contractCreation?.contractCreator,
+                  postOwnerWallet: post.ownerWalletAddress,
+                  postOwnerUserId: post.ownerUserId
+                });
               }
             }
           } catch (error) {
