@@ -498,9 +498,13 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
             const { getPostById, getUserByWallet } = await import("../services/paragraph");
             const { logger } = await import("../utils/logger");
             
-            // Get post details to get the slug
+            // Get post details with full metadata (author, publication, content)
             logger.debug(`[Paragraph] Getting post by ID: ${finalParagraphCoin.postId}`, {}, true);
-            const post = await getPostById(finalParagraphCoin.postId);
+            const post = await getPostById(finalParagraphCoin.postId, {
+              includeAuthor: true,
+              includePublication: true,
+              includeContent: false, // We don't need the full content, just metadata
+            });
             
             if (!post) {
               logger.warn(`[Paragraph] Post not found for postId: ${finalParagraphCoin.postId}`);

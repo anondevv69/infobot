@@ -242,7 +242,11 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
               
               // Get post details to get the slug
               logger.debug(`[Paragraph] [Telegram] Getting post by ID: ${finalParagraphCoin.postId}`, {}, true);
-              const post = await getPostById(finalParagraphCoin.postId);
+              const post = await getPostById(finalParagraphCoin.postId, {
+                includeAuthor: true,
+                includePublication: true,
+                includeContent: false,
+              });
               
               if (!post) {
                 logger.warn(`[Paragraph] [Telegram] Post not found for postId: ${finalParagraphCoin.postId}`);

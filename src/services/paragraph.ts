@@ -303,10 +303,35 @@ export async function getCoinHoldersById(
 /**
  * Get post by ID from Paragraph API
  * Reference: https://paragraph.com/docs/api-reference/posts/get-post-by-id
+ * 
+ * @param postId - The post ID
+ * @param options - Options for including additional data
+ * @param options.includeContent - Include full post content (markdown, HTML, JSON)
+ * @param options.includeAuthor - Include author information (authorId, author profile)
+ * @param options.includePublication - Include publication information (publicationSlug, publicationId)
  */
-export async function getPostById(postId: string, includeContent: boolean = false): Promise<ParagraphPost | null> {
+export async function getPostById(
+  postId: string,
+  options?: {
+    includeContent?: boolean;
+    includeAuthor?: boolean;
+    includePublication?: boolean;
+  }
+): Promise<ParagraphPost | null> {
   try {
-    const url = `${PARAGRAPH_API_BASE}/v1/posts/${postId}${includeContent ? "?includeContent=true" : ""}`;
+    const params = new URLSearchParams();
+    if (options?.includeContent) {
+      params.append("includeContent", "true");
+    }
+    if (options?.includeAuthor) {
+      params.append("includeAuthor", "true");
+    }
+    if (options?.includePublication) {
+      params.append("includePublication", "true");
+    }
+    
+    const queryString = params.toString();
+    const url = `${PARAGRAPH_API_BASE}/v1/posts/${postId}${queryString ? `?${queryString}` : ""}`;
     
     const response = await fetch(url, {
       method: "GET",
