@@ -373,16 +373,13 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
         }
 
         // Try Zora profile lookup (Zora-only wallet, no Farcaster user)
+        // Only show if the summary is actually associated with the address
         const zoraSummary = await findBestZoraSummary([address.toLowerCase()]);
-        if (zoraSummary) {
+        if (zoraSummary && isSummaryAssociatedWithAddress(zoraSummary, address)) {
           // Use buildZoraWalletProfileResponse for wallet lookups (same as Discord)
-          const associated = isSummaryAssociatedWithAddress(zoraSummary, address)
-            ? zoraSummary
-            : null;
-          
           const zoraResponse = buildZoraWalletProfileResponse({
             wallet: address,
-            summary: associated ?? zoraSummary,
+            summary: zoraSummary,
             returnAllPages: true, // Get all pages for Telegram
           });
           

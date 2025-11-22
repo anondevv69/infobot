@@ -172,7 +172,7 @@ class Logger {
     }
   }
 
-  // Search logging - send to webhook
+  // Search logging - only log failures or when stuck (not routine searches)
   search(
     query: string,
     platform: "discord" | "telegram",
@@ -181,6 +181,16 @@ class Logger {
     channelId?: string,
     result?: { success: boolean; type?: string; count?: number },
   ): void {
+    // Only log to webhook if search failed or got stuck (pending for too long)
+    const isFailure = result?.success === false;
+    const isStuck = result?.type === "pending";
+    
+    if (!isFailure && !isStuck) {
+      // Routine successful search - only log to console, not webhook
+      console.log(`[SEARCH] ${platform.toUpperCase()}: ${query} (✓)`);
+      return;
+    }
+
     const meta: Record<string, any> = {
       query,
       result: result?.success ? "success" : "failed",
@@ -193,7 +203,7 @@ class Logger {
 
     const entry = this.createEntry(
       "search",
-      `Search: ${query}`,
+      `Search: ${query}${isStuck ? " (STUCK)" : isFailure ? " (FAILED)" : ""}`,
       meta,
       platform,
       userId,
@@ -203,26 +213,39 @@ class Logger {
 
     console.log(`[SEARCH] ${platform.toUpperCase()}: ${query} (${result?.success ? "✓" : "✗"})`);
     
-    // Send to webhook
+    // Send to webhook only for failures or stuck searches
     const webhookMessage = this.formatMessage(entry);
     this.sendToWebhook(webhookMessage).catch(() => {
       // Ignore webhook errors
     });
   }
 
-  // System activity logging (Clanker checks, etc.) - send to webhook
+  // System activity logging - only log errors or important events (not routine checks)
   system(
     activity: string,
     meta?: Record<string, any>,
   ): void {
+    // Only log to webhook if it's an error, warning, or important event (not routine checks)
+    const isRoutineCheck = activity.includes("Deployment check complete") || 
+                          activity.includes("Starting deployment check") ||
+                          activity.includes("Found recent tokens");
+    
+    const isImportant = activity.includes("ERROR") || 
+                       activity.includes("WARN") || 
+                       activity.includes("NEW") ||
+                       activity.includes("Bot is in webhook server") ||
+                       activity.includes("Started monitoring");
+    
     const entry = this.createEntry("system", activity, meta);
     console.log(`[SYSTEM] ${activity}`);
     
-    // Send to webhook
-    const webhookMessage = this.formatMessage(entry);
-    this.sendToWebhook(webhookMessage).catch(() => {
-      // Ignore webhook errors
-    });
+    // Only send to webhook for important events, not routine checks
+    if (!isRoutineCheck || isImportant) {
+      const webhookMessage = this.formatMessage(entry);
+      this.sendToWebhook(webhookMessage).catch(() => {
+        // Ignore webhook errors
+      });
+    }
   }
 
   // Command logging (only console, no webhook for commands)
