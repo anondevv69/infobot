@@ -241,7 +241,8 @@ async function main(): Promise<void> {
       text.includes("x.com") || text.includes("twitter.com") || // X links
       text.includes("farcaster.xyz") || // Farcaster links
       text.includes("zora.co") || // Zora links
-      text.includes("clanker.world"); // Clanker links
+      text.includes("clanker.world") || // Clanker links
+      text.includes("paragraph.com") || text.includes("paragraph.xyz"); // Paragraph links
 
     if (mightTriggerResponse) {
       await showDiscordTypingIndicator(message);

@@ -9,7 +9,8 @@ import { env } from "../config";
 import { applyBranding } from "../utils/branding";
 import { logger } from "../utils/logger";
 
-const PARAGRAPH_URL_REGEX = /https?:\/\/(?:www\.)?paragraph\.(?:com|xyz)\/@([^\/]+)\/([^\s)]+)/i;
+// More lenient regex to catch various URL formats
+const PARAGRAPH_URL_REGEX = /https?:\/\/(?:www\.)?paragraph\.(?:com|xyz)\/@([^\/\s\)]+)\/([^\s\)]+)/i;
 
 export async function handleParagraphPostMessage(message: Message): Promise<boolean> {
   if (message.author.bot || !message.content) {
@@ -179,22 +180,44 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
       return true;
     }
 
-    // Get post author information if we have the creator address
+    // Get post details and author information
     let paragraphPostAuthor: { name?: string | null; bio?: string | null; farcaster?: { username: string } | null; publicationId?: string | null } | null = null;
+    let finalPostUrl = postUrl; // Default to the URL we extracted from the message
+    
     try {
       const { getPostById } = await import("../services/paragraph");
       const post = await getPostById(coin.postId);
       
+      logger.debug(`[Paragraph] Got post by ID ${coin.postId}`, { 
+        slug: post?.slug, 
+        title: post?.title,
+        hasOwnerWallet: !!post?.ownerWalletAddress,
+        hasOwnerUserId: !!post?.ownerUserId 
+      }, true);
+      
+      // Get author from post owner to get publicationId
       if (post?.ownerWalletAddress) {
         const author = await getUserByWallet(post.ownerWalletAddress);
         if (author) {
           paragraphPostAuthor = author;
+          logger.debug(`[Paragraph] Found author from ownerWalletAddress: ${author.name}, publicationId: ${author.publicationId}`, {}, true);
         }
       } else if (post?.ownerUserId && post.ownerUserId.startsWith("0x")) {
         const author = await getUserByWallet(post.ownerUserId);
         if (author) {
           paragraphPostAuthor = author;
+          logger.debug(`[Paragraph] Found author from ownerUserId: ${author.name}, publicationId: ${author.publicationId}`, {}, true);
         }
+      }
+      
+      // Construct the proper post URL using publicationId and slug from the API
+      if (paragraphPostAuthor?.publicationId && post?.slug) {
+        finalPostUrl = `https://paragraph.com/@${paragraphPostAuthor.publicationId}/${post.slug}`;
+        logger.debug(`[Paragraph] ✅ Constructed proper post URL: ${finalPostUrl}`, {}, true);
+      } else if (post?.slug) {
+        // If we have slug but no publicationId, try using the publication from the original URL
+        finalPostUrl = `https://paragraph.com/@${publication}/${post.slug}`;
+        logger.debug(`[Paragraph] Using publication from URL with post slug: ${finalPostUrl}`, {}, true);
       }
     } catch (error) {
       logger.warn(`[Paragraph] Failed to get post author for ${coin.postId}`, { error: error instanceof Error ? error.message : String(error) });
@@ -212,7 +235,7 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
       creationTx?.hash ?? null,
       coin, // Include Paragraph coin info
       paragraphPostAuthor ?? undefined, // Paragraph post author if available
-      postUrl, // Pass the original post URL
+      finalPostUrl, // Use the properly constructed post URL
     );
 
     await message.reply({ embeds: [embed], components });
