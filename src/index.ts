@@ -20,6 +20,7 @@ import { handleTokenDetailButton } from "./handlers/tokenDetailButton";
 import { handleZoraAddressMessage } from "./handlers/zoraAddress";
 import { handleUsernameMessage } from "./handlers/username";
 import { handleBasePostMessage } from "./handlers/basePost";
+import { handleParagraphPostMessage } from "./handlers/paragraphPost";
 import { handleZoraProfileMessage } from "./handlers/zoraProfile";
 import { handleZoraProfileCommand } from "./commands/zora";
 import { TOKEN_DETAIL_BUTTON_PREFIX } from "./utils/clankerEmbeds";
@@ -254,6 +255,9 @@ async function main(): Promise<void> {
       return;
     }
     if (await handleBasePostMessage(message)) {
+      return;
+    }
+    if (await handleParagraphPostMessage(message)) {
       return;
     }
     if (await handleClankerAddressMessage(message)) {

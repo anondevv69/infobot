@@ -1059,6 +1059,63 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
       }
     }
 
+    // Check if it's a Paragraph post link
+    const paragraphUrlRegex = /https?:\/\/(?:www\.)?paragraph\.(?:com|xyz)\/@([^\/]+)\/([^\s)]+)/i;
+    if (paragraphUrlRegex.test(text)) {
+      try {
+        const match = text.match(paragraphUrlRegex);
+        if (match) {
+          const postUrl = match[0];
+          const publication = match[1];
+          const slug = match[2];
+          
+          // Fetch the Paragraph post page to extract contract address
+          const response = await fetch(postUrl, {
+            headers: {
+              "User-Agent": "telegram-bot/1.0",
+              Accept: "text/html,application/xhtml+xml",
+            },
+          });
+          
+          if (response.ok) {
+            const html = await response.text();
+            
+            // Extract contract address
+            const CONTRACT_PATTERNS = [
+              /0x[a-fA-F0-9]{40}/g,
+              /"contractAddress"\s*:\s*"(0x[a-fA-F0-9]{40})"/i,
+              /contractAddress["']?\s*[:=]\s*["']?(0x[a-fA-F0-9]{40})/i,
+            ];
+            
+            let contractAddress: string | null = null;
+            for (const pattern of CONTRACT_PATTERNS) {
+              const matches = html.match(pattern);
+              if (matches && matches.length > 0) {
+                contractAddress = matches[0].replace(/["':=]/g, "").trim();
+                if (contractAddress.startsWith("0x") && contractAddress.length === 42) {
+                  break;
+                }
+              }
+            }
+            
+            if (contractAddress) {
+              // Look up the coin and show token info
+              const { getCoinByContract } = await import("../../../services/paragraph");
+              const coin = await getCoinByContract(contractAddress).catch(() => null);
+              
+              // Process as a token address (will go through normal token detection)
+              // Just trigger the address detection flow
+              await processMessage(bot, chatId, contractAddress);
+              return;
+            }
+          }
+        }
+      } catch (error) {
+        console.error("[Telegram] Error handling Paragraph post:", error);
+        // Continue to other handlers
+      }
+    }
+
     // Check if it's a Base post link (base.org or base.app)
     const basePostRegex = /https:\/\/base\.(?:org|app)\/post\/[^\s)]+/i;
     if (basePostRegex.test(text)) {
