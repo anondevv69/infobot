@@ -49,6 +49,7 @@ export async function buildBaseTokenEmbed(
   creationTxHash?: string | null,
   paragraphCoin?: { id: string; contractAddress: string; symbol: string; postId: string } | null,
   paragraphPostAuthor?: { name?: string | null; bio?: string | null; farcaster?: { username: string } | null; publicationId?: string | null } | null,
+  paragraphPostUrl?: string | null, // Original Paragraph post URL (e.g., https://paragraph.com/@blog/writer-coins)
 ): Promise<{
   embed: EmbedBuilder;
   components: ActionRowBuilder<ButtonBuilder>[];
@@ -135,11 +136,10 @@ export async function buildBaseTokenEmbed(
 
   // Add Paragraph post info if available
   if (paragraphCoin) {
-    // The postId from the API is the post slug/ID, use it directly in the URL
-    // Format: https://paragraph.com/@post/{postId}
-    const paragraphPostUrl = `https://paragraph.com/@post/${paragraphCoin.postId}`;
+    // Use the original post URL if provided, otherwise construct from postId
+    const finalParagraphPostUrl = paragraphPostUrl || `https://paragraph.com/@post/${paragraphCoin.postId}`;
     const paragraphLines: string[] = [];
-    paragraphLines.push(`**Post:** [View on Paragraph](${paragraphPostUrl})`);
+    paragraphLines.push(`**Post:** [View on Paragraph](${finalParagraphPostUrl})`);
     
     // Add post author information if available
     if (paragraphPostAuthor) {

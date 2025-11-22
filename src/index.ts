@@ -251,13 +251,14 @@ async function main(): Promise<void> {
     if (await handleXAccountMessage(message)) {
       return;
     }
-    if (await handleZoraProfileMessage(message)) {
+    // Check Paragraph URLs BEFORE Zora/Farcaster profile lookups to avoid false matches
+    if (await handleParagraphPostMessage(message)) {
       return;
     }
     if (await handleBasePostMessage(message)) {
       return;
     }
-    if (await handleParagraphPostMessage(message)) {
+    if (await handleZoraProfileMessage(message)) {
       return;
     }
     if (await handleClankerAddressMessage(message)) {

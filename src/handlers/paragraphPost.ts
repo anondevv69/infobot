@@ -127,6 +127,27 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
       return true;
     }
 
+    // Get post author information if we have the creator address
+    let paragraphPostAuthor: { name?: string | null; bio?: string | null; farcaster?: { username: string } | null; publicationId?: string | null } | null = null;
+    try {
+      const { getPostById } = await import("../services/paragraph");
+      const post = await getPostById(coin.postId);
+      
+      if (post?.ownerWalletAddress) {
+        const author = await getUserByWallet(post.ownerWalletAddress);
+        if (author) {
+          paragraphPostAuthor = author;
+        }
+      } else if (post?.ownerUserId && post.ownerUserId.startsWith("0x")) {
+        const author = await getUserByWallet(post.ownerUserId);
+        if (author) {
+          paragraphPostAuthor = author;
+        }
+      }
+    } catch (error) {
+      console.warn(`[Paragraph] Failed to get post author for ${coin.postId}:`, error);
+    }
+
     // Build full token embed with Paragraph coin info
     const { embed, components } = await buildBaseTokenEmbed(
       contractAddress,
@@ -138,30 +159,9 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
       contractCreation?.createdAt ?? null,
       creationTx?.hash ?? null,
       coin, // Include Paragraph coin info
+      paragraphPostAuthor ?? undefined, // Paragraph post author if available
+      postUrl, // Pass the original post URL
     );
-
-    // Get post author information if we have the creator address
-    if (contractCreation?.contractCreator) {
-      const author = await getUserByWallet(contractCreation.contractCreator);
-      if (author) {
-        const authorInfo: string[] = [];
-        authorInfo.push(`**Author:** ${author.name || "Unknown"}`);
-        if (author.bio) {
-          authorInfo.push(`**Bio:** ${author.bio.substring(0, 200)}${author.bio.length > 200 ? "..." : ""}`);
-        }
-        if (author.farcaster) {
-          authorInfo.push(`**Farcaster:** [@${author.farcaster.username}](https://farcaster.xyz/${author.farcaster.username})`);
-        }
-        const paragraphProfileUrl = `https://paragraph.xyz/@${author.publicationId}`;
-        authorInfo.push(`**Paragraph:** [View Profile](${paragraphProfileUrl})`);
-
-        embed.addFields({
-          name: "📝 Post Author",
-          value: authorInfo.join("\n"),
-          inline: false,
-        });
-      }
-    }
 
     await message.reply({ embeds: [embed], components });
     return true;

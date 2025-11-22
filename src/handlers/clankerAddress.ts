@@ -527,6 +527,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           contractCreation?.txHash ?? null, // Creation transaction hash
           finalParagraphCoin ?? undefined, // Paragraph coin info if available
           paragraphPostAuthor ?? undefined, // Paragraph post author if available
+          undefined, // No original post URL when detected from contract address
         );
 
         const factoryDisplayName = finalFactory ? ` (${finalFactory.name})` : "";
