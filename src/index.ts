@@ -195,10 +195,9 @@ async function main(): Promise<void> {
     }
 
     // Show typing indicator (eye emoji reaction) for auto-detected messages
-    // Only for addresses, URLs, and links - NOT for keywords or @mentions
+    // Only for URLs and links - NOT for addresses or keywords
     const text = message.content?.toLowerCase() || "";
     const mightTriggerResponse = 
-      text.includes("0x") || // Address
       text.includes("farcaster.xyz") || // Farcaster links
       text.includes("zora.co") || // Zora links
       text.includes("clanker.world") || // Clanker links
@@ -206,6 +205,17 @@ async function main(): Promise<void> {
 
     if (mightTriggerResponse) {
       await showDiscordTypingIndicator(message);
+    }
+
+    // Handle text command "info 0x..." or "info <query>"
+    const infoCommandMatch = text.match(/^info\s+(.+)$/i);
+    if (infoCommandMatch) {
+      const query = infoCommandMatch[1].trim();
+      if (query) {
+        const { handleTextInfoCommand } = await import("./handlers/textInfoCommand");
+        await handleTextInfoCommand(message, query);
+        return;
+      }
     }
 
     // Check Paragraph URLs FIRST to avoid false matches
@@ -218,12 +228,8 @@ async function main(): Promise<void> {
     if (await handleZoraProfileMessage(message)) {
       return;
     }
-    if (await handleClankerAddressMessage(message)) {
-      return;
-    }
-    if (await handleZoraAddressMessage(message)) {
-      return;
-    }
+    // Address auto-detection removed - use "info 0x..." or "/info 0x..." instead
+    // Only URL handlers remain (Paragraph, Base, Zora profile, Cast links)
     await handleCastLinkMessage(message);
   });
 
