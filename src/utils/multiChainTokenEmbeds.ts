@@ -56,6 +56,8 @@ function getChainExplorerUrl(chainId: string, address: string): string {
     "fantom": `https://ftmscan.com/address/${address}`,
     "5000": `https://explorer.mantle.xyz/address/${address}`,
     "mantle": `https://explorer.mantle.xyz/address/${address}`,
+    "5001": `https://monadvision.com/address/${address}`,
+    "monad": `https://monadvision.com/address/${address}`,
   };
   return explorerMap[chainId.toLowerCase()] ?? `https://etherscan.io/address/${address}`;
 }
@@ -82,6 +84,8 @@ function getChainTxExplorerUrl(chainId: string, txHash: string): string {
     "fantom": `https://ftmscan.com/tx/${txHash}`,
     "5000": `https://explorer.mantle.xyz/tx/${txHash}`,
     "mantle": `https://explorer.mantle.xyz/tx/${txHash}`,
+    "5001": `https://monadvision.com/tx/${txHash}`,
+    "monad": `https://monadvision.com/tx/${txHash}`,
   };
   return txExplorerMap[chainIdLower] ?? `https://etherscan.io/tx/${txHash}`;
 }

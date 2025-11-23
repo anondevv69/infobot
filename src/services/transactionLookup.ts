@@ -98,7 +98,7 @@ const CHAIN_CONFIGS: ChainConfig[] = [
     chainId: 5001,
     name: "Monad",
     explorerApi: null, // BlockVision API handles this
-    explorerUrl: "https://monad.blockscout.com/tx", // Placeholder - update when explorer is available
+    explorerUrl: "https://monadvision.com/tx",
     rpcUrl: "https://monad-mainnet.blockvision.org/v1", // BlockVision RPC endpoint
   },
   {
