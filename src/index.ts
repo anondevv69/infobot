@@ -11,21 +11,15 @@ import { handleHelpCommand } from "./commands/help";
 import { handleSearchCommand } from "./commands/search";
 import { handleCastsCommand } from "./commands/casts";
 import { handleCastLinkMessage } from "./handlers/castLink";
-import { handleCastKeywordMessage } from "./handlers/castKeyword";
-import { handleFarSearchMessage } from "./handlers/farSearch";
-import { handleZoraSearchMessage } from "./handlers/zoraSearch";
-import { handleWalletSearchMessage } from "./handlers/walletSearch";
 import { handleClankerAddressMessage } from "./handlers/clankerAddress";
 import { handleTokenDetailButton } from "./handlers/tokenDetailButton";
 import { handleZoraAddressMessage } from "./handlers/zoraAddress";
-import { handleUsernameMessage } from "./handlers/username";
 import { handleBasePostMessage } from "./handlers/basePost";
 import { handleParagraphPostMessage } from "./handlers/paragraphPost";
 import { handleZoraProfileMessage } from "./handlers/zoraProfile";
 import { handleZoraProfileCommand } from "./commands/zora";
 import { TOKEN_DETAIL_BUTTON_PREFIX } from "./utils/clankerEmbeds";
 import { COPY_BUTTON_PREFIX } from "./utils/copyButtons";
-import { handleXAccountMessage } from "./handlers/xAccount";
 import { handleCopyValueButton } from "./handlers/copyValueButton";
 import { handleClankerCommand, handleClankerPagination } from "./commands/clanker";
 import { handleRelayCommand } from "./commands/relay";
@@ -201,16 +195,10 @@ async function main(): Promise<void> {
     }
 
     // Show typing indicator (eye emoji reaction) for auto-detected messages
-    // We'll add it early, but only if the message might trigger a response
+    // Only for addresses, URLs, and links - NOT for keywords or @mentions
     const text = message.content?.toLowerCase() || "";
     const mightTriggerResponse = 
       text.includes("0x") || // Address
-      text.includes("cast") || // Cast keyword
-      text.includes("far ") || // Far search
-      text.includes("zora ") || // Zora search
-      text.includes("wallet ") || // Wallet search
-      text.startsWith("@") || // Username
-      text.includes("x.com") || text.includes("twitter.com") || // X links
       text.includes("farcaster.xyz") || // Farcaster links
       text.includes("zora.co") || // Zora links
       text.includes("clanker.world") || // Clanker links
@@ -220,13 +208,8 @@ async function main(): Promise<void> {
       await showDiscordTypingIndicator(message);
     }
 
-    // Check Paragraph URLs FIRST to avoid false matches with @username in URLs
+    // Check Paragraph URLs FIRST to avoid false matches
     if (await handleParagraphPostMessage(message)) {
-      return;
-    }
-    
-    await handleUsernameMessage(message);
-    if (await handleXAccountMessage(message)) {
       return;
     }
     if (await handleBasePostMessage(message)) {
@@ -239,18 +222,6 @@ async function main(): Promise<void> {
       return;
     }
     if (await handleZoraAddressMessage(message)) {
-      return;
-    }
-    if (await handleCastKeywordMessage(message)) {
-      return;
-    }
-    if (await handleFarSearchMessage(message)) {
-      return;
-    }
-    if (await handleZoraSearchMessage(message)) {
-      return;
-    }
-    if (await handleWalletSearchMessage(message)) {
       return;
     }
     await handleCastLinkMessage(message);

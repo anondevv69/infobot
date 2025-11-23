@@ -19,7 +19,11 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
 
   // Check if message contains paragraph.com or paragraph.xyz
   const hasParagraphUrl = /paragraph\.(?:com|xyz)/i.test(message.content);
-  logger.debug(`[Paragraph] Checking message: hasParagraphUrl=${hasParagraphUrl}, content="${message.content.substring(0, 200)}..."`, {}, true);
+  
+  // Only proceed if we actually have a Paragraph URL - no debug logging for every message
+  if (!hasParagraphUrl) {
+    return false;
+  }
   
   // Discord might wrap URLs in angle brackets or markdown, so try to extract clean URL first
   let cleanContent = message.content;
@@ -41,22 +45,19 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
   let slug: string; // The post slug from the URL (e.g., "writer-coins")
   
   if (!urlMatch) {
-    logger.debug(`[Paragraph] URL regex did not match. Original: "${message.content.substring(0, 200)}", Cleaned: "${cleanContent.substring(0, 200)}"`, {}, true);
     // Try a more lenient pattern to see what's in the message
     const anyUrlMatch = cleanContent.match(/paragraph\.(?:com|xyz)\/[^\s)]+/i) || message.content.match(/paragraph\.(?:com|xyz)\/[^\s)]+/i);
     if (anyUrlMatch) {
-      logger.debug(`[Paragraph] Found paragraph URL but regex didn't match: "${anyUrlMatch[0]}"`, { regex: PARAGRAPH_URL_REGEX.toString() }, true);
       // Try to manually extract publication and slug
       const manualMatch = anyUrlMatch[0].match(/@([^\/]+)\/([^\s)]+)/);
       if (manualMatch) {
-        logger.debug(`[Paragraph] Manual extraction: publication=${manualMatch[1]}, slug=${manualMatch[2]}`, {}, true);
         // Use the full URL from the match
         postUrl = anyUrlMatch[0].startsWith('http') ? anyUrlMatch[0] : `https://${anyUrlMatch[0]}`;
         publicationSlug = manualMatch[1];
         slug = manualMatch[2];
         
         // Continue with processing using manually extracted values
-        logger.debug(`[Paragraph] ✅ Using manually extracted URL: ${postUrl}, publication: ${publicationSlug}, slug: ${slug}`, {}, true);
+        logger.debug(`[Paragraph] Processing URL: ${postUrl}`, { publication: publicationSlug, slug }, true);
       } else {
         return false;
       }
@@ -68,7 +69,7 @@ export async function handleParagraphPostMessage(message: Message): Promise<bool
     publicationSlug = urlMatch[1]; // e.g., "blog"
     slug = urlMatch[2]; // e.g., "writer-coins"
     
-    logger.debug(`[Paragraph] ✅ Matched URL: ${postUrl}, publication: ${publicationSlug}, slug: ${slug}`, {}, true);
+    logger.debug(`[Paragraph] Processing URL: ${postUrl}`, { publication: publicationSlug, slug }, true);
   }
 
   try {
