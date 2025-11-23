@@ -33,6 +33,7 @@ function getChainRPCs(quicknodeApiKey?: string | null): ChainRPC[] {
     { chainId: 43114, name: "Avalanche", quicknodeEndpoint: "avalanche" },
     { chainId: 250, name: "Fantom", quicknodeEndpoint: "fantom" },
     { chainId: 5000, name: "Mantle", quicknodeEndpoint: "mantle" },
+    { chainId: 5001, name: "Monad", quicknodeEndpoint: "monad" },
   ];
 
   // Public RPC fallbacks
@@ -46,6 +47,7 @@ function getChainRPCs(quicknodeApiKey?: string | null): ChainRPC[] {
     43114: "https://api.avax.network/ext/bc/C/rpc",
     250: "https://rpc.ftm.tools",
     5000: "https://rpc.mantle.xyz",
+    5001: "https://monad-mainnet.blockvision.org/v1", // BlockVision RPC endpoint
   };
 
   // Use QuickNode if API key is provided

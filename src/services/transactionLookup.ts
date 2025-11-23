@@ -1,7 +1,9 @@
 /**
  * Multi-chain transaction lookup service
- * Supports Base, Ethereum, Polygon, Arbitrum, Optimism, Avalanche, Fantom, BSC, Mantle, and more
+ * Supports Base, Ethereum, Polygon, Arbitrum, Optimism, Avalanche, Fantom, BSC, Mantle, Monad, and more
  */
+
+import { getMonadTransaction, MONAD_CHAIN_ID } from "./blockvision";
 
 export interface TransactionInfo {
   txHash: string;
@@ -93,6 +95,13 @@ const CHAIN_CONFIGS: ChainConfig[] = [
     rpcUrl: "https://rpc.mantle.xyz",
   },
   {
+    chainId: 5001,
+    name: "Monad",
+    explorerApi: null, // BlockVision API handles this
+    explorerUrl: "https://monad.blockscout.com/tx", // Placeholder - update when explorer is available
+    rpcUrl: "https://monad-mainnet.blockvision.org/v1", // BlockVision RPC endpoint
+  },
+  {
     chainId: 100,
     name: "Gnosis",
     explorerApi: "https://api.gnosisscan.io/api",
@@ -163,6 +172,33 @@ async function tryLookupOnChain(
   txHash: string,
   config: ChainConfig,
 ): Promise<TransactionInfo | null> {
+  // Special handling for Monad (uses BlockVision API)
+  if (config.chainId === MONAD_CHAIN_ID) {
+    try {
+      const tx = await getMonadTransaction(txHash);
+      if (tx) {
+        return {
+          txHash: tx.hash,
+          chainId: config.chainId,
+          chainName: config.name,
+          from: tx.from,
+          to: tx.to,
+          value: tx.value,
+          status: tx.status,
+          blockNumber: tx.blockNumber,
+          timestamp: tx.timestamp,
+          gasUsed: tx.gasUsed || null,
+          gasPrice: tx.gasPrice || null,
+          explorerUrl: `${config.explorerUrl}/${txHash}`,
+        };
+      }
+      return null;
+    } catch (error) {
+      console.warn(`BlockVision API lookup failed for Monad:`, error);
+      return null;
+    }
+  }
+
   // Try explorer API first if available
   if (config.explorerApi) {
     try {

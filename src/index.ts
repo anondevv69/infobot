@@ -249,12 +249,15 @@ async function handleChatCommand(
 
   switch (interaction.commandName) {
     case "search":
+    case "info":
       await handleSearchCommand(interaction);
       break;
     case "casts":
+    case "cast":
       await handleCastsCommand(interaction);
       break;
     case "zora":
+    case "z":
       await handleZoraProfileCommand(interaction);
       break;
     case "help":
@@ -265,6 +268,15 @@ async function handleChatCommand(
       break;
     case "relay":
       await handleRelayCommand(interaction);
+      break;
+    case "far":
+      await handleFarCommand(interaction);
+      break;
+    case "w":
+      await handleWCommand(interaction);
+      break;
+    case "x":
+      await handleXCommand(interaction);
       break;
     default:
       await interaction.reply({

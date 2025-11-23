@@ -359,7 +359,14 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string): P
           // Detect factory: if creationTx.to exists, that's the factory address
           let factoryName: string | null = null;
           if (creationTx?.to) {
-            factoryName = `Factory: ${creationTx.to.slice(0, 10)}...${creationTx.to.slice(-8)}`;
+            const factoryAddress = creationTx.to.toLowerCase();
+            const { getTokenFactoryName, createTokenFactory } = await import("../../../services/baseFactories");
+            const knownFactoryName = getTokenFactoryName(factoryAddress);
+            if (knownFactoryName) {
+              factoryName = knownFactoryName;
+            } else {
+              factoryName = `Factory: ${factoryAddress.slice(0, 10)}...${factoryAddress.slice(-8)}`;
+            }
           }
 
           // Add creator info to token data before building embed

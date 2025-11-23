@@ -36,6 +36,9 @@ export const TOKEN_FACTORY_MAP: Record<string, string> = {
   // Paragraph (multiple factory addresses)
   "0x9e68675b4bbaa7c281e07496cf24bae65e8450ec": "Paragraph",
   "0x660eaaedc5ba8d12c5ba8d12c5ba8d12c5ba8d12": "Paragraph", // Partial match - need full address
+  // Monad factories
+  "0x961235a9020b05c44df1026d956d1f4d78014276": "Nad.fun", // Nad.fun Factory on Monad
+  "0xf9a0c289eab6b571c6247094a853810987e5b26d": "Clanker", // Clanker Factory on Monad
 };
 
 export const BASE_FACTORIES: Record<string, BaseFactory> = {
@@ -150,15 +153,25 @@ export function getFactoryByAddress(address: string): BaseFactory | null {
 /**
  * Create a BaseFactory object from a token factory address
  */
-export function createTokenFactory(address: string): BaseFactory | null {
+export function createTokenFactory(address: string, chainId?: number | string): BaseFactory | null {
   const factoryName = getTokenFactoryName(address);
   if (!factoryName) {
     return null;
   }
+  
+  // Determine explorer URL based on chain
+  let explorerUrl: string;
+  if (chainId === 5001 || chainId === "5001" || chainId === "monad") {
+    explorerUrl = `https://monad.blockscout.com/address/${address}`;
+  } else {
+    // Default to Base explorer
+    explorerUrl = `https://basescan.org/address/${address}`;
+  }
+  
   return {
     name: factoryName,
     address: address.toLowerCase(),
-    explorerUrl: `https://basescan.org/address/${address}`,
+    explorerUrl,
   };
 }
 

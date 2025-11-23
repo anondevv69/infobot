@@ -23,6 +23,7 @@ export const env = {
   basescanApiKey: process.env.BASESCAN_API_KEY, // Optional: for better rate limits
   quicknodeApiKey: process.env.QUICKNODE_API_KEY, // Optional: for premium RPC endpoints
   oneinchApiKey: process.env.ONEINCH_API_KEY, // Optional: for 1inch DEX aggregator (better rate limits)
+  blockvisionApiKey: process.env.BLOCKVISION_API_KEY || "35tVwNXLcX6v9pGXcxQYrb852Qx", // BlockVision API key for Monad
   farcasterReferralCode: process.env.FARCASTER_REFERRAL_CODE ?? "2ORGMS",
   backendUrl: process.env.BACKEND_URL || "https://infobot-production-f74e.up.railway.app", // Backend URL for SIWF callbacks
   miniappUrl: process.env.MINIAPP_URL || "https://farcaster.xyz/miniapps/J68v-h9yA2J3/infobot", // Mini App URL for Farcaster authentication (Farcaster-hosted URL)

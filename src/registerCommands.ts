@@ -63,6 +63,67 @@ async function registerCommands(): Promise<void> {
           .setDescription("Full transaction link (e.g., https://basescan.org/tx/0x...) or transaction hash")
           .setRequired(true),
       ),
+    new SlashCommandBuilder()
+      .setName("cast")
+      .setDescription("Search Farcaster casts by keyword (alias for /casts).")
+      .addStringOption((option) =>
+        option
+          .setName("keyword")
+          .setDescription("Keyword or phrase to search for in casts")
+          .setRequired(true),
+      )
+      .addIntegerOption((option) =>
+        option
+          .setName("recent_count")
+          .setDescription("Number of recent casts to include (0-5, default 2)")
+          .setMinValue(0)
+          .setMaxValue(5),
+      ),
+    new SlashCommandBuilder()
+      .setName("far")
+      .setDescription("Search Farcaster users by username or wallet address.")
+      .addStringOption((option) =>
+        option
+          .setName("query")
+          .setDescription("Farcaster username (@username) or wallet address (0x...)")
+          .setRequired(true),
+      ),
+    new SlashCommandBuilder()
+      .setName("z")
+      .setDescription("Search Zora accounts, contracts, or creator coins (alias for /zora).")
+      .addStringOption((option) =>
+        option
+          .setName("query")
+          .setDescription("Zora account handle, contract address, or creator coin")
+          .setRequired(true),
+      ),
+    new SlashCommandBuilder()
+      .setName("w")
+      .setDescription("Lookup wallet address (Ethereum or Solana).")
+      .addStringOption((option) =>
+        option
+          .setName("query")
+          .setDescription("Wallet address (0x... for Ethereum or base58 for Solana)")
+          .setRequired(true),
+      ),
+    new SlashCommandBuilder()
+      .setName("x")
+      .setDescription("Lookup Farcaster profile by X/Twitter handle or URL.")
+      .addStringOption((option) =>
+        option
+          .setName("query")
+          .setDescription("X/Twitter handle (@username) or URL (https://x.com/username)")
+          .setRequired(true),
+      ),
+    new SlashCommandBuilder()
+      .setName("info")
+      .setDescription("Universal search for wallets, contracts, profiles, or transactions (alias for /search).")
+      .addStringOption((option) =>
+        option
+          .setName("query")
+          .setDescription("Wallet (0x...), contract, Farcaster username, Zora account, or transaction hash")
+          .setRequired(true),
+      ),
   ].map((command) => command.toJSON());
 
   const rest = new REST({ version: "10" }).setToken(token);

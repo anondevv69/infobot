@@ -1,7 +1,9 @@
 /**
  * Multi-chain contract creation service
- * Supports Base, BSC, Ethereum, Polygon, Arbitrum, Optimism, Avalanche, Fantom, Mantle
+ * Supports Base, BSC, Ethereum, Polygon, Arbitrum, Optimism, Avalanche, Fantom, Mantle, Monad
  */
+
+import { getMonadContractCreation, MONAD_CHAIN_ID } from "./blockvision";
 
 interface ContractCreation {
   contractAddress: string;
@@ -21,6 +23,8 @@ function getRpcUrl(chainId: string): string | null {
   const rpcMap: Record<string, string> = {
     "5000": "https://rpc.mantle.xyz",
     "mantle": "https://rpc.mantle.xyz",
+    "5001": "https://monad-mainnet.blockvision.org/v1",
+    "monad": "https://monad-mainnet.blockvision.org/v1",
     "1": "https://eth.llamarpc.com",
     "eth": "https://eth.llamarpc.com",
     "ethereum": "https://eth.llamarpc.com",
@@ -273,6 +277,31 @@ export async function getContractCreation(
         }
       }
       // If V2 fails, continue to fallback methods below
+    }
+
+    // Special handling for Monad (uses BlockVision API)
+    if (chainId.toLowerCase() === "5001" || chainId.toLowerCase() === "monad") {
+      try {
+        const creation = await getMonadContractCreation(contractAddress);
+        if (creation) {
+          const result: ContractCreation = {
+            contractAddress,
+            contractCreator: creation.contractCreator,
+            txHash: creation.txHash,
+            chainId: chainId,
+            createdAt: creation.createdAt,
+          };
+          // Cache the result
+          const normalizedAddress = contractAddress.toLowerCase();
+          const cacheKey = `${chainId}:${normalizedAddress}`;
+          creatorCache.set(cacheKey, result);
+          return result;
+        }
+      } catch (error) {
+        console.warn(`[ContractCreation] BlockVision API failed for Monad:`, error);
+      }
+      // Fallback to RPC if BlockVision API fails
+      return await getContractCreationViaRPC(contractAddress, chainId);
     }
 
     const apiBase = getExplorerApiBase(chainId);
@@ -561,5 +590,6 @@ export async function getContractCreationTx(
     return null;
   }
 }
+
 
 

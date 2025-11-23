@@ -3,6 +3,8 @@
  * Gets basic information about an address across multiple chains
  */
 
+import { getMonadAccountInfo, MONAD_CHAIN_ID } from "./blockvision";
+
 export interface AddressInfo {
   chainId: number;
   chainName: string;
@@ -85,6 +87,13 @@ const CHAIN_CONFIGS: ChainConfig[] = [
     explorerUrl: "https://explorer.mantle.xyz/address",
     rpcUrl: "https://rpc.mantle.xyz",
   },
+  {
+    chainId: 5001,
+    name: "Monad",
+    explorerApi: null, // BlockVision API handles this
+    explorerUrl: "https://monad.blockscout.com/address", // Placeholder - update when explorer is available
+    rpcUrl: "https://monad-mainnet.blockvision.org/v1", // BlockVision RPC endpoint
+  },
 ];
 
 /**
@@ -119,6 +128,33 @@ async function lookupAddressOnChain(
   address: string,
   config: ChainConfig,
 ): Promise<AddressInfo | null> {
+  // Special handling for Monad (uses BlockVision API)
+  if (config.chainId === MONAD_CHAIN_ID) {
+    try {
+      const accountInfo = await getMonadAccountInfo(address);
+      if (accountInfo) {
+        // Convert balance from hex to decimal string
+        const balanceWei = BigInt(accountInfo.balance);
+        // Only return if address has activity
+        if (balanceWei > 0n || accountInfo.transactionCount > 0) {
+          return {
+            chainId: config.chainId,
+            chainName: config.name,
+            address,
+            isContract: accountInfo.isContract,
+            balance: balanceWei.toString(),
+            transactionCount: accountInfo.transactionCount,
+            explorerUrl: `${config.explorerUrl}/${address}`,
+          };
+        }
+      }
+      return null;
+    } catch (error) {
+      console.warn(`BlockVision API lookup failed for Monad:`, error);
+      return null;
+    }
+  }
+
   // Try explorer API first if available
   if (config.explorerApi) {
     try {
