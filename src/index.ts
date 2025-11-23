@@ -39,35 +39,7 @@ import { logger } from "./utils/logger";
 async function main(): Promise<void> {
   validateRequiredEnv();
 
-  // Log SIWF URL configuration on startup
-  console.log("=".repeat(60));
-  console.log("[STARTUP] SIWF Configuration Check:");
-  try {
-    const { generateSIWFUrl } = await import("./services/siwf");
-    const testUrl = generateSIWFUrl(
-      "startup-test-challenge",
-      "startup-test-user",
-      "discord",
-      env.backendUrl || "https://infobot-production-f74e.up.railway.app",
-      env.farcasterReferralCode,
-    );
-    const hasCorrectUrl = testUrl.includes("farcaster.xyz");
-    const hasWrongUrl = testUrl.includes("warpcast.com");
-    
-    console.log(`[STARTUP] Generated URL: ${testUrl.substring(0, 80)}...`);
-    console.log(`[STARTUP] Contains farcaster.xyz: ${hasCorrectUrl ? "✅ YES" : "❌ NO"}`);
-    console.log(`[STARTUP] Contains warpcast.com: ${hasWrongUrl ? "❌ YES (WRONG!)" : "✅ NO"}`);
-    console.log(`[STARTUP] Status: ${hasCorrectUrl && !hasWrongUrl ? "✅ CORRECT" : "❌ INCORRECT - Railway is running old code!"}`);
-    
-    if (!hasCorrectUrl || hasWrongUrl) {
-      console.error("[STARTUP] 🚨 WARNING: SIWF URL generation is INCORRECT!");
-      console.error("[STARTUP] 🚨 Railway is likely running old cached code!");
-      console.error("[STARTUP] 🚨 Fix: Clear Railway build cache and redeploy");
-    }
-  } catch (error) {
-    console.error("[STARTUP] Failed to test SIWF URL generation:", error);
-  }
-  console.log("=".repeat(60));
+  // Wallet integration code removed - no SIWF configuration check needed
 
   // Handle unhandled promise rejections to prevent crashes
   process.on("unhandledRejection", (error) => {
