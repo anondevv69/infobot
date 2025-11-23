@@ -1,30 +1,51 @@
 import { Client } from "discord.js";
 
 // Track unique users who have used commands
-// NOTE: These grow unbounded but are small (just IDs). Could add cleanup if needed.
-const uniqueUsers = new Set<string>();
-const uniqueTelegramUsers = new Set<number>();
+// Store with timestamp for cleanup
+interface UserEntry {
+  lastSeen: number;
+}
+
+const uniqueUsers = new Map<string, UserEntry>(); // Discord user IDs with timestamps
+const uniqueTelegramUsers = new Map<number, UserEntry>(); // Telegram user IDs with timestamps
 const totalSearches = { count: 0 };
 const startTime = Date.now();
 
 // Track response times for commands (in milliseconds)
 const responseTimes: number[] = [];
 const MAX_RESPONSE_TIMES = 1000; // Keep last 1000 response times for average
+const MAX_AGE_MS = 60 * 60 * 1000; // 1 hour - maximum age for any stored data
 
 // Periodic cleanup to prevent memory bloat
-// Clean up old response times every hour
+// Clean up old data every hour
 setInterval(() => {
+  const now = Date.now();
+  
+  // Clean up old response times (keep only last 1000)
   if (responseTimes.length > MAX_RESPONSE_TIMES) {
-    // Keep only the most recent entries
     responseTimes.splice(0, responseTimes.length - MAX_RESPONSE_TIMES);
+  }
+  
+  // Clean up users not seen in the last hour
+  for (const [userId, entry] of uniqueUsers.entries()) {
+    if (now - entry.lastSeen > MAX_AGE_MS) {
+      uniqueUsers.delete(userId);
+    }
+  }
+  
+  for (const [userId, entry] of uniqueTelegramUsers.entries()) {
+    if (now - entry.lastSeen > MAX_AGE_MS) {
+      uniqueTelegramUsers.delete(userId);
+    }
   }
 }, 60 * 60 * 1000); // Every hour
 
 export function trackUser(userId: string, platform: "discord" | "telegram"): void {
+  const now = Date.now();
   if (platform === "discord") {
-    uniqueUsers.add(userId);
+    uniqueUsers.set(userId, { lastSeen: now });
   } else {
-    uniqueTelegramUsers.add(Number(userId));
+    uniqueTelegramUsers.set(Number(userId), { lastSeen: now });
   }
 }
 
@@ -63,6 +84,7 @@ export async function getBotStats(client: Client): Promise<{
 
   // Calculate total unique users (Discord + Telegram)
   // Tracked when users run commands (search, etc.)
+  // Note: Users are cleaned up after 1 hour of inactivity
   const totalUsers = uniqueUsers.size + uniqueTelegramUsers.size;
 
   // Telegram chats are tracked when bot receives messages from new groups/channels

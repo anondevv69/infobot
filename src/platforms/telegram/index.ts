@@ -11,12 +11,12 @@ import { trackUser, trackSearch, setTelegramChatCount } from "../../utils/botSta
 // This Set is small (just chat IDs as numbers) and won't cause memory issues
 const seenTelegramChats = new Set<number>();
 
-// Optional: Clear cache periodically (every 24 hours) to sync with database
-// This ensures we don't have stale data if database is updated externally
+// Clear cache periodically (every 1 hour) to prevent memory bloat
+// This ensures we don't accumulate too much data in memory
 setInterval(() => {
   seenTelegramChats.clear();
   setTelegramChatCount(0);
-}, 24 * 60 * 60 * 1000); // Every 24 hours
+}, 60 * 60 * 1000); // Every 1 hour
 
 export async function startTelegramBot(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;

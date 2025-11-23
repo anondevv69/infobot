@@ -172,10 +172,10 @@ export async function handleGeneralPagination(
 // Helper to store embed for pagination
 export function storeEmbedForPagination(identifier: string, embed: EmbedBuilder): void {
   paginationStore.set(identifier, embed);
-  // Clean up after 5 minutes
+  // Clean up after 1 hour (maximum storage time)
   setTimeout(() => {
     paginationStore.delete(identifier);
-  }, 5 * 60 * 1000);
+  }, 60 * 60 * 1000); // 1 hour
 }
 
 // Reconstruct page labels based on identifier and embed titles
