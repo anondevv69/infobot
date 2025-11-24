@@ -14,13 +14,25 @@ export function detectPastedContent(message: Message): { type: string; query: st
     return null;
   }
 
-  // Check for Ethereum or Solana addresses
+  // Check for Ethereum or Solana addresses (wallets/contracts)
+  // Allow addresses to be detected even if there's some whitespace or formatting
   const address = extractFirstAddress(content);
   if (address && (isEthAddress(address) || isSolAddress(address))) {
-    // Only trigger if it's a standalone address (not part of a URL or command)
-    const isStandalone = /^0x[a-fA-F0-9]{40}$/i.test(content.trim()) || /^[1-9A-HJ-NP-Za-km-z]{32,48}$/.test(content.trim());
-    if (isStandalone || content.trim() === address) {
-      return { type: "contract", query: address };
+    // Trigger if the address is the main content (allowing for whitespace, markdown, etc.)
+    // Don't trigger if it's part of a URL (has http:// or https://)
+    const isUrl = /https?:\/\//i.test(content);
+    if (!isUrl) {
+      // Check if address is the main content (allowing whitespace and basic formatting)
+      const cleanedContent = content.replace(/[`*_~]/g, "").trim(); // Remove markdown formatting
+      if (cleanedContent === address || cleanedContent.toLowerCase() === address.toLowerCase()) {
+        return { type: "contract", query: address };
+      }
+      // Also trigger if content is mostly just the address with minimal extra text
+      const addressOnly = cleanedContent.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+      const addressOnlyClean = address.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+      if (addressOnly === addressOnlyClean && cleanedContent.length <= address.length + 10) {
+        return { type: "contract", query: address };
+      }
     }
   }
 
