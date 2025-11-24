@@ -419,7 +419,7 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
             return;
           }
 
-          // Check for multi-chain tokens (Mantle, BSC, etc.)
+          // Check for multi-chain tokens (Mantle, BSC, Monad, etc.)
           let multiChainTokenData;
           try {
             multiChainTokenData = await fetchMultiChainTokenData(address);
@@ -443,6 +443,58 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
               logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
                 success: true,
                 type: "wallet_multi_chain_token",
+              });
+              return;
+            }
+          }
+
+          // Fallback: Check if it's a Monad contract (BlockVision API)
+          // DexScreener might not have all Monad tokens yet, so we check directly
+          if (!baseTokenData && !multiChainTokenData) {
+            const { getMonadAccountInfo, MONAD_CHAIN_ID } = await import("../../../services/blockvision");
+            const monadAccountInfo = await getMonadAccountInfo(address).catch(() => null);
+            
+            if (monadAccountInfo?.isContract) {
+              // It's a contract on Monad, create a basic token embed
+              const { getContractCreation } = await import("../../../services/contractCreation");
+              
+              // Try to get contract creation info
+              const contractCreation = await getContractCreation(address, "monad").catch(() => null);
+              
+              // Create a basic Monad token data structure
+              const monadTokenData: import("../../../services/dexscreener").MultiChainTokenData = {
+                chainId: String(MONAD_CHAIN_ID),
+                chainName: "Monad",
+                tokenName: null,
+                tokenSymbol: null,
+                priceUsd: null,
+                priceChange24h: null,
+                volume24h: null,
+                liquidity: null,
+                marketCap: null,
+                fdv: null,
+                trades24h: null,
+                dexUrl: null,
+                dexName: null,
+                pairAddress: null,
+                creatorAddress: contractCreation?.contractCreator ?? null,
+                factoryName: null,
+                createdAt: contractCreation?.createdAt ?? null,
+                creationTxHash: contractCreation?.txHash ?? null,
+              };
+              
+              const { embed, components } = await buildMultiChainTokenEmbed(address, monadTokenData);
+              const telegramMessages = embedsToTelegram([embed]);
+              const telegramText = Array.isArray(telegramMessages) ? telegramMessages.join("\n\n") : telegramMessages;
+              
+              await bot.sendMessage(chatId, telegramText, {
+                parse_mode: "HTML",
+                disable_web_page_preview: true,
+              });
+              
+              logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+                success: true,
+                type: "wallet_monad_token",
               });
               return;
             }
