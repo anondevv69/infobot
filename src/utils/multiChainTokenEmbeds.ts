@@ -65,7 +65,13 @@ function getChainExplorerUrl(chainId: string | number, address: string): string 
   const explorerUrl = explorerMap[normalizedChainId];
   if (!explorerUrl) {
     console.warn(`[MultiChainToken] Unknown chainId: "${chainId}" (normalized: "${normalizedChainId}"), falling back to Etherscan`);
+    console.warn(`[MultiChainToken] Available chainIds in map: ${Object.keys(explorerMap).join(", ")}`);
     return `https://etherscan.io/address/${address}`;
+  }
+  
+  // Debug logging for Monad
+  if (normalizedChainId === "monad" || normalizedChainId === "5001") {
+    console.log(`[MultiChainToken] Monad explorer URL generated: "${explorerUrl}" for address "${address}"`);
   }
   
   return explorerUrl;
