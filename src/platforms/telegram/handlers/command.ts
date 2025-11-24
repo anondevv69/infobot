@@ -509,9 +509,10 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
 
           // Fallback: Check if it's a Monad contract (BlockVision API)
           // DexScreener might not have all Monad tokens yet, so we check directly
+          let monadAccountInfo: { isContract: boolean } | null = null;
           if (!baseTokenData && !multiChainTokenData) {
             const { getMonadAccountInfo, MONAD_CHAIN_ID } = await import("../../../services/blockvision");
-            const monadAccountInfo = await getMonadAccountInfo(address).catch(() => null);
+            monadAccountInfo = await getMonadAccountInfo(address).catch(() => null);
             
             if (monadAccountInfo?.isContract) {
               // It's a contract on Monad, create a basic token embed
@@ -556,6 +557,107 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
                 type: "wallet_monad_token",
               });
               return;
+            }
+          }
+
+          // Fallback: Check for ERC-20 tokens not on DEXes (via RPC calls)
+          // This catches tokens that DexScreener doesn't have yet
+          if (!baseTokenData && !multiChainTokenData && !monadAccountInfo?.isContract) {
+            try {
+              const { detectTokenContract } = await import("../../../services/tokenDetection");
+              const tokenDetectionPromise = detectTokenContract(address);
+              const timeoutPromise = new Promise<null>((resolve) => {
+                setTimeout(() => {
+                  console.log(`[Telegram Search] Token detection timeout for ${address}`);
+                  resolve(null);
+                }, 8000); // 8 second timeout
+              });
+              const tokenInfo = await Promise.race([tokenDetectionPromise, timeoutPromise]).catch(() => null);
+
+              if (tokenInfo && tokenInfo.isToken) {
+                const { getContractCreation } = await import("../../../services/contractCreation");
+                const contractCreation = await getContractCreation(address, tokenInfo.chainName.toLowerCase()).catch(() => null);
+                
+                const { EmbedBuilder } = await import("discord.js");
+                const { applyBranding } = await import("../../../utils/branding");
+                const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
+                
+                // Build a basic token embed
+                const embed = new EmbedBuilder()
+                  .setTitle(`🪙 ${tokenInfo.symbol || "Token"} • ${tokenInfo.name || "Unknown"}`)
+                  .setDescription(`Token contract detected on ${tokenInfo.chainName}`)
+                  .addFields(
+                    {
+                      name: "🔗 Chain",
+                      value: tokenInfo.chainName,
+                      inline: true,
+                    },
+                    {
+                      name: "🏠 Name",
+                      value: tokenInfo.name || "Unknown",
+                      inline: true,
+                    },
+                    {
+                      name: "🔖 Symbol",
+                      value: tokenInfo.symbol || "Unknown",
+                      inline: true,
+                    },
+                    {
+                      name: "🔑 Address",
+                      value: `\`${address}\``,
+                      inline: false,
+                    }
+                  )
+                  .setColor(0x5865f2);
+
+                if (tokenInfo.decimals !== null) {
+                  embed.addFields({
+                    name: "🔢 Decimals",
+                    value: String(tokenInfo.decimals),
+                    inline: true,
+                  });
+                }
+
+                if (tokenInfo.totalSupply) {
+                  embed.addFields({
+                    name: "📊 Total Supply",
+                    value: tokenInfo.totalSupply,
+                    inline: true,
+                  });
+                }
+
+                if (contractCreation?.contractCreator) {
+                  embed.addFields({
+                    name: "👤 Creator",
+                    value: `\`${contractCreation.contractCreator}\``,
+                    inline: false,
+                  });
+                }
+
+                embed.addFields({
+                  name: "⚠️ Note",
+                  value: "This token is not yet listed on any DEX tracked by DexScreener. It may be a new token that hasn't created a liquidity pool yet.",
+                  inline: false,
+                });
+
+                applyBranding(embed, "erc20 token");
+
+                const telegramMessages = embedsToTelegram([embed]);
+                const telegramText = Array.isArray(telegramMessages) ? telegramMessages.join("\n\n") : telegramMessages;
+                
+                await bot.sendMessage(chatId, telegramText, {
+                  parse_mode: "HTML",
+                  disable_web_page_preview: true,
+                });
+
+                logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+                  success: true,
+                  type: "wallet_erc20_token",
+                });
+                return;
+              }
+            } catch (error) {
+              console.error(`[Telegram Search] Token detection failed for ${address}:`, error);
             }
           }
         }
