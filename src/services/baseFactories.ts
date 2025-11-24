@@ -162,7 +162,7 @@ export function createTokenFactory(address: string, chainId?: number | string): 
   // Determine explorer URL based on chain
   let explorerUrl: string;
   if (chainId === 5001 || chainId === "5001" || chainId === "monad") {
-    explorerUrl = `https://monadvision.com/address/${address}`;
+    explorerUrl = `https://monadscan.com/address/${address}`;
   } else {
     // Default to Base explorer
     explorerUrl = `https://basescan.org/address/${address}`;

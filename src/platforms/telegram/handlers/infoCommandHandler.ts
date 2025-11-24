@@ -108,7 +108,7 @@ function detectAutoSearchUrls(query: string): string[] {
   }
   
   // Explorer links (Basescan, Etherscan, etc.)
-  if (/https?:\/\/(?:www\.)?(?:basescan|etherscan|polygonscan|arbiscan|optimistic\.etherscan|snowtrace|ftmscan|explorer\.mantle|monadvision)\.(?:org|com|xyz)\/[^\s<>()]+/i.test(query)) {
+  if (/https?:\/\/(?:www\.)?(?:basescan|etherscan|polygonscan|arbiscan|optimistic\.etherscan|snowtrace|ftmscan|explorer\.mantle|monadscan)\.(?:org|com|xyz)\/[^\s<>()]+/i.test(query)) {
     detected.push("explorer");
   }
   

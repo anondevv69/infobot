@@ -132,15 +132,15 @@ async function sendMonadDeploymentNotification(deployment: MonadDeployment): Pro
       ? `**Deployer Address:** \`${deployment.deployerAddress}\`\n`
       : "";
 
-    const explorerUrl = `https://monadvision.com/address/${deployment.contractAddress}`;
+    const explorerUrl = `https://monadscan.com/address/${deployment.contractAddress}`;
     const txUrl = deployment.deployerAddress
-      ? `https://monadvision.com/address/${deployment.deployerAddress}`
+      ? `https://monadscan.com/address/${deployment.deployerAddress}`
       : explorerUrl;
 
     const message = {
       content: `@everyone 🟢 **NEW MONAD CLANKER TOKEN DEPLOYED**\n\n` +
         `**Contract:** \`${deployment.contractAddress}\`\n` +
-        `**Explorer:** [View on MonadVision](${explorerUrl})\n\n` +
+        `**Explorer:** [View on MonadScan](${explorerUrl})\n\n` +
         deployerInfo +
         `**Cast:** [View on Farcaster](${deployment.castUrl})\n` +
         `**Timestamp:** <t:${Math.floor(deployment.timestamp / 1000)}:R>`,

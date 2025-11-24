@@ -91,7 +91,7 @@ const CHAIN_CONFIGS: ChainConfig[] = [
     chainId: 5001,
     name: "Monad",
     explorerApi: null, // BlockVision API handles this
-    explorerUrl: "https://monadvision.com/address",
+    explorerUrl: "https://monadscan.com/address",
     rpcUrl: "https://monad-mainnet.blockvision.org/v1", // BlockVision RPC endpoint
   },
 ];
