@@ -22,16 +22,25 @@ export function detectPastedContent(message: Message): { type: string; query: st
     // Don't trigger if it's part of a URL (has http:// or https://)
     const isUrl = /https?:\/\//i.test(content);
     if (!isUrl) {
-      // Check if address is the main content (allowing whitespace and basic formatting)
-      const cleanedContent = content.replace(/[`*_~]/g, "").trim(); // Remove markdown formatting
-      if (cleanedContent === address || cleanedContent.toLowerCase() === address.toLowerCase()) {
+      // Remove markdown formatting and normalize whitespace
+      const cleanedContent = content.replace(/[`*_~]/g, "").replace(/\s+/g, " ").trim();
+      const normalizedAddress = address.toLowerCase();
+      const normalizedContent = cleanedContent.toLowerCase();
+      
+      // Check if content is exactly the address (allowing whitespace)
+      if (normalizedContent === normalizedAddress) {
         return { type: "contract", query: address };
       }
-      // Also trigger if content is mostly just the address with minimal extra text
+      
+      // Check if content is mostly just the address (remove all non-alphanumeric and compare)
       const addressOnly = cleanedContent.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
       const addressOnlyClean = address.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-      if (addressOnly === addressOnlyClean && cleanedContent.length <= address.length + 10) {
-        return { type: "contract", query: address };
+      if (addressOnly === addressOnlyClean) {
+        // If the cleaned content is just the address with minimal extra characters, trigger
+        const extraChars = cleanedContent.length - address.length;
+        if (extraChars <= 5) { // Allow up to 5 extra characters (whitespace, formatting, etc.)
+          return { type: "contract", query: address };
+        }
       }
     }
   }

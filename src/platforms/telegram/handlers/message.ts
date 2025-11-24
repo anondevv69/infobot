@@ -36,11 +36,14 @@ export async function handleTelegramMessage(
       msg.entities?.some(e => e.type === "mention" && text.substring(e.offset, e.offset + e.length) === `@${botUsername}`)
     );
     
-    // Only process if it mentions the bot OR is clearly a URL OR starts with "info"
+    // Check for addresses (wallets/contracts) - these should trigger prompts
+    const hasAddress = extractFirstAddress(text) && (isEthAddress(extractFirstAddress(text)!) || isSolAddress(extractFirstAddress(text)!));
+    
+    // Only process if it mentions the bot OR is clearly a URL OR starts with "info" OR is an address
     const hasFarcasterLink = /https?:\/\/(?:www\.)?farcaster\.xyz\/[^\s<>()]+/gi.test(text);
     const hasParagraphLink = /https?:\/\/(?:www\.)?paragraph\.(?:com|xyz)\/[^\s<>()]+/gi.test(text);
     const isInfoCommand = /^info\s+/i.test(text);
-    if (!mentionsBot && !isInfoCommand && !text.includes("zora.co") && !text.includes("clanker.world") && !hasFarcasterLink && !hasParagraphLink) {
+    if (!mentionsBot && !isInfoCommand && !text.includes("zora.co") && !text.includes("clanker.world") && !hasFarcasterLink && !hasParagraphLink && !hasAddress) {
       return; // Ignore messages in groups that don't mention the bot
     }
     
