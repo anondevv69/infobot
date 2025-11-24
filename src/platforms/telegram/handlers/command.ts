@@ -392,6 +392,63 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
             // Fetch creator address for Base tokens
             const contractCreation = await getContractCreation(address, "base").catch(() => null);
             
+            // If this is a Paragraph token, fetch post details and author
+            let paragraphPostAuthor: { name?: string | null; bio?: string | null; farcaster?: { username: string } | null; publicationId?: string | null; walletAddress?: string } | null = null;
+            let paragraphPostUrl: string | null = null;
+            
+            if (paragraphCoin) {
+              try {
+                const { getPostById } = await import("../../../services/paragraph");
+                const post = await getPostById(paragraphCoin.postId, {
+                  includeAuthor: true,
+                  includePublication: true,
+                  includeContent: false,
+                });
+                
+                if (post) {
+                  // Build post URL from publication slug and post slug
+                  if (post.publicationSlug && post.slug) {
+                    paragraphPostUrl = `https://paragraph.com/@${post.publicationSlug}/${post.slug}`;
+                  } else if (post.publicationSlug) {
+                    paragraphPostUrl = `https://paragraph.com/@${post.publicationSlug}`;
+                  }
+                  
+                  // Extract author information
+                  if (post.author || post.authorId) {
+                    const author = post.author;
+                    const authorWallet = author?.walletAddress ?? author?.wallet ?? undefined;
+                    paragraphPostAuthor = {
+                      name: author?.name ?? null,
+                      bio: null,
+                      farcaster: null,
+                      publicationId: author?.publicationId ?? post.publicationId ?? null,
+                      walletAddress: authorWallet,
+                    };
+                    
+                    // If we have a wallet address, try to get full user info including Farcaster
+                    if (authorWallet) {
+                      try {
+                        const { getUserByWallet } = await import("../../../services/paragraph");
+                        const fullUser = await getUserByWallet(authorWallet);
+                        if (fullUser && paragraphPostAuthor) {
+                          paragraphPostAuthor.farcaster = fullUser.farcaster ? {
+                            username: fullUser.farcaster.username,
+                          } : null;
+                          paragraphPostAuthor.name = paragraphPostAuthor.name ?? fullUser.name ?? null;
+                          paragraphPostAuthor.publicationId = paragraphPostAuthor.publicationId ?? fullUser.publicationId ?? null;
+                        }
+                      } catch (error) {
+                        // Ignore errors fetching full user info
+                      }
+                    }
+                  }
+                }
+              } catch (error) {
+                // Ignore errors fetching post details
+                console.warn(`[Telegram Search] Failed to fetch Paragraph post details:`, error);
+              }
+            }
+            
             const { embed, components } = await buildBaseTokenEmbed(
               address,
               null, // tokenName
@@ -402,6 +459,8 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
               contractCreation?.createdAt ?? null,
               contractCreation?.txHash ?? null,
               paragraphCoin ?? null,
+              paragraphPostAuthor ?? undefined,
+              paragraphPostUrl ?? undefined,
             );
 
             const telegramMessages = embedsToTelegram([embed]);
