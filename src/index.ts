@@ -221,7 +221,7 @@ async function main(): Promise<void> {
       }
     }
 
-    // Check for auto-detected pasted content (addresses, Twitter links, etc.)
+    // Check for auto-detected pasted content (addresses, Twitter links, Farcaster links, etc.)
     // These show confirmation prompts
     const { detectPastedContent, showAutoDetectPrompt } = await import("./handlers/autoDetectPrompt");
     const detected = detectPastedContent(message);
@@ -230,7 +230,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    // Check Paragraph URLs FIRST to avoid false matches
+    // Check Paragraph URLs FIRST to avoid false matches (these auto-search without confirmation)
     if (await handleParagraphPostMessage(message)) {
       return;
     }
@@ -240,8 +240,8 @@ async function main(): Promise<void> {
     if (await handleZoraProfileMessage(message)) {
       return;
     }
-    // Handle Farcaster cast links
-    await handleCastLinkMessage(message);
+    // Clanker URLs auto-search without confirmation
+    // Note: Farcaster URLs are now handled by auto-detect prompt above
   });
 
   await client.login(requireEnv(env.discordToken, "DISCORD_TOKEN"));

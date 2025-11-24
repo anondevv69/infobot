@@ -81,15 +81,15 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string, us
     // Send typing indicator for any search operation
     await bot.sendChatAction(chatId, "typing");
     
-    // Process URLs (Zora, Clanker, Farcaster, Paragraph, Base) - these auto-search without confirmation
+    // Process URLs (Zora, Clanker, Paragraph, Base) - these auto-search without confirmation
+    // Note: Farcaster URLs are now handled by auto-detect prompt above
     // Check for URL patterns
     const hasZoraUrl = text.includes("zora.co");
     const hasClankerUrl = text.includes("clanker.world");
-    const hasFarcasterUrl = /https?:\/\/(?:www\.)?(?:farcaster\.xyz|warpcast\.com)\/[^\s<>()]+/gi.test(text);
     const hasParagraphUrl = /https?:\/\/(?:www\.)?paragraph\.(?:com|xyz)\/[^\s<>()]+/gi.test(text);
     const hasBaseUrl = /https?:\/\/(?:www\.)?(?:base\.org|base\.app)\/[^\s<>()]+/gi.test(text);
     
-    if (!hasZoraUrl && !hasClankerUrl && !hasFarcasterUrl && !hasParagraphUrl && !hasBaseUrl) {
+    if (!hasZoraUrl && !hasClankerUrl && !hasParagraphUrl && !hasBaseUrl) {
       // No URLs detected, nothing to process
       return;
     }
@@ -173,81 +173,8 @@ async function processMessage(bot: TelegramBot, chatId: number, text: string, us
       }
     }
     
-    // Handle Farcaster URLs
-    if (hasFarcasterUrl) {
-      // Check if it's a Farcaster cast link
-      const castUrlRegex = /(https?:\/\/(?:www\.)?(?:warpcast\.com|fcast\.me|farcaster\.xyz)\/[^\s]+)/i;
-      if (castUrlRegex.test(text)) {
-        try {
-          const match = text.match(castUrlRegex);
-          if (match) {
-            const castUrl = match[0].replace(/[).,!?\]]*$/, "");
-            const { findCastByUrl, fetchEmbeddedUrlMetadata } = await import("../../../services/neynar");
-            
-            let cast = await findCastByUrl(castUrl);
-            
-            if (!cast) {
-              try {
-                const metadata = await fetchEmbeddedUrlMetadata(castUrl);
-                const frame = metadata?.frame as { post_url?: string } | undefined;
-                const resolvedUrl = frame?.post_url || castUrl;
-                if (resolvedUrl !== castUrl) {
-                  cast = await findCastByUrl(resolvedUrl);
-                }
-              } catch (metaError) {
-                // Continue with original URL
-              }
-            }
-            
-            if (cast) {
-              const { buildCastEmbed } = await import("../../../handlers/castLink");
-              const { buildCastUrl } = await import("../../../utils/farcasterLinks");
-              const embed = buildCastEmbed(cast, buildCastUrl(cast.author.username, cast.hash));
-              const messages = embedsToTelegram([embed]);
-              await bot.sendMessage(chatId, messages[0], {
-                parse_mode: "HTML",
-                disable_web_page_preview: true,
-              });
-              return;
-            }
-          }
-        } catch (error) {
-          console.error("[Telegram] Error handling cast link:", error);
-        }
-      }
-      
-      // Check for Farcaster profile URLs
-      const farcasterUrlMatch = text.match(/https?:\/\/(?:www\.)?farcaster\.xyz\/([a-z0-9][a-z0-9_.-]{0,31})/i);
-      if (farcasterUrlMatch) {
-        const username = farcasterUrlMatch[1].toLowerCase();
-        try {
-          const user = await findUserByUsername(username);
-          if (user) {
-            const [tokens, latestCast, zoraSummary] = await Promise.all([
-              safeFetchTokensByFid(user.fid),
-              safeFetchMostRecentCast(user.fid),
-              findBestZoraSummary(collectZoraIdentifiers(user)),
-            ]);
-            const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary) ? zoraSummary : null;
-            
-            const result = await buildFarcasterPresentation(user, {
-              tokens,
-              zoraSummary: associatedSummary,
-              latestCast,
-              returnAllPages: true,
-            });
-            const identifier = `farcaster_${user.fid}`;
-            const pageLabels = result.embeds.length > 1
-              ? ["Profile", "Clankers & Zora"]
-              : undefined;
-            await sendPaginatedTelegramMessage(bot, chatId, result.embeds, identifier, pageLabels);
-            return;
-          }
-        } catch (error) {
-          // User not found, continue
-        }
-      }
-    }
+    // Note: Farcaster URLs are now handled by auto-detect prompt above
+    // They show confirmation prompts instead of auto-searching
     
     // Handle Paragraph URLs
     if (hasParagraphUrl) {

@@ -40,6 +40,12 @@ export function detectPastedContent(text: string): { type: string; query: string
     return { type: "zora", query: content };
   }
 
+  // Check for Farcaster URLs (should show confirmation when pasted)
+  const farcasterUrlMatch = content.match(/https?:\/\/(?:www\.)?(?:farcaster\.xyz|warpcast\.com|fcast\.me)\/[^\s<>()]+/i);
+  if (farcasterUrlMatch) {
+    return { type: "farcaster_link", query: farcasterUrlMatch[0] };
+  }
+
   // Check for Farcaster usernames (standalone @username)
   const farcasterMatch = content.match(/^@([a-z0-9][a-z0-9_.-]{0,31})$/i);
   if (farcasterMatch) {
@@ -69,6 +75,8 @@ export async function showAutoDetectPrompt(
     promptText = `🔍 Found an X/Twitter link: ${username ? `@${username}` : detected.query}\n\nWould you like me to search for the linked Farcaster profile?`;
   } else if (detected.type === "zora") {
     promptText = `🔍 Found a Zora link or address: <code>${detected.query}</code>\n\nWould you like me to search for this Zora profile or token?`;
+  } else if (detected.type === "farcaster_link") {
+    promptText = `🔍 Found a Farcaster link: <code>${detected.query}</code>\n\nWould you like me to search for this Farcaster profile or cast?`;
   } else if (detected.type === "farcaster_username") {
     promptText = `🔍 Found a Farcaster username: <code>${detected.query}</code>\n\nWould you like me to search for their Farcaster profile?`;
   }
