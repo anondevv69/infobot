@@ -434,6 +434,11 @@ export class MonadClankerMonitor {
       const monadTokens = await fetchRecentMonadTokens(50);
       
       logger.debug(`[Monad Clanker Monitor] Found ${monadTokens.length} Monad tokens from Clanker.world API`);
+      
+      // Log all Monad tokens found for debugging
+      if (monadTokens.length > 0) {
+        logger.debug(`[Monad Clanker Monitor] Monad tokens: ${monadTokens.map(t => `${t.contract_address} (${t.deployed_at || t.created_at})`).join(", ")}`);
+      }
 
       for (const token of monadTokens) {
         if (!token.contract_address) {
@@ -447,17 +452,17 @@ export class MonadClankerMonitor {
           continue;
         }
 
-        // Check if token was deployed recently (within last 10 minutes)
+        // Check if token was deployed recently (within last 1 hour)
         const deployedAt = token.deployed_at || token.created_at;
         if (!deployedAt) {
           continue;
         }
 
         const deployedTime = new Date(deployedAt).getTime();
-        const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+        const oneHourAgo = Date.now() - (60 * 60 * 1000);
         
-        if (deployedTime < tenMinutesAgo) {
-          // Token is older than 10 minutes, skip it
+        if (deployedTime < oneHourAgo) {
+          // Token is older than 1 hour, skip it
           seenContracts.add(contractAddress); // Mark as seen to avoid checking again
           continue;
         }
@@ -497,24 +502,45 @@ export class MonadClankerMonitor {
           });
         }
 
-        // Also check if token has deployer info from Clanker API
-        if (!farcasterUser && token.msg_sender) {
-          try {
-            const user = await findUserByWallet(token.msg_sender);
-            if (user) {
+        // Also check if token has deployer info from Clanker API (msg_sender or related.user)
+        if (!farcasterUser) {
+          // First try related.user from Clanker API (if available)
+          if (token.related?.user?.fid !== undefined) {
+            const clankerUser = token.related.user;
+            const fid = clankerUser.fid;
+            if (fid !== undefined) {
               farcasterUser = {
-                fid: user.fid,
-                username: user.username || null,
-                displayName: user.display_name || null,
+                fid: fid,
+                username: clankerUser.username || null,
+                displayName: clankerUser.displayName || null,
               };
               
               // Check if FID < 30000
-              if (user.fid < 30000) {
+              if (fid < 30000) {
                 isEarlyFid = true;
               }
             }
-          } catch (error) {
-            // Ignore
+          }
+          
+          // If still no user, try msg_sender wallet lookup
+          if (!farcasterUser && token.msg_sender) {
+            try {
+              const user = await findUserByWallet(token.msg_sender);
+              if (user) {
+                farcasterUser = {
+                  fid: user.fid,
+                  username: user.username || null,
+                  displayName: user.display_name || null,
+                };
+                
+                // Check if FID < 30000
+                if (user.fid < 30000) {
+                  isEarlyFid = true;
+                }
+              }
+            } catch (error) {
+              // Ignore
+            }
           }
         }
 
