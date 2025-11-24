@@ -400,10 +400,20 @@ async function handleButtonInteraction(interaction: ButtonInteraction): Promise<
     });
     
     // Execute the search using the search command handler
+    // Extract username from Farcaster URLs before searching
+    let searchQuery = confirmation.query;
+    if (confirmation.searchType === "farcaster_link") {
+      const { extractFarcasterUsername } = await import("./utils/farcasterLinks");
+      const username = extractFarcasterUsername(confirmation.query);
+      if (username) {
+        searchQuery = username; // Search by username instead of URL
+      }
+    }
+    
     const { handleSearchCommand } = await import("./commands/search");
     const fakeInteraction: any = {
       options: {
-        getString: (name: string) => (name === "query" ? confirmation.query : null),
+        getString: (name: string) => (name === "query" ? searchQuery : null),
       },
       user: interaction.user,
       guildId: confirmation.guildId,

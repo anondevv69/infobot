@@ -264,8 +264,18 @@ export async function startTelegramBot(): Promise<void> {
       });
       
       // Execute the search
+      // Extract username from Farcaster URLs before searching
+      let searchQuery = confirmation.query;
+      if (confirmation.searchType === "farcaster_link") {
+        const { extractFarcasterUsername } = await import("../../utils/farcasterLinks");
+        const username = extractFarcasterUsername(confirmation.query);
+        if (username) {
+          searchQuery = username; // Search by username instead of URL
+        }
+      }
+      
       const { handleTelegramCommand } = await import("./handlers/command");
-      await handleTelegramCommand(bot, { chat: { id: callbackQuery.message?.chat.id } } as TelegramBot.Message, "search", confirmation.query);
+      await handleTelegramCommand(bot, { chat: { id: callbackQuery.message?.chat.id } } as TelegramBot.Message, "search", searchQuery);
       
       await bot.answerCallbackQuery(callbackQuery.id);
       return;

@@ -38,3 +38,32 @@ export function buildCastUrl(username: string, hash: string): string {
   return `https://warpcast.com/${normalized}/${hash}`;
 }
 
+/**
+ * Extract username from Farcaster URL
+ * Examples:
+ * - https://farcaster.xyz/mc -> mc
+ * - https://farcaster.xyz/@username -> username
+ * - https://warpcast.com/username -> username
+ */
+export function extractFarcasterUsername(url: string): string | null {
+  // Match farcaster.xyz/username or farcaster.xyz/@username
+  const farcasterMatch = url.match(/https?:\/\/(?:www\.)?farcaster\.xyz\/(?:@)?([a-z0-9][a-z0-9_.-]{0,31})/i);
+  if (farcasterMatch) {
+    return farcasterMatch[1].toLowerCase();
+  }
+  
+  // Match warpcast.com/username
+  const warpcastMatch = url.match(/https?:\/\/(?:www\.)?warpcast\.com\/([a-z0-9][a-z0-9_.-]{0,31})/i);
+  if (warpcastMatch) {
+    return warpcastMatch[1].toLowerCase();
+  }
+  
+  // Match fcast.me/username
+  const fcastMatch = url.match(/https?:\/\/(?:www\.)?fcast\.me\/([a-z0-9][a-z0-9_.-]{0,31})/i);
+  if (fcastMatch) {
+    return fcastMatch[1].toLowerCase();
+  }
+  
+  return null;
+}
+
