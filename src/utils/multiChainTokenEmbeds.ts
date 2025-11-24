@@ -143,6 +143,11 @@ export async function buildMultiChainTokenEmbed(
   const explorerUrl = getChainExplorerUrl(tokenData.chainId, contractAddress);
   const chainColor = getChainColor(tokenData.chainId);
 
+  // Debug logging for Monad tokens
+  if (tokenData.chainId?.toLowerCase() === "monad" || tokenData.chainId === "5001") {
+    console.log(`[MultiChainToken] Monad token detected - chainId: "${tokenData.chainId}", explorerUrl: "${explorerUrl}"`);
+  }
+
   const embed = new EmbedBuilder()
     .setColor(chainColor)
     .setTitle(`🪙 ${title}`)
