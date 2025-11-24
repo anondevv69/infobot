@@ -210,7 +210,7 @@ async function main(): Promise<void> {
       await showDiscordTypingIndicator(message);
     }
 
-    // Handle text command "info 0x..." or "info <query>"
+    // Handle text command "info 0x..." or "info <query>" - these skip confirmation
     const infoCommandMatch = text.match(/^info\s+(.+)$/i);
     if (infoCommandMatch) {
       const query = infoCommandMatch[1].trim();
@@ -219,6 +219,15 @@ async function main(): Promise<void> {
         await handleTextInfoCommand(message, query);
         return;
       }
+    }
+
+    // Check for auto-detected pasted content (addresses, Twitter links, etc.)
+    // These show confirmation prompts
+    const { detectPastedContent, showAutoDetectPrompt } = await import("./handlers/autoDetectPrompt");
+    const detected = detectPastedContent(message);
+    if (detected) {
+      await showAutoDetectPrompt(message, detected);
+      return;
     }
 
     // Check Paragraph URLs FIRST to avoid false matches
@@ -231,8 +240,7 @@ async function main(): Promise<void> {
     if (await handleZoraProfileMessage(message)) {
       return;
     }
-    // Address auto-detection removed - use "info 0x..." or "/info 0x..." instead
-    // Only URL handlers remain (Paragraph, Base, Zora profile, Cast links)
+    // Handle Farcaster cast links
     await handleCastLinkMessage(message);
   });
 

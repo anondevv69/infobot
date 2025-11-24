@@ -51,14 +51,9 @@ export async function handleTelegramInfoCommand(
       }
     }
 
-    // 2. Check for contracts or X links (show confirmation)
-    const needsConfirmation = detectNeedsConfirmation(query);
-    if (needsConfirmation) {
-      await showConfirmationPrompt(bot, chatId, query, needsConfirmation, userId);
-      return;
-    }
-
-    // 3. Default: Use full search command handler
+    // 2. For explicit "info" commands, skip confirmation and search directly
+    // Only show confirmation for auto-detected pasted content, not explicit commands
+    // 3. Use full search command handler
     await executeSearch(bot, chatId, query, userId);
   } catch (error) {
     logger.error(

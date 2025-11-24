@@ -59,14 +59,9 @@ export async function handleInfoCommand(
       }
     }
 
-    // 2. Check for contracts or X links (show confirmation)
-    const needsConfirmation = detectNeedsConfirmation(query);
-    if (needsConfirmation) {
-      await showConfirmationPrompt(message, query, needsConfirmation);
-      return;
-    }
-
-    // 3. Default: Use full search command handler
+    // 2. For explicit "info" commands, skip confirmation and search directly
+    // Only show confirmation for auto-detected pasted content, not explicit commands
+    // 3. Use full search command handler
     await executeSearch(message, query, userId, guildId, channelId);
   } catch (error) {
     logger.error(

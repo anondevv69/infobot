@@ -1,0 +1,125 @@
+import TelegramBot from "node-telegram-bot-api";
+import { isEthAddress, isSolAddress, extractFirstAddress } from "../../../utils/address";
+import { storeInfoConfirmation } from "../../../utils/infoConfirmationStore";
+import { logger } from "../../../utils/logger";
+import { trackSearch } from "../../../utils/botStats";
+
+/**
+ * Detect if a message contains searchable content that should trigger a confirmation prompt
+ * Returns the detected type and query, or null if nothing detected
+ */
+export function detectPastedContent(text: string): { type: string; query: string } | null {
+  const content = text.trim();
+  if (!content) {
+    return null;
+  }
+
+  // Check for Ethereum or Solana addresses
+  const address = extractFirstAddress(content);
+  if (address && (isEthAddress(address) || isSolAddress(address))) {
+    // Only trigger if it's a standalone address (not part of a URL or command)
+    const isStandalone = /^0x[a-fA-F0-9]{40}$/i.test(content) || /^[1-9A-HJ-NP-Za-km-z]{32,48}$/.test(content);
+    if (isStandalone || content === address) {
+      return { type: "contract", query: address };
+    }
+  }
+
+  // Check for X/Twitter links
+  const twitterMatch = content.match(/https?:\/\/(?:www\.)?(?:x|twitter)\.com\/([a-zA-Z0-9_]+)/i);
+  if (twitterMatch) {
+    return { type: "x_link", query: twitterMatch[0] };
+  }
+
+  // Check for Zora links (but not if it's already being handled by URL handlers)
+  if (/https?:\/\/zora\.co\/[^\s<>()]+/i.test(content)) {
+    // Extract address from Zora URL if present
+    const zoraAddressMatch = content.match(/0x[a-fA-F0-9]{40}/i);
+    if (zoraAddressMatch) {
+      return { type: "zora", query: zoraAddressMatch[0] };
+    }
+    return { type: "zora", query: content };
+  }
+
+  // Check for Farcaster usernames (standalone @username)
+  const farcasterMatch = content.match(/^@([a-z0-9][a-z0-9_.-]{0,31})$/i);
+  if (farcasterMatch) {
+    return { type: "farcaster_username", query: content };
+  }
+
+  return null;
+}
+
+/**
+ * Show confirmation prompt for auto-detected pasted content (Telegram)
+ */
+export async function showAutoDetectPrompt(
+  bot: TelegramBot,
+  chatId: number,
+  detected: { type: string; query: string },
+  userId?: number,
+): Promise<void> {
+  trackSearch();
+
+  let promptText = "";
+
+  if (detected.type === "contract") {
+    promptText = `🔍 Found a contract address: <code>${detected.query}</code>\n\nWould you like me to search for information about this contract?`;
+  } else if (detected.type === "x_link") {
+    const username = detected.query.match(/(?:x|twitter)\.com\/([a-zA-Z0-9_]+)/i)?.[1];
+    promptText = `🔍 Found an X/Twitter link: ${username ? `@${username}` : detected.query}\n\nWould you like me to search for the linked Farcaster profile?`;
+  } else if (detected.type === "zora") {
+    promptText = `🔍 Found a Zora link or address: <code>${detected.query}</code>\n\nWould you like me to search for this Zora profile or token?`;
+  } else if (detected.type === "farcaster_username") {
+    promptText = `🔍 Found a Farcaster username: <code>${detected.query}</code>\n\nWould you like me to search for their Farcaster profile?`;
+  }
+
+  // Create a safe callback data (Telegram has a 64 byte limit)
+  const safeQuery = detected.query.substring(0, 15).replace(/[^a-zA-Z0-9]/g, "_");
+  const callbackData = `info_confirm_${chatId}_${detected.type}_${safeQuery}`;
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: "✅ Yes, search", callback_data: callbackData },
+        { text: "❌ No, cancel", callback_data: `info_cancel_${chatId}` },
+      ],
+    ],
+  };
+
+  const sentMessage = await bot.sendMessage(chatId, promptText, {
+    parse_mode: "HTML",
+    reply_markup: keyboard,
+  });
+
+  // Store confirmation for callback handler
+  storeInfoConfirmation(callbackData, {
+    query: detected.query,
+    searchType: detected.type,
+    userId: userId?.toString() || "",
+    guildId: chatId.toString(),
+    channelId: chatId.toString(),
+    messageId: sentMessage.message_id.toString(),
+  });
+
+  logger.search(detected.query, "telegram", userId?.toString(), chatId.toString(), undefined, {
+    success: true,
+    type: `auto_detect_prompt_${detected.type}`,
+  });
+
+  // Auto-expire confirmation after 60 seconds
+  setTimeout(async () => {
+    try {
+      const { removeInfoConfirmation } = await import("../../../utils/infoConfirmationStore");
+      removeInfoConfirmation(callbackData);
+      await bot.editMessageText(`${promptText}\n\n⏰ This confirmation expired. Use <code>info ${detected.query}</code> to search again.`, {
+        chat_id: chatId,
+        message_id: sentMessage.message_id,
+        parse_mode: "HTML",
+        reply_markup: undefined,
+      });
+    } catch (error) {
+      // Ignore errors
+    }
+  }, 60000);
+}
+

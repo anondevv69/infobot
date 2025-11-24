@@ -49,32 +49,39 @@ export async function handleTelegramMessage(
     if (!cleanText) return;
     
     // Use clean text for processing
-    return processMessage(bot, chatId, cleanText);
+    return processMessage(bot, chatId, cleanText, msg.from?.id);
   }
 
   // In private chats, process all messages
-  return processMessage(bot, chatId, text);
+  return processMessage(bot, chatId, text, msg.from?.id);
 }
 
-async function processMessage(bot: TelegramBot, chatId: number, text: string): Promise<void> {
+async function processMessage(bot: TelegramBot, chatId: number, text: string, userId?: number): Promise<void> {
   try {
-    // Handle text command "info <query>"
+    // Handle text command "info <query>" - these skip confirmation
     const infoCommandMatch = text.match(/^info\s+(.+)$/i);
     if (infoCommandMatch) {
       const query = infoCommandMatch[1].trim();
       if (query) {
         const { handleTelegramInfoCommand } = await import("./infoCommand");
-        await handleTelegramInfoCommand(bot, chatId, query);
+        await handleTelegramInfoCommand(bot, chatId, query, userId);
         return;
       }
+    }
+    
+    // Check for auto-detected pasted content (addresses, Twitter links, etc.)
+    // These show confirmation prompts
+    const { detectPastedContent, showAutoDetectPrompt } = await import("./autoDetectPrompt");
+    const detected = detectPastedContent(text);
+    if (detected) {
+      await showAutoDetectPrompt(bot, chatId, detected, userId);
+      return;
     }
     
     // Send typing indicator for any search operation
     await bot.sendChatAction(chatId, "typing");
     
-    // Address auto-detection removed - use "info 0x..." or "/search 0x..." instead
-    // Only process URLs now (Zora, Clanker, Farcaster, Paragraph, Base)
-    
+    // Process URLs (Zora, Clanker, Farcaster, Paragraph, Base) - these auto-search without confirmation
     // Check for URL patterns
     const hasZoraUrl = text.includes("zora.co");
     const hasClankerUrl = text.includes("clanker.world");
