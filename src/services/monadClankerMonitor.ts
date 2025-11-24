@@ -162,7 +162,7 @@ async function sendMonadDeploymentNotification(
         {
           title: isEarlyFid ? "🎯 EARLY FID - Monad Clanker Token Deployment" : "Monad Clanker Token Deployment",
           description: isEarlyFid 
-            ? `**Early FID Alert!** New token deployed on Monad chain by Farcaster user with FID < 5000`
+            ? `**Early FID Alert!** New token deployed on Monad chain by Farcaster user with FID < 30000`
             : `New token deployed on Monad chain`,
           color: isEarlyFid ? 0xffd700 : 0x00ff00, // Gold for early FID, Green for regular
           fields: [
@@ -482,8 +482,8 @@ export class MonadClankerMonitor {
                   displayName: user.display_name || null,
                 };
                 
-                // Check if FID < 5000
-                if (user.fid < 5000) {
+                // Check if FID < 30000
+                if (user.fid < 30000) {
                   isEarlyFid = true;
                 }
               }
@@ -508,8 +508,8 @@ export class MonadClankerMonitor {
                 displayName: user.display_name || null,
               };
               
-              // Check if FID < 5000
-              if (user.fid < 5000) {
+              // Check if FID < 30000
+              if (user.fid < 30000) {
                 isEarlyFid = true;
               }
             }
