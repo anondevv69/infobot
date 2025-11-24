@@ -249,6 +249,8 @@ function getChainName(chainId: string): string {
     "gnosis": "Gnosis",
     "5000": "Mantle",
     "mantle": "Mantle",
+    "5001": "Monad",
+    "monad": "Monad",
   };
   return chainMap[chainId.toLowerCase()] ?? chainId;
 }

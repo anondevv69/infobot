@@ -35,7 +35,9 @@ function formatDate(timestamp: number | null | undefined): string {
   return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
 }
 
-function getChainExplorerUrl(chainId: string, address: string): string {
+function getChainExplorerUrl(chainId: string | number, address: string): string {
+  // Normalize chainId to string and lowercase
+  const normalizedChainId = String(chainId).toLowerCase();
   const explorerMap: Record<string, string> = {
     "1": `https://etherscan.io/address/${address}`,
     "eth": `https://etherscan.io/address/${address}`,
@@ -59,11 +61,12 @@ function getChainExplorerUrl(chainId: string, address: string): string {
     "5001": `https://monadvision.com/address/${address}`,
     "monad": `https://monadvision.com/address/${address}`,
   };
-  return explorerMap[chainId.toLowerCase()] ?? `https://etherscan.io/address/${address}`;
+  return explorerMap[normalizedChainId] ?? `https://etherscan.io/address/${address}`;
 }
 
-function getChainTxExplorerUrl(chainId: string, txHash: string): string {
-  const chainIdLower = chainId.toLowerCase();
+function getChainTxExplorerUrl(chainId: string | number, txHash: string): string {
+  // Normalize chainId to string and lowercase
+  const chainIdLower = String(chainId).toLowerCase();
   const txExplorerMap: Record<string, string> = {
     "1": `https://etherscan.io/tx/${txHash}`,
     "eth": `https://etherscan.io/tx/${txHash}`,
@@ -111,6 +114,8 @@ function getChainColor(chainId: string): number {
     "fantom": 0x1969ff,
     "5000": 0x3eb489, // Mantle green
     "mantle": 0x3eb489,
+    "5001": 0x00ff00, // Monad green
+    "monad": 0x00ff00,
   };
   return colorMap[chainId.toLowerCase()] ?? 0x627eea;
 }
