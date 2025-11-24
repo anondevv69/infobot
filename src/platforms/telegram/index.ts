@@ -227,9 +227,60 @@ export async function startTelegramBot(): Promise<void> {
   });
 
 
-  // Handle pagination callbacks
+  // Handle pagination callbacks and info confirmations
   bot.on("callback_query", async (callbackQuery) => {
     const data = callbackQuery.data;
+    
+    // Handle info command confirmations
+    if (data?.startsWith("info_confirm_")) {
+      const { getInfoConfirmation, removeInfoConfirmation } = await import("../../utils/infoConfirmationStore");
+      const confirmation = getInfoConfirmation(data);
+      
+      if (!confirmation) {
+        await bot.answerCallbackQuery(callbackQuery.id, {
+          text: "❌ This confirmation has expired. Please use 'info <query>' again.",
+          show_alert: true,
+        });
+        return;
+      }
+      
+      // Check if user matches
+      if (confirmation.userId && callbackQuery.from?.id.toString() !== confirmation.userId) {
+        await bot.answerCallbackQuery(callbackQuery.id, {
+          text: "❌ This confirmation is for a different user.",
+          show_alert: true,
+        });
+        return;
+      }
+      
+      // Remove confirmation
+      removeInfoConfirmation(data);
+      
+      // Update message to show searching
+      await bot.editMessageText("🔍 Searching...", {
+        chat_id: callbackQuery.message?.chat.id,
+        message_id: callbackQuery.message?.message_id,
+        reply_markup: undefined,
+      });
+      
+      // Execute the search
+      const { handleTelegramCommand } = await import("./handlers/command");
+      await handleTelegramCommand(bot, { chat: { id: callbackQuery.message?.chat.id } } as TelegramBot.Message, "search", confirmation.query);
+      
+      await bot.answerCallbackQuery(callbackQuery.id);
+      return;
+    }
+    
+    // Handle info command cancellations
+    if (data?.startsWith("info_cancel_")) {
+      await bot.editMessageText("❌ Search cancelled.", {
+        chat_id: callbackQuery.message?.chat.id,
+        message_id: callbackQuery.message?.message_id,
+        reply_markup: undefined,
+      });
+      await bot.answerCallbackQuery(callbackQuery.id);
+      return;
+    }
     if (!data) return;
 
     // Handle pagination: page_<page>|<identifier>

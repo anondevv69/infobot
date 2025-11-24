@@ -157,9 +157,14 @@ async function handleAutoSearchUrl(
 ): Promise<boolean> {
   switch (urlType) {
     case "farcaster":
-      // Try cast link first, then profile
-      if (await handleCastLinkMessage(message)) {
+      // Try cast link first (returns void, so we check if message was sent)
+      try {
+        await handleCastLinkMessage(message);
+        // If we get here without error, the handler processed it
         return true;
+      } catch (error) {
+        // If cast link handler didn't process it, fall through to search
+        console.warn("[Info] Farcaster link not handled by cast handler, trying search");
       }
       // Fall through to search command
       break;
@@ -169,21 +174,18 @@ async function handleAutoSearchUrl(
       const clankerAddressMatch = query.match(/0x[a-fA-F0-9]{40}/i);
       if (clankerAddressMatch) {
         const address = clankerAddressMatch[0].toLowerCase();
-        // Use Clanker handler logic
-        const { fetchTokensByAddress } = await import("../services/clanker");
-        const tokens = await fetchTokensByAddress(address);
-        if (tokens.length > 0) {
-          const { buildClankerTokenPages } = await import("../platforms/telegram/handlers/clankerHandler");
-          // For Discord, we need to build embeds differently
-          const { buildTokenEmbed, resolveUserFromToken } = await import("../utils/clankerEmbeds");
-          const token = tokens[0];
-          const user = await resolveUserFromToken(token);
-          const embed = await buildTokenEmbed(token, user ? { farcasterUser: user } : undefined);
-          await message.reply({ embeds: [embed] });
+        // Use the existing Clanker address handler which handles all the logic
+        const { handleClankerAddressMessage } = await import("./clankerAddress");
+        // Create a fake message with just the address
+        const fakeMessage = {
+          ...message,
+          content: address,
+        } as Message;
+        if (await handleClankerAddressMessage(fakeMessage)) {
           return true;
         }
       }
-      // Fall through to search command
+      // If no address found or handler failed, fall through to search command
       break;
       
     case "zora":
@@ -249,8 +251,12 @@ async function showConfirmationPrompt(
     searchType = "x_account";
   }
   
+  // Create a safe custom ID (Discord has a 100 char limit)
+  const safeQuery = query.substring(0, 20).replace(/[^a-zA-Z0-9]/g, "_");
+  const customId = `info_confirm_${message.id}_${searchType}_${safeQuery}`;
+  
   const confirmButton = new ButtonBuilder()
-    .setCustomId(`info_confirm_${message.id}_${searchType}_${query.substring(0, 20)}`)
+    .setCustomId(customId)
     .setLabel("Yes, search")
     .setStyle(ButtonStyle.Success);
     
@@ -273,10 +279,8 @@ async function showConfirmationPrompt(
   });
   
   // Store the query for button handler
-  // We'll handle button interactions in the main interaction handler
-  // For now, we'll use a simple timeout-based approach or store in a Map
   const { storeInfoConfirmation } = await import("../utils/infoConfirmationStore");
-  storeInfoConfirmation(`info_confirm_${message.id}_${searchType}_${query.substring(0, 20)}`, {
+  storeInfoConfirmation(customId, {
     query,
     searchType,
     userId: message.author.id,
@@ -285,11 +289,11 @@ async function showConfirmationPrompt(
     messageId: reply.id,
   });
   
-  // Auto-delete confirmation after 60 seconds
+  // Auto-expire confirmation after 60 seconds
   setTimeout(async () => {
     try {
       const stored = await import("../utils/infoConfirmationStore");
-      stored.removeInfoConfirmation(`info_confirm_${message.id}_${searchType}_${query.substring(0, 20)}`);
+      stored.removeInfoConfirmation(customId);
       await reply.edit({
         components: [],
         embeds: [embed.setDescription(`${promptText}\n\n⏰ This confirmation expired. Use \`info ${query}\` to search again.`)],

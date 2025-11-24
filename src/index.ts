@@ -388,22 +388,37 @@ async function handleButtonInteraction(interaction: ButtonInteraction): Promise<
       embeds: [],
     });
     
-    // Execute the search
-    const { handleInfoCommand } = await import("./handlers/infoCommandHandler");
-    const fakeMessage = {
-      author: interaction.user,
+    // Execute the search using the search command handler
+    const { handleSearchCommand } = await import("./commands/search");
+    const fakeInteraction: any = {
+      options: {
+        getString: (name: string) => (name === "query" ? confirmation.query : null),
+      },
+      user: interaction.user,
       guildId: confirmation.guildId,
       channelId: confirmation.channelId,
-      channel: interaction.channel,
-      reply: async (options: any) => {
+      deferReply: async () => {
+        // Already updated, no need to defer
+      },
+      editReply: async (options: any) => {
         return await interaction.channel?.send({
-          ...options,
+          embeds: options.embeds,
+          components: options.components,
+          content: options.content,
           allowedMentions: { repliedUser: false },
         });
       },
-    } as any;
+      reply: async (options: any) => {
+        return await interaction.channel?.send({
+          embeds: options.embeds,
+          components: options.components,
+          content: options.content,
+          allowedMentions: { repliedUser: false },
+        });
+      },
+    };
     
-    await handleInfoCommand(fakeMessage, confirmation.query);
+    await handleSearchCommand(fakeInteraction);
     return;
   }
   
