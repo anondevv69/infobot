@@ -356,6 +356,67 @@ async function handleButtonInteraction(interaction: ButtonInteraction): Promise<
     return;
   }
 
+  // Handle info command confirmations
+  if (interaction.customId.startsWith("info_confirm_")) {
+    const { getInfoConfirmation, removeInfoConfirmation } = await import("./utils/infoConfirmationStore");
+    const confirmation = getInfoConfirmation(interaction.customId);
+    
+    if (!confirmation) {
+      await interaction.reply({
+        content: "❌ This confirmation has expired. Please use `info <query>` again.",
+        ephemeral: true,
+      });
+      return;
+    }
+    
+    // Check if user matches
+    if (confirmation.userId !== interaction.user.id) {
+      await interaction.reply({
+        content: "❌ This confirmation is for a different user.",
+        ephemeral: true,
+      });
+      return;
+    }
+    
+    // Remove confirmation
+    removeInfoConfirmation(interaction.customId);
+    
+    // Update message to show searching
+    await interaction.update({
+      content: "🔍 Searching...",
+      components: [],
+      embeds: [],
+    });
+    
+    // Execute the search
+    const { handleInfoCommand } = await import("./handlers/infoCommandHandler");
+    const fakeMessage = {
+      author: interaction.user,
+      guildId: confirmation.guildId,
+      channelId: confirmation.channelId,
+      channel: interaction.channel,
+      reply: async (options: any) => {
+        return await interaction.channel?.send({
+          ...options,
+          allowedMentions: { repliedUser: false },
+        });
+      },
+    } as any;
+    
+    await handleInfoCommand(fakeMessage, confirmation.query);
+    return;
+  }
+  
+  // Handle info command cancellations
+  if (interaction.customId.startsWith("info_cancel_")) {
+    await interaction.update({
+      content: "❌ Search cancelled.",
+      components: [],
+      embeds: [],
+    });
+    return;
+  }
+
   if (interaction.customId.startsWith("clanker_page_")) {
     const match = interaction.customId.match(/^clanker_page_(-?\d+)\|(.+)$/);
     if (match) {

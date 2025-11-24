@@ -36,8 +36,8 @@ function formatDate(timestamp: number | null | undefined): string {
 }
 
 function getChainExplorerUrl(chainId: string | number, address: string): string {
-  // Normalize chainId to string and lowercase
-  const normalizedChainId = String(chainId).toLowerCase();
+  // Normalize chainId to string and lowercase, trim whitespace
+  const normalizedChainId = String(chainId).toLowerCase().trim();
   const explorerMap: Record<string, string> = {
     "1": `https://etherscan.io/address/${address}`,
     "eth": `https://etherscan.io/address/${address}`,
@@ -61,7 +61,14 @@ function getChainExplorerUrl(chainId: string | number, address: string): string 
     "5001": `https://monadvision.com/address/${address}`,
     "monad": `https://monadvision.com/address/${address}`,
   };
-  return explorerMap[normalizedChainId] ?? `https://etherscan.io/address/${address}`;
+  
+  const explorerUrl = explorerMap[normalizedChainId];
+  if (!explorerUrl) {
+    console.warn(`[MultiChainToken] Unknown chainId: "${chainId}" (normalized: "${normalizedChainId}"), falling back to Etherscan`);
+    return `https://etherscan.io/address/${address}`;
+  }
+  
+  return explorerUrl;
 }
 
 function getChainTxExplorerUrl(chainId: string | number, txHash: string): string {
@@ -131,6 +138,8 @@ export async function buildMultiChainTokenEmbed(
     ? `${tokenData.tokenSymbol} • ${tokenData.tokenName}`
     : tokenData.tokenName ?? tokenData.tokenSymbol ?? `${tokenData.chainName} Token`;
 
+  // Always use the chain-specific explorer URL, not DexScreener's dexUrl
+  // DexScreener's dexUrl might point to a DEX interface, not the chain explorer
   const explorerUrl = getChainExplorerUrl(tokenData.chainId, contractAddress);
   const chainColor = getChainColor(tokenData.chainId);
 
