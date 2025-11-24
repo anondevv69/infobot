@@ -153,6 +153,13 @@ export async function buildBaseTokenEmbed(
       paragraphLines.push(`**Post:** Paragraph tokenized post`);
     }
     
+    // Add creation transaction link if available
+    if (creationTxHash) {
+      const creationTxUrl = `https://basescan.org/tx/${creationTxHash}`;
+      paragraphLines.push(`**Creation TX:** [View Transaction](${creationTxUrl})`);
+      paragraphLines.push(`*Note: Scroll down to bottom input data and get \`p.writer\` address, this is deployer.*`);
+    }
+    
     // Add post author information if available
     if (paragraphPostAuthor) {
       if (paragraphPostAuthor.name) {
