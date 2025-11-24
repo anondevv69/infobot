@@ -400,15 +400,9 @@ async function handleButtonInteraction(interaction: ButtonInteraction): Promise<
     });
     
     // Execute the search using the search command handler
-    // Extract username from Farcaster URLs before searching
-    let searchQuery = confirmation.query;
-    if (confirmation.searchType === "farcaster_link") {
-      const { extractFarcasterUsername } = await import("./utils/farcasterLinks");
-      const username = extractFarcasterUsername(confirmation.query);
-      if (username) {
-        searchQuery = username; // Search by username instead of URL
-      }
-    }
+    // Extract identifier from URLs before searching (username, address, etc.)
+    const { extractSearchIdentifier } = await import("./utils/urlExtraction");
+    const searchQuery = extractSearchIdentifier(confirmation.query, confirmation.searchType);
     
     const { handleSearchCommand } = await import("./commands/search");
     const fakeInteraction: any = {
