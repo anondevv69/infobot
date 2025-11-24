@@ -8,6 +8,7 @@ import { logger } from "../utils/logger";
 import { isEthAddress, extractFirstAddress } from "../utils/address";
 import { getContractCreation } from "./contractCreation";
 import { findUserByWallet } from "./neynar";
+import { fetchRecentMonadTokens, type ClankerToken } from "./clanker";
 
 const MONAD_CLANKER_WEBHOOK_URL = "https://discord.com/api/webhooks/1442507386467123220/T550M8HX-RiCknLe9HgPs9mpjajTCjJPaKdP0d_ItQmZ5MZQug1T2Fdnb2Fsm5RSKAi_";
 const CLANKER_USERNAME = "clanker";
@@ -29,16 +30,22 @@ interface MonadDeployment {
 
 // Store seen cast hashes to avoid duplicates
 const seenCasts = new Set<string>();
+// Store seen contract addresses to avoid duplicate notifications
+const seenContracts = new Set<string>();
 const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
- * Clean up old seen cast hashes periodically
+ * Clean up old seen cast hashes and contracts periodically
  */
 function cleanupSeenCasts(): void {
   // For now, just clear if set gets too large (simple approach)
   if (seenCasts.size > 1000) {
     seenCasts.clear();
     logger.debug("[Monad Clanker Monitor] Cleared seen casts cache");
+  }
+  if (seenContracts.size > 1000) {
+    seenContracts.clear();
+    logger.debug("[Monad Clanker Monitor] Cleared seen contracts cache");
   }
 }
 
@@ -122,8 +129,12 @@ async function sendStatusUpdate(checkCount: number, newCastsFound: number): Prom
 
 /**
  * Send Monad deployment notification to Discord webhook
+ * If deployer has FID < 5000, includes special ping
  */
-async function sendMonadDeploymentNotification(deployment: MonadDeployment): Promise<void> {
+async function sendMonadDeploymentNotification(
+  deployment: MonadDeployment,
+  isEarlyFid: boolean = false,
+): Promise<void> {
   try {
     const deployerInfo = deployment.farcasterUser
       ? `**Deployer:** @${deployment.farcasterUser.username || deployment.farcasterUser.displayName || `FID ${deployment.farcasterUser.fid}`}\n` +
@@ -137,18 +148,23 @@ async function sendMonadDeploymentNotification(deployment: MonadDeployment): Pro
       ? `https://monadscan.com/address/${deployment.deployerAddress}`
       : explorerUrl;
 
+    // Add special ping for early FID users (FID < 5000)
+    const pingText = isEarlyFid ? "@everyone 🎯 **EARLY FID ALERT** " : "@everyone ";
+    
     const message = {
-      content: `@everyone 🟢 **NEW MONAD CLANKER TOKEN DEPLOYED**\n\n` +
+      content: `${pingText}🟢 **NEW MONAD CLANKER TOKEN DEPLOYED**\n\n` +
         `**Contract:** \`${deployment.contractAddress}\`\n` +
         `**Explorer:** [View on MonadScan](${explorerUrl})\n\n` +
         deployerInfo +
-        `**Cast:** [View on Farcaster](${deployment.castUrl})\n` +
+        (deployment.castUrl ? `**Cast:** [View on Farcaster](${deployment.castUrl})\n` : "") +
         `**Timestamp:** <t:${Math.floor(deployment.timestamp / 1000)}:R>`,
       embeds: [
         {
-          title: "Monad Clanker Token Deployment",
-          description: `New token deployed on Monad chain`,
-          color: 0x00ff00, // Green
+          title: isEarlyFid ? "🎯 EARLY FID - Monad Clanker Token Deployment" : "Monad Clanker Token Deployment",
+          description: isEarlyFid 
+            ? `**Early FID Alert!** New token deployed on Monad chain by Farcaster user with FID < 5000`
+            : `New token deployed on Monad chain`,
+          color: isEarlyFid ? 0xffd700 : 0x00ff00, // Gold for early FID, Green for regular
           fields: [
             {
               name: "Contract Address",
@@ -158,7 +174,7 @@ async function sendMonadDeploymentNotification(deployment: MonadDeployment): Pro
             {
               name: "Deployer",
               value: deployment.farcasterUser
-                ? `@${deployment.farcasterUser.username || deployment.farcasterUser.displayName || `FID ${deployment.farcasterUser.fid}`}`
+                ? `@${deployment.farcasterUser.username || deployment.farcasterUser.displayName || `FID ${deployment.farcasterUser.fid}`}${isEarlyFid ? ` (FID: ${deployment.farcasterUser.fid} ⭐)` : ""}`
                 : deployment.deployerAddress
                 ? `\`${deployment.deployerAddress}\``
                 : "Unknown",
@@ -171,7 +187,7 @@ async function sendMonadDeploymentNotification(deployment: MonadDeployment): Pro
             },
           ],
           timestamp: new Date(deployment.timestamp).toISOString(),
-          url: deployment.castUrl,
+          url: deployment.castUrl || undefined,
         },
       ],
     };
@@ -343,12 +359,15 @@ export class MonadClankerMonitor {
   }
 
   /**
-   * Check for new Monad deployments in @clanker casts
+   * Check for new Monad deployments from both @clanker casts and Clanker.world API
    */
   private async checkForMonadDeployments(): Promise<void> {
     try {
       this.checkCount++;
       logger.debug("[Monad Clanker Monitor] Checking for new Monad deployments...");
+
+      // Check Clanker.world API for Monad tokens
+      await this.checkClankerWorldMonadTokens();
 
       // Get @clanker user
       const clankerUser = await findUserByUsername(CLANKER_USERNAME);
@@ -403,6 +422,122 @@ export class MonadClankerMonitor {
 
     } catch (error) {
       logger.error("[Monad Clanker Monitor] Error checking for deployments:", error);
+    }
+  }
+
+  /**
+   * Check Clanker.world API for new Monad token deployments
+   */
+  private async checkClankerWorldMonadTokens(): Promise<void> {
+    try {
+      // Fetch recent Monad tokens from Clanker API
+      const monadTokens = await fetchRecentMonadTokens(50);
+      
+      logger.debug(`[Monad Clanker Monitor] Found ${monadTokens.length} Monad tokens from Clanker.world API`);
+
+      for (const token of monadTokens) {
+        if (!token.contract_address) {
+          continue;
+        }
+
+        const contractAddress = token.contract_address.toLowerCase();
+        
+        // Skip if already seen
+        if (seenContracts.has(contractAddress)) {
+          continue;
+        }
+
+        // Check if token was deployed recently (within last 10 minutes)
+        const deployedAt = token.deployed_at || token.created_at;
+        if (!deployedAt) {
+          continue;
+        }
+
+        const deployedTime = new Date(deployedAt).getTime();
+        const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+        
+        if (deployedTime < tenMinutesAgo) {
+          // Token is older than 10 minutes, skip it
+          seenContracts.add(contractAddress); // Mark as seen to avoid checking again
+          continue;
+        }
+
+        // Get deployer address from contract creation
+        let deployerAddress: string | null = null;
+        let farcasterUser: { fid: number; username: string | null; displayName: string | null } | null = null;
+        let isEarlyFid = false;
+
+        try {
+          const contractCreation = await getContractCreation(contractAddress, "monad").catch(() => null);
+          if (contractCreation?.contractCreator) {
+            deployerAddress = contractCreation.contractCreator.toLowerCase();
+            
+            // Try to find Farcaster user by wallet
+            try {
+              const user = await findUserByWallet(deployerAddress);
+              if (user) {
+                farcasterUser = {
+                  fid: user.fid,
+                  username: user.username || null,
+                  displayName: user.display_name || null,
+                };
+                
+                // Check if FID < 5000
+                if (user.fid < 5000) {
+                  isEarlyFid = true;
+                }
+              }
+            } catch (error) {
+              // Ignore - deployer might not have Farcaster account
+            }
+          }
+        } catch (error) {
+          logger.warn(`[Monad Clanker Monitor] Failed to get contract creation for ${contractAddress}:`, {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+
+        // Also check if token has deployer info from Clanker API
+        if (!farcasterUser && token.msg_sender) {
+          try {
+            const user = await findUserByWallet(token.msg_sender);
+            if (user) {
+              farcasterUser = {
+                fid: user.fid,
+                username: user.username || null,
+                displayName: user.display_name || null,
+              };
+              
+              // Check if FID < 5000
+              if (user.fid < 5000) {
+                isEarlyFid = true;
+              }
+            }
+          } catch (error) {
+            // Ignore
+          }
+        }
+
+        // Create deployment object
+        const deployment: MonadDeployment = {
+          contractAddress,
+          deployerAddress,
+          castHash: "", // No cast hash for Clanker.world deployments
+          castUrl: token.contract_address ? `https://www.clanker.world/clanker/${token.contract_address}` : "",
+          timestamp: deployedTime,
+          farcasterUser,
+        };
+
+        // Mark as seen
+        seenContracts.add(contractAddress);
+        
+        // Send notification (with early FID ping if applicable)
+        await sendMonadDeploymentNotification(deployment, isEarlyFid);
+        
+        logger.system(`[Monad Clanker Monitor] ✅ Detected Monad deployment from Clanker.world: ${contractAddress}${isEarlyFid ? " (EARLY FID!)" : ""}`);
+      }
+    } catch (error) {
+      logger.error("[Monad Clanker Monitor] Error checking Clanker.world API:", error);
     }
   }
 }

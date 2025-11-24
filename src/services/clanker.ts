@@ -155,6 +155,22 @@ export async function fetchTokensByAddress(
   );
 }
 
+/**
+ * Fetch recent Monad tokens from Clanker API
+ * Filters by chain_id = 5001 (Monad)
+ */
+export async function fetchRecentMonadTokens(limit: number = 50): Promise<ClankerToken[]> {
+  const url = new URL(`${CLANKER_API_BASE}/tokens`);
+  url.searchParams.set("limit", limit.toString());
+  url.searchParams.set("includeUser", "true");
+  url.searchParams.set("includeMarket", "true");
+  
+  const tokens = await executeClankerRequest(url, 5000);
+  
+  // Filter to Monad chain tokens (chain_id = 5001)
+  return tokens.filter((token) => token.chain_id === 5001);
+}
+
 export interface ClankerTokenSummary {
   token: ClankerToken;
   farcasterUser?: User;
