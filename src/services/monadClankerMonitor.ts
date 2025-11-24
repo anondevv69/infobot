@@ -64,6 +64,34 @@ function isMonadDeploymentCast(text: string): boolean {
 }
 
 /**
+ * Send startup notification to Discord webhook
+ */
+async function sendStartupNotification(): Promise<void> {
+  try {
+    const message = {
+      content: `✅ **Monad Clanker Monitor Started**\n\n` +
+        `**Status:** Now monitoring @clanker for Monad token deployments\n` +
+        `**Check Interval:** Every 1 minute\n` +
+        `**Started:** <t:${Math.floor(Date.now() / 1000)}:R>`,
+    };
+
+    const response = await fetch(MONAD_CLANKER_WEBHOOK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(message),
+    });
+
+    if (!response.ok) {
+      logger.error(`[Monad Clanker Monitor] Failed to send startup notification: ${response.status} ${response.statusText}`);
+    }
+  } catch (error) {
+    logger.error("[Monad Clanker Monitor] Error sending startup notification:", error);
+  }
+}
+
+/**
  * Send status update to Discord webhook showing monitor is active
  */
 async function sendStatusUpdate(checkCount: number, newCastsFound: number): Promise<void> {
@@ -269,6 +297,11 @@ export class MonadClankerMonitor {
     this.isRunning = true;
     logger.info("[Monad Clanker Monitor] Starting Monad Clanker deployment monitoring...");
 
+    // Send startup notification
+    sendStartupNotification().catch((error) => {
+      logger.error("[Monad Clanker Monitor] Failed to send startup notification:", error);
+    });
+
     // Run initial check
     this.checkForMonadDeployments().catch((error) => {
       logger.error("[Monad Clanker Monitor] Initial check failed:", error);
@@ -341,8 +374,8 @@ export class MonadClankerMonitor {
 
       logger.debug(`[Monad Clanker Monitor] Found ${newCasts.length} new casts since last check`);
 
-      // Send status update every 10 checks (every 10 minutes)
-      if (this.checkCount % 10 === 0) {
+      // Send status update every 5 checks (every 5 minutes)
+      if (this.checkCount % 5 === 0) {
         await sendStatusUpdate(this.checkCount, newCasts.length);
       }
 
