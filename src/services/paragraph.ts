@@ -88,6 +88,23 @@ export interface ParagraphCoinHoldersResponse {
 const PARAGRAPH_API_BASE = "https://public.api.paragraph.com/api";
 
 /**
+ * Get Paragraph API headers with optional authentication
+ */
+function getParagraphHeaders(): HeadersInit {
+  const headers: HeadersInit = {
+    "Accept": "application/json",
+  };
+  
+  // Add API key if available
+  const { env } = require("../config");
+  if (env.paragraphApiKey) {
+    headers["Authorization"] = `Bearer ${env.paragraphApiKey}`;
+  }
+  
+  return headers;
+}
+
+/**
  * Get user by wallet address from Paragraph API
  */
 export async function getUserByWallet(walletAddress: string): Promise<ParagraphUser | null> {

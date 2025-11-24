@@ -82,11 +82,14 @@ export async function buildBaseTokenEmbed(
 
   // Factory Information (moved to top section)
   // Show "Paragraph" factory for Paragraph tokens, otherwise show detected factory
+  // Also check if factory name is "Paragraph" as a fallback
   const isParagraphToken = paragraphCoin !== null;
-  const finalFactoryName = isParagraphToken 
+  const detectedFactoryName = factory?.name ?? metrics?.factoryName ?? null;
+  const isParagraphFactory = detectedFactoryName?.toLowerCase() === "paragraph";
+  const finalFactoryName = isParagraphToken || isParagraphFactory
     ? "Paragraph" 
-    : (factory?.name ?? metrics?.factoryName ?? null);
-  const isKnownFactory = isParagraphToken ? true : (factory !== null);
+    : detectedFactoryName;
+  const isKnownFactory = (isParagraphToken || isParagraphFactory) ? true : (factory !== null);
   let factoryDisplay = "";
   if (finalFactoryName) {
     const cleanFactoryName = finalFactoryName.startsWith("Factory: ") 

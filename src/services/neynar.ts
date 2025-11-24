@@ -235,6 +235,35 @@ export async function fetchMostRecentCastForUser(fid: number): Promise<Cast | nu
   }
 }
 
+export async function fetchUserCasts(fid: number, options?: { limit?: number; includeReplies?: boolean }): Promise<Cast[]> {
+  try {
+    const limit = options?.limit ?? 50;
+    const includeReplies = options?.includeReplies ?? true;
+    
+    // Add timeout protection
+    const response = await Promise.race([
+      client.fetchCastsForUser({
+        fid,
+        limit,
+        includeReplies,
+      }),
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error("Cast fetch timeout")), 10000)
+      ),
+    ]);
+    return response.casts || [];
+  } catch (error) {
+    if (error instanceof Error && error.message === "Cast fetch timeout") {
+      console.warn(`[Neynar] Cast fetch timeout for FID ${fid}`);
+      return [];
+    }
+    if (isNotFoundError(error)) {
+      return [];
+    }
+    throw new NeynarLookupError("Failed to fetch casts for user", error);
+  }
+}
+
 export async function searchCastsByKeyword(
   keyword: string,
   recentLimit = 2,

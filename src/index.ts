@@ -100,6 +100,12 @@ async function main(): Promise<void> {
     const watcher = new ClankerWatcher();
     watcher.start();
     logger.system("Clanker Watcher: Started monitoring Clanker deployments");
+    
+    // Start Monad Clanker monitor
+    const { MonadClankerMonitor } = await import("./services/monadClankerMonitor");
+    const monadMonitor = new MonadClankerMonitor();
+    monadMonitor.start();
+    logger.system("Monad Clanker Monitor: Started monitoring @clanker for Monad deployments");
   });
 
   // Track when bot is added to a new Discord server
