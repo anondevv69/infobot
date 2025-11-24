@@ -117,7 +117,6 @@ export async function handleFarCommand(
     logger.search(query, "discord", userId, guildId, channelId, {
       success: false,
       type: "farcaster",
-      error: error instanceof Error ? error.message : String(error),
     });
 
     await interaction.editReply({

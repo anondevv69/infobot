@@ -36,7 +36,9 @@ export async function handleInfoCommand(
   }
 
   const startTime = Date.now();
-  await message.channel.sendTyping();
+  if (message.channel.isTextBased() && !message.channel.isDMBased()) {
+    await message.channel.sendTyping();
+  }
 
   try {
     // 1. Check for specific URLs that should auto-search (no confirmation needed)
@@ -280,10 +282,6 @@ async function showConfirmationPrompt(
   
   // Store the query for button handler
   const { storeInfoConfirmation } = await import("../utils/infoConfirmationStore");
-  // Create a safe custom ID (Discord has a 100 char limit)
-  const safeQuery = query.substring(0, 20).replace(/[^a-zA-Z0-9]/g, "_");
-  const customId = `info_confirm_${message.id}_${searchType}_${safeQuery}`;
-  
   storeInfoConfirmation(customId, {
     query,
     searchType,
@@ -350,25 +348,31 @@ async function executeSearch(
     guildId: message.guildId,
     channelId: message.channelId,
     deferReply: async () => {
-      await message.channel.sendTyping();
+      if (message.channel.isTextBased() && !message.channel.isDMBased()) {
+        await message.channel.sendTyping();
+      }
     },
     editReply: async (options: any) => {
-      const replyMessage = await message.channel.send({
-        embeds: options.embeds,
-        components: options.components,
-        content: options.content,
-        allowedMentions: { repliedUser: false },
-      });
-      return replyMessage;
+      if (message.channel.isTextBased() && "send" in message.channel) {
+        const replyMessage = await (message.channel as any).send({
+          embeds: options.embeds,
+          components: options.components,
+          content: options.content,
+          allowedMentions: { repliedUser: false },
+        });
+        return replyMessage;
+      }
     },
     reply: async (options: any) => {
-      const replyMessage = await message.channel.send({
-        embeds: options.embeds,
-        components: options.components,
-        content: options.content,
-        allowedMentions: { repliedUser: false },
-      });
-      return replyMessage;
+      if (message.channel.isTextBased() && "send" in message.channel) {
+        const replyMessage = await (message.channel as any).send({
+          embeds: options.embeds,
+          components: options.components,
+          content: options.content,
+          allowedMentions: { repliedUser: false },
+        });
+        return replyMessage;
+      }
     },
   };
 

@@ -23,6 +23,9 @@ import { COPY_BUTTON_PREFIX } from "./utils/copyButtons";
 import { handleCopyValueButton } from "./handlers/copyValueButton";
 import { handleClankerCommand, handleClankerPagination } from "./commands/clanker";
 import { handleRelayCommand } from "./commands/relay";
+import { handleFarCommand } from "./commands/far";
+import { handleWCommand } from "./commands/w";
+import { handleXCommand } from "./commands/x";
 import { parsePaginationButton } from "./utils/pagination";
 import { handleGeneralPagination } from "./handlers/pagination";
 import { showDiscordTypingIndicator, showDiscordCommandTyping } from "./utils/typingIndicator";
@@ -401,20 +404,24 @@ async function handleButtonInteraction(interaction: ButtonInteraction): Promise<
         // Already updated, no need to defer
       },
       editReply: async (options: any) => {
-        return await interaction.channel?.send({
-          embeds: options.embeds,
-          components: options.components,
-          content: options.content,
-          allowedMentions: { repliedUser: false },
-        });
+        if (interaction.channel?.isTextBased() && "send" in interaction.channel) {
+          return await (interaction.channel as any).send({
+            embeds: options.embeds,
+            components: options.components,
+            content: options.content,
+            allowedMentions: { repliedUser: false },
+          });
+        }
       },
       reply: async (options: any) => {
-        return await interaction.channel?.send({
-          embeds: options.embeds,
-          components: options.components,
-          content: options.content,
-          allowedMentions: { repliedUser: false },
-        });
+        if (interaction.channel?.isTextBased() && "send" in interaction.channel) {
+          return await (interaction.channel as any).send({
+            embeds: options.embeds,
+            components: options.components,
+            content: options.content,
+            allowedMentions: { repliedUser: false },
+          });
+        }
       },
     };
     

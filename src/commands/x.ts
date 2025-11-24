@@ -144,7 +144,6 @@ export async function handleXCommand(
     logger.search(query, "discord", userId, guildId, channelId, {
       success: false,
       type: "x_twitter",
-      error: error instanceof Error ? error.message : String(error),
     });
 
     await interaction.editReply({
