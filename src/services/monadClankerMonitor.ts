@@ -251,7 +251,12 @@ async function processCast(cast: any): Promise<MonadDeployment | null> {
     });
   }
 
-  const castUrl = `https://farcaster.xyz/${castHash}`;
+  // Build correct cast URL using username and hash
+  // Cast URL format: https://warpcast.com/{username}/{hash}
+  const castAuthorUsername = cast.author?.username || "clanker"; // Fallback to "clanker" if username not available
+  const { buildCastUrl } = await import("../utils/farcasterLinks");
+  const castUrl = buildCastUrl(castAuthorUsername, castHash);
+  
   // Cast timestamp can be in different formats - handle both
   let timestamp: number;
   if (cast.timestamp) {

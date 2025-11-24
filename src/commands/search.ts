@@ -333,6 +333,67 @@ async function handleWalletSearch(
     return;
   }
 
+  // Fallback: Check if it's a Monad Clanker token not yet indexed by Clanker API
+  // Check if it's a Monad contract from the Clanker factory
+  if (isEthAddress(address)) {
+    try {
+      const { getMonadAccountInfo } = await import("../services/blockvision");
+      const { getContractCreation } = await import("../services/contractCreation");
+      const { detectTokenFactory } = await import("../services/baseFactories");
+      
+      const [monadAccountInfo, contractCreation] = await Promise.all([
+        getMonadAccountInfo(address).catch(() => null),
+        getContractCreation(address, "monad").catch(() => null),
+      ]);
+      
+      // Check if it's a contract on Monad
+      if (monadAccountInfo?.isContract && contractCreation?.contractCreator) {
+        // Check if the creator is the Clanker Monad factory (0xf9a0c289eab6b571c6247094a853810987e5b26d)
+        const creatorLower = contractCreation.contractCreator.toLowerCase();
+        const clankerMonadFactory = "0xf9a0c289eab6b571c6247094a853810987e5b26d".toLowerCase();
+        if (creatorLower === clankerMonadFactory) {
+          // It's a Monad Clanker token - create a basic Clanker token embed
+          const { buildMultiChainTokenEmbed } = await import("../utils/multiChainTokenEmbeds");
+          const monadTokenData: MultiChainTokenData = {
+            chainId: "5001",
+            chainName: "Monad",
+            tokenName: null,
+            tokenSymbol: null,
+            priceUsd: null,
+            priceChange24h: null,
+            volume24h: null,
+            liquidity: null,
+            marketCap: null,
+            fdv: null,
+            trades24h: null,
+            dexUrl: null,
+            dexName: null,
+            pairAddress: null,
+            creatorAddress: contractCreation.contractCreator,
+            factoryName: "Clanker",
+            createdAt: contractCreation.createdAt ?? null,
+            creationTxHash: contractCreation.txHash ?? null,
+          };
+          
+          const { embed, components } = await buildMultiChainTokenEmbed(address, monadTokenData);
+          
+          await interaction.editReply({
+            embeds: [embed],
+            components,
+          });
+          
+          logger.search(address, "discord", userId, guildId, channelId, {
+            success: true,
+            type: "wallet_monad_clanker_token",
+          });
+          return;
+        }
+      }
+    } catch (error) {
+      console.error(`[Search] Monad Clanker fallback check failed for ${address}:`, error);
+    }
+  }
+
   if (zoraSummaryFromAddress) {
     const lowerAddress = address.toLowerCase();
     let matchedCoin =

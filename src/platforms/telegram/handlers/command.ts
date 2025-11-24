@@ -368,6 +368,71 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
           return;
         }
 
+        // Fallback: Check if it's a Monad Clanker token not yet indexed by Clanker API
+        // Check if it's a Monad contract from the Clanker factory
+        if (isEthAddress(address)) {
+          try {
+            const { getMonadAccountInfo } = await import("../../../services/blockvision");
+            const { getContractCreation } = await import("../../../services/contractCreation");
+            
+            const [monadAccountInfo, contractCreation] = await Promise.all([
+              getMonadAccountInfo(address).catch(() => null),
+              getContractCreation(address, "monad").catch(() => null),
+            ]);
+            
+            // Check if it's a contract on Monad
+            if (monadAccountInfo?.isContract && contractCreation?.contractCreator) {
+              // Check if the creator is the Clanker Monad factory (0xf9a0c289eab6b571c6247094a853810987e5b26d)
+              const creatorLower = contractCreation.contractCreator.toLowerCase();
+              const clankerMonadFactory = "0xf9a0c289eab6b571c6247094a853810987e5b26d".toLowerCase();
+              if (creatorLower === clankerMonadFactory) {
+                // It's a Monad Clanker token - create a basic Monad token embed
+                const { buildMultiChainTokenEmbed } = await import("../../../utils/multiChainTokenEmbeds");
+                const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
+                const { MONAD_CHAIN_ID } = await import("../../../services/blockvision");
+                
+                const monadTokenData: import("../../../services/dexscreener").MultiChainTokenData = {
+                  chainId: String(MONAD_CHAIN_ID),
+                  chainName: "Monad",
+                  tokenName: null,
+                  tokenSymbol: null,
+                  priceUsd: null,
+                  priceChange24h: null,
+                  volume24h: null,
+                  liquidity: null,
+                  marketCap: null,
+                  fdv: null,
+                  trades24h: null,
+                  dexUrl: null,
+                  dexName: null,
+                  pairAddress: null,
+                  creatorAddress: contractCreation.contractCreator,
+                  factoryName: "Clanker",
+                  createdAt: contractCreation.createdAt ?? null,
+                  creationTxHash: contractCreation.txHash ?? null,
+                };
+                
+                const { embed, components } = await buildMultiChainTokenEmbed(address, monadTokenData);
+                const telegramMessages = embedsToTelegram([embed]);
+                const telegramText = Array.isArray(telegramMessages) ? telegramMessages.join("\n\n") : telegramMessages;
+                
+                await bot.sendMessage(chatId, telegramText, {
+                  parse_mode: "HTML",
+                  disable_web_page_preview: true,
+                });
+                
+                logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+                  success: true,
+                  type: "wallet_monad_clanker_token",
+                });
+                return;
+              }
+            }
+          } catch (error) {
+            console.error(`[Telegram Search] Monad Clanker fallback check failed for ${address}:`, error);
+          }
+        }
+
         // Check for Base tokens and multi-chain tokens BEFORE falling back to Zora profile
         // This ensures contracts are detected as tokens, not just Zora profiles
         if (isEthAddress(address)) {

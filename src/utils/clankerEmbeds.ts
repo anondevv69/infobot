@@ -553,6 +553,30 @@ function buildContractField(token: ClankerToken): EmbedField {
   const links: string[] = [];
 
   if (contract) {
+    // Add explorer link based on chain
+    if (token.chain_id === 5001) {
+      // Monad
+      links.push(`[MonadScan](https://monadscan.com/address/${contract})`);
+    } else if (token.chain_id === 8453 || token.chain_id === BASE_CHAIN_ID) {
+      // Base
+      links.push(`[Basescan](https://basescan.org/address/${contract})`);
+    } else if (token.chain_id === 1) {
+      // Ethereum
+      links.push(`[Etherscan](https://etherscan.io/address/${contract})`);
+    } else if (token.chain_id === 56) {
+      // BSC
+      links.push(`[BscScan](https://bscscan.com/address/${contract})`);
+    } else if (token.chain_id === 137) {
+      // Polygon
+      links.push(`[PolygonScan](https://polygonscan.com/address/${contract})`);
+    } else if (token.chain_id === 42161) {
+      // Arbitrum
+      links.push(`[Arbiscan](https://arbiscan.io/address/${contract})`);
+    } else if (token.chain_id === 10) {
+      // Optimism
+      links.push(`[Optimistic Etherscan](https://optimistic.etherscan.io/address/${contract})`);
+    }
+    
     links.push(`[X • CA](https://x.com/search?q=${encodeURIComponent(contract)})`);
     if (token.symbol) {
       const ticker = `$${token.symbol.toUpperCase()}`;
@@ -733,6 +757,7 @@ function formatChainName(chainId?: number | null): string {
     324: "zkSync",
     8453: "Base",
     42161: "Arbitrum",
+    5001: "Monad",
   };
   return map[chainId] ?? chainId.toString();
 }
