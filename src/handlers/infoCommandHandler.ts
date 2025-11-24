@@ -280,6 +280,10 @@ async function showConfirmationPrompt(
   
   // Store the query for button handler
   const { storeInfoConfirmation } = await import("../utils/infoConfirmationStore");
+  // Create a safe custom ID (Discord has a 100 char limit)
+  const safeQuery = query.substring(0, 20).replace(/[^a-zA-Z0-9]/g, "_");
+  const customId = `info_confirm_${message.id}_${searchType}_${safeQuery}`;
+  
   storeInfoConfirmation(customId, {
     query,
     searchType,
