@@ -81,12 +81,14 @@ export async function buildBaseTokenEmbed(
   }
 
   // Factory Information (moved to top section)
-  // Hide factory for Paragraph tokens (check if paragraphCoin exists)
-  const finalFactoryName = factory?.name ?? metrics?.factoryName ?? null;
-  const isKnownFactory = factory !== null;
+  // Show "Paragraph" factory for Paragraph tokens, otherwise show detected factory
   const isParagraphToken = paragraphCoin !== null;
+  const finalFactoryName = isParagraphToken 
+    ? "Paragraph" 
+    : (factory?.name ?? metrics?.factoryName ?? null);
+  const isKnownFactory = isParagraphToken ? true : (factory !== null);
   let factoryDisplay = "";
-  if (finalFactoryName && !isParagraphToken) {
+  if (finalFactoryName) {
     const cleanFactoryName = finalFactoryName.startsWith("Factory: ") 
       ? finalFactoryName.replace(/^Factory: /, "")
       : finalFactoryName;
@@ -138,9 +140,17 @@ export async function buildBaseTokenEmbed(
 
   // Add Paragraph post info if available
   if (paragraphCoin) {
+    const paragraphLines: string[] = [];
+    
+    // Always show creation transaction link first if available
+    if (creationTxHash) {
+      const creationTxUrl = `https://basescan.org/tx/${creationTxHash}`;
+      paragraphLines.push(`**Creation TX:** [View Transaction](${creationTxUrl})`);
+      paragraphLines.push(`*Note: Scroll down to bottom input data and get \`p.writer\` address, this is deployer.*`);
+    }
+    
     // Only show the link if we have the proper URL (not the postId format)
     const finalParagraphPostUrl = paragraphPostUrl && !paragraphPostUrl.includes("/@post/") ? paragraphPostUrl : null;
-    const paragraphLines: string[] = [];
     
     if (finalParagraphPostUrl) {
       paragraphLines.push(`**Post:** [View on Paragraph](${finalParagraphPostUrl})`);
@@ -151,13 +161,6 @@ export async function buildBaseTokenEmbed(
     } else {
       // Don't show a broken link - just indicate it's a Paragraph post
       paragraphLines.push(`**Post:** Paragraph tokenized post`);
-    }
-    
-    // Add creation transaction link if available
-    if (creationTxHash) {
-      const creationTxUrl = `https://basescan.org/tx/${creationTxHash}`;
-      paragraphLines.push(`**Creation TX:** [View Transaction](${creationTxUrl})`);
-      paragraphLines.push(`*Note: Scroll down to bottom input data and get \`p.writer\` address, this is deployer.*`);
     }
     
     // Add post author information if available

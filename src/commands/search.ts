@@ -371,7 +371,15 @@ async function handleWalletSearch(
   if (isEthAddress(address)) {
     // Check for Paragraph coin first (tokenized posts)
     const { getCoinByContract } = await import("../services/paragraph");
-    const paragraphCoin = await getCoinByContract(address).catch(() => null);
+    const paragraphCoin = await getCoinByContract(address).catch((error) => {
+      console.warn(`[Search] Failed to fetch Paragraph coin for ${address}:`, error);
+      return null;
+    });
+    
+    // Debug: Log if Paragraph coin was found
+    if (paragraphCoin) {
+      console.log(`[Search] ✅ Found Paragraph coin for ${address}:`, paragraphCoin);
+    }
     
     // Check for Base tokens (Rainbow, ApeStore, Fey, Paragraph, etc.)
     const { fetchBaseTokenData, fetchMultiChainTokenData } = await import("../services/dexscreener");
