@@ -365,6 +365,82 @@ async function handleWalletSearch(
     }
   }
 
+  // Check for Base tokens and multi-chain tokens BEFORE falling back to Zora profile
+  // This ensures contracts are detected as tokens, not just Zora profiles
+  if (isEthAddress(address)) {
+    // Check for Paragraph coin first (tokenized posts)
+    const { getCoinByContract } = await import("../services/paragraph");
+    const paragraphCoin = await getCoinByContract(address).catch(() => null);
+    
+    // Check for Base tokens (Rainbow, ApeStore, Fey, Paragraph, etc.)
+    const { fetchBaseTokenData, fetchMultiChainTokenData } = await import("../services/dexscreener");
+    const { detectTokenFactory } = await import("../services/baseFactories");
+    const { getContractCreation } = await import("../services/contractCreation");
+    const { buildBaseTokenEmbed } = await import("../utils/baseTokenEmbeds");
+    const { buildMultiChainTokenEmbed } = await import("../utils/multiChainTokenEmbeds");
+    
+    const [baseTokenData, factory] = await Promise.all([
+      fetchBaseTokenData(address),
+      detectTokenFactory(address),
+    ]);
+
+    if (baseTokenData) {
+      // Fetch creator address for Base tokens
+      const contractCreation = await getContractCreation(address, "base").catch(() => null);
+      
+      const { embed, components } = await buildBaseTokenEmbed(
+        address,
+        null, // tokenName
+        null, // tokenSymbol
+        baseTokenData,
+        factory,
+        contractCreation?.contractCreator ?? null,
+        contractCreation?.createdAt ?? null,
+        contractCreation?.txHash ?? null,
+        paragraphCoin ?? null,
+      );
+
+      await interaction.editReply({
+        embeds: [embed],
+        components,
+      });
+      
+      logger.search(address, "discord", userId, guildId, channelId, {
+        success: true,
+        type: "wallet_base_token",
+      });
+      return;
+    }
+
+    // Check for multi-chain tokens (Mantle, BSC, etc.)
+    let multiChainTokenData;
+    try {
+      multiChainTokenData = await fetchMultiChainTokenData(address);
+    } catch (err) {
+      console.error(`[Search] Multi-chain fetch failed for ${address}:`, err);
+    }
+
+    if (multiChainTokenData) {
+      const chainIdLower = multiChainTokenData.chainId.toLowerCase();
+      // Only show multi-chain if it's NOT Base (Base tokens handled above)
+      if (chainIdLower !== "base" && multiChainTokenData.chainId !== "8453") {
+        const { embed, components } = await buildMultiChainTokenEmbed(address, multiChainTokenData);
+        
+        await interaction.editReply({
+          embeds: [embed],
+          components,
+        });
+        
+        logger.search(address, "discord", userId, guildId, channelId, {
+          success: true,
+          type: "wallet_multi_chain_token",
+        });
+        return;
+      }
+    }
+  }
+
+  // Only show Zora profile if no tokens were found
   if (zoraSummaryFromAddress?.latestCoin) {
     const associated = isSummaryAssociatedWithAddress(zoraSummaryFromAddress, address)
       ? zoraSummaryFromAddress
@@ -391,7 +467,7 @@ async function handleWalletSearch(
     }
 
     await interaction.editReply({
-      content: `No Farcaster profile or Clanker deployments found for \`${address}\`, but the address is associated with this Zora profile:`,
+      content: `No Farcaster profile, Clanker deployments, or token information found for \`${address}\`, but the address is associated with this Zora profile:`,
       embeds: farcasterEmbeds
         ? [...farcasterEmbeds.embeds, ...zoraResponse.embeds]
         : zoraResponse.embeds,
