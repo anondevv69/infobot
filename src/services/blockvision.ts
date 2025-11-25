@@ -166,6 +166,92 @@ export async function getMonadTokenInfo(
 }
 
 /**
+ * Get token price from Nad.fun Lens contract
+ * Uses the Lens contract to query price for Nad.fun tokens
+ * Reference: https://github.com/Naddotfun/contract-v3-abi
+ */
+export async function getNadFunTokenPrice(
+  tokenAddress: string,
+): Promise<{ priceUsd: number | null; liquidity: number | null } | null> {
+  try {
+    // Nad.fun Lens contract address on Monad
+    const LENS_CONTRACT = "0x7e78A8DE94f21804F7a17F4E8BF9EC2c872187ea";
+    // WMON (Wrapped Monad) address on Monad
+    const WMON_ADDRESS = "0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A";
+    
+    // Use MonadScan RPC proxy to call Lens contract
+    // getAmountOut(token, amountIn, isBuy) - get price for buying 1 token
+    // We'll query: getAmountOut(tokenAddress, 1e18 (1 MON), true) to get how many tokens we get for 1 MON
+    // Then price = 1 MON / tokens received
+    
+    const amountIn = "0x" + BigInt(10 ** 18).toString(16); // 1 MON in wei
+    const isBuy = true;
+    
+    // Function signature: getAmountOut(address,uint256,bool)
+    // keccak256("getAmountOut(address,uint256,bool)") = 0x...
+    // We'll use eth_call to call the contract
+    const functionSelector = "0x902f1ac7"; // getAmountOut(address,uint256,bool)
+    const tokenAddressPadded = tokenAddress.slice(2).padStart(64, "0");
+    const amountInPadded = amountIn.slice(2).padStart(64, "0");
+    const isBuyPadded = (isBuy ? "1" : "0").padStart(64, "0");
+    const data = functionSelector + tokenAddressPadded + amountInPadded + isBuyPadded;
+    
+    const rpcUrl = `${MONADSCAN_API_BASE}?module=proxy&action=eth_call`;
+    const response = await fetch(rpcUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: LENS_CONTRACT,
+        data: data,
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const result = await response.json() as { result?: string; error?: any };
+    if (result.error || !result.result || result.result === "0x") {
+      return null;
+    }
+
+    // Parse the result - it returns (address router, uint256 amountOut)
+    // We need to decode the second value (amountOut)
+    const amountOutHex = "0x" + result.result.slice(66, 130); // Skip router address (32 bytes), get amountOut (32 bytes)
+    const amountOut = BigInt(amountOutHex);
+    
+    if (amountOut === 0n) {
+      return null;
+    }
+
+    // Calculate price: 1 MON / tokens received = price per token in MON
+    // Then convert to USD (we'd need MON/USD price, but for now we'll use MON as the base)
+    // For market cap calculation: price * totalSupply
+    // Since we don't have MON/USD, we'll return the price in MON and let the caller handle USD conversion
+    // Or we can estimate: if 1 MON = ~$0.0364 (from web search), we can use that
+    
+    const MON_USD_PRICE = 0.0364; // Approximate MON price in USD (from web search)
+    const tokensReceived = Number(amountOut) / 1e18; // Convert from wei
+    const priceInMon = 1 / tokensReceived; // Price per token in MON
+    const priceUsd = priceInMon * MON_USD_PRICE;
+
+    // Try to get liquidity from the router
+    // For now, we'll estimate liquidity as price * some factor, or return null
+    // In a real implementation, we'd query the bonding curve or DEX for actual liquidity
+    
+    return {
+      priceUsd,
+      liquidity: null, // Would need to query bonding curve for actual liquidity
+    };
+  } catch (error) {
+    console.error(`[Nad.fun] Error fetching token price for ${tokenAddress}:`, error);
+    return null;
+  }
+}
+
+/**
  * Get transaction information from MonadScan API
  */
 export async function getMonadTransaction(

@@ -438,23 +438,48 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
                 factoryName = getTokenFactoryName(contractCreation.contractCreator);
               }
               
-              // If it's from a known factory OR we have contract creation info OR we detected token info, create a Monad token embed
-              if (factoryName || contractCreation || tokenInfo) {
+              // If it's a contract on Monad, create a Monad token embed (even without full details)
+              // We know it's a contract, so it's likely a token
+              if (monadAccountInfo?.isContract) {
+                // Try to get price and calculate market cap for Nad.fun tokens
+                let priceUsd: number | null = null;
+                let marketCap: number | null = null;
+                let liquidity: number | null = null;
+                
+                if (factoryName === "Nad.fun" && tokenInfo?.totalSupply) {
+                  try {
+                    const { getNadFunTokenPrice } = await import("../../../services/blockvision");
+                    const priceData = await getNadFunTokenPrice(address).catch(() => null);
+                    if (priceData?.priceUsd) {
+                      priceUsd = priceData.priceUsd;
+                      liquidity = priceData.liquidity;
+                      
+                      // Calculate market cap: price * total supply
+                      const totalSupply = parseFloat(tokenInfo.totalSupply);
+                      const decimals = tokenInfo.decimals ?? 18;
+                      const totalSupplyAdjusted = totalSupply / Math.pow(10, decimals);
+                      marketCap = priceUsd * totalSupplyAdjusted;
+                    }
+                  } catch (error) {
+                    // Silently fail - price calculation is optional
+                  }
+                }
+                
                 // It's a Monad token - create a Monad token embed with token info if available
                 const monadTokenData: import("../../../services/dexscreener").MultiChainTokenData = {
                   chainId: String(MONAD_CHAIN_ID),
                   chainName: "Monad",
                   tokenName: tokenInfo?.name ?? null,
                   tokenSymbol: tokenInfo?.symbol ?? null,
-                  priceUsd: null,
+                  priceUsd,
                   priceChange24h: null,
                   volume24h: null,
-                  liquidity: null,
-                  marketCap: null,
-                  fdv: null,
+                  liquidity,
+                  marketCap,
+                  fdv: marketCap, // FDV = market cap for now
                   trades24h: null,
                   dexUrl: null,
-                  dexName: null,
+                  dexName: factoryName === "Nad.fun" ? "Nad.fun" : null,
                   pairAddress: null,
                   creatorAddress: contractCreation?.contractCreator ?? null,
                   factoryName: factoryName,
