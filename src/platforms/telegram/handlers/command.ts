@@ -38,6 +38,7 @@ export async function handleTelegramCommand(
 
 <b>Commands:</b>
 • <code>/search &lt;query&gt;</code> — Universal search (wallets, contracts, profiles)
+• <code>/wallet &lt;address&gt;</code> — Search wallet across all EVM chains (Ethereum, Base, Monad)
 • <code>/zora &lt;query&gt;</code> — Zora accounts, contracts, or creator coins
 • <code>/clanker &lt;query&gt;</code> — Clanker token deployments
 • <code>/casts &lt;keyword&gt;</code> — Search Farcaster casts by keyword
@@ -438,9 +439,14 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
                 factoryName = getTokenFactoryName(contractCreation.contractCreator);
               }
               
-              // If it's a contract on Monad, create a Monad token embed (even without full details)
-              // We know it's a contract, so it's likely a token
-              if (monadAccountInfo?.isContract) {
+              // Only treat as a token if we have actual token information (name, symbol, etc.)
+              // Don't assume all contracts are tokens - they could be wallets or other contract types
+              const hasTokenInfo = tokenInfo && (tokenInfo.name || tokenInfo.symbol);
+              const isFromKnownFactory = factoryName !== null;
+              
+              // Only create token embed if we have token info OR it's from a known factory
+              // Otherwise, let it fall through to wallet/address lookup
+              if (monadAccountInfo?.isContract && (hasTokenInfo || isFromKnownFactory)) {
                 // Try to get price and calculate market cap for Nad.fun tokens
                 let priceUsd: number | null = null;
                 let marketCap: number | null = null;

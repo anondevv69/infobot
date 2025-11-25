@@ -34,6 +34,7 @@ export async function startTelegramBot(): Promise<void> {
     { command: "start", description: "Start the bot and see help" },
     { command: "help", description: "Show help and available commands" },
     { command: "search", description: "Search wallets, contracts, Farcaster profiles, or Zora accounts" },
+    { command: "wallet", description: "Search wallet address across all EVM chains (Ethereum, Base, Monad)" },
     { command: "zora", description: "Search Zora accounts, contracts, or creator coins" },
     { command: "clanker", description: "Search Clanker deployments" },
     { command: "casts", description: "Search Farcaster casts by keyword" },
@@ -175,6 +176,17 @@ export async function startTelegramBot(): Promise<void> {
     if (query) {
       await handleTelegramCommand(bot, msg, "search", query);
     }
+  });
+
+  bot.onText(/\/wallet (.+)/, async (msg, match) => {
+    const query = match?.[1];
+    if (query) {
+      await handleTelegramCommand(bot, msg, "wallet", query);
+    }
+  });
+
+  bot.onText(/\/wallet$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "wallet");
   });
 
   bot.onText(/\/zora (.+)/, async (msg, match) => {
