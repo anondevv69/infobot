@@ -229,6 +229,7 @@ export async function fetchBaseTokenData(
 function getChainName(chainId: string): string {
   const chainMap: Record<string, string> = {
     "1": "Ethereum",
+    "5001": "Monad",
     "eth": "Ethereum",
     "ethereum": "Ethereum",
     "56": "BSC",
@@ -249,7 +250,6 @@ function getChainName(chainId: string): string {
     "gnosis": "Gnosis",
     "5000": "Mantle",
     "mantle": "Mantle",
-    "5001": "Monad",
     "monad": "Monad",
   };
   return chainMap[chainId.toLowerCase()] ?? chainId;

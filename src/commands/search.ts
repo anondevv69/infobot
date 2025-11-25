@@ -564,7 +564,50 @@ async function handleWalletSearch(
 
     if (multiChainTokenData) {
       const chainIdLower = multiChainTokenData.chainId.toLowerCase();
-      // Only show multi-chain if it's NOT Base (Base tokens handled above)
+      // Check if it's a Monad token from DexScreener (with market data)
+      const isMonadTokenFromDexScreener = (
+        multiChainTokenData.chainId === "5001" || 
+        chainIdLower === "monad"
+      );
+      
+      if (isMonadTokenFromDexScreener) {
+        // Monad token found on DexScreener - use it with market data
+        logger.debug(`[Search] ✅ Found Monad token on DexScreener for ${address}`, { address }, true);
+        const { buildMultiChainTokenEmbed } = await import("../utils/multiChainTokenEmbeds");
+        const { getContractCreation } = await import("../services/contractCreation");
+        const { getTokenFactoryName } = await import("../services/baseFactories");
+        
+        // Get contract creation info for factory detection
+        const contractCreation = await getContractCreation(address, "monad").catch(() => null);
+        let factoryName: string | null = null;
+        if (contractCreation?.contractCreator) {
+          factoryName = getTokenFactoryName(contractCreation.contractCreator);
+        }
+        
+        // Merge DexScreener data with contract creation info
+        const monadTokenData: MultiChainTokenData = {
+          ...multiChainTokenData,
+          creatorAddress: contractCreation?.contractCreator ?? multiChainTokenData.creatorAddress ?? null,
+          factoryName: factoryName ?? multiChainTokenData.factoryName ?? null,
+          createdAt: contractCreation?.createdAt ?? multiChainTokenData.createdAt ?? null,
+          creationTxHash: contractCreation?.txHash ?? multiChainTokenData.creationTxHash ?? null,
+        };
+        
+        const { embed, components } = await buildMultiChainTokenEmbed(address, monadTokenData);
+        
+        await interaction.editReply({
+          embeds: [embed],
+          components,
+        });
+        
+        logger.search(address, "discord", userId, guildId, channelId, {
+          success: true,
+          type: "wallet_monad_token",
+        });
+        return;
+      }
+      
+      // Only show other multi-chain tokens if it's NOT Base (Base tokens handled above)
       if (chainIdLower !== "base" && multiChainTokenData.chainId !== "8453") {
         const { embed, components } = await buildMultiChainTokenEmbed(address, multiChainTokenData);
         

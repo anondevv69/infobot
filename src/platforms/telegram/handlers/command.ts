@@ -603,7 +603,53 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
 
           if (multiChainTokenData) {
             const chainIdLower = multiChainTokenData.chainId.toLowerCase();
-            // Only show multi-chain if it's NOT Base (Base tokens handled above)
+            // Check if it's a Monad token from DexScreener (with market data)
+            const isMonadTokenFromDexScreener = (
+              multiChainTokenData.chainId === "5001" || 
+              chainIdLower === "monad"
+            );
+            
+            if (isMonadTokenFromDexScreener) {
+              // Monad token found on DexScreener - use it with market data
+              logger.debug(`[Telegram Search] ✅ Found Monad token on DexScreener for ${address}`, { address }, true);
+              const { buildMultiChainTokenEmbed } = await import("../../../utils/multiChainTokenEmbeds");
+              const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
+              const { getContractCreation } = await import("../../../services/contractCreation");
+              const { getTokenFactoryName } = await import("../../../services/baseFactories");
+              
+              // Get contract creation info for factory detection
+              const contractCreation = await getContractCreation(address, "monad").catch(() => null);
+              let factoryName: string | null = null;
+              if (contractCreation?.contractCreator) {
+                factoryName = getTokenFactoryName(contractCreation.contractCreator);
+              }
+              
+              // Merge DexScreener data with contract creation info
+              const monadTokenData: import("../../../services/dexscreener").MultiChainTokenData = {
+                ...multiChainTokenData,
+                creatorAddress: contractCreation?.contractCreator ?? multiChainTokenData.creatorAddress ?? null,
+                factoryName: factoryName ?? multiChainTokenData.factoryName ?? null,
+                createdAt: contractCreation?.createdAt ?? multiChainTokenData.createdAt ?? null,
+                creationTxHash: contractCreation?.txHash ?? multiChainTokenData.creationTxHash ?? null,
+              };
+              
+              const { embed, components } = await buildMultiChainTokenEmbed(address, monadTokenData);
+              const telegramMessages = embedsToTelegram([embed]);
+              const telegramText = Array.isArray(telegramMessages) ? telegramMessages.join("\n\n") : telegramMessages;
+              
+              await bot.sendMessage(chatId, telegramText, {
+                parse_mode: "HTML",
+                disable_web_page_preview: true,
+              });
+              
+              logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+                success: true,
+                type: "wallet_monad_token",
+              });
+              return;
+            }
+            
+            // Only show other multi-chain tokens if it's NOT Base (Base tokens handled above)
             if (chainIdLower !== "base" && multiChainTokenData.chainId !== "8453") {
               const { embed, components } = await buildMultiChainTokenEmbed(address, multiChainTokenData);
               const telegramMessages = embedsToTelegram([embed]);
