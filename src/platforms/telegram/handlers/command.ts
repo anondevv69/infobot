@@ -446,11 +446,12 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
                 let marketCap: number | null = null;
                 let liquidity: number | null = null;
                 
-                if (factoryName === "Nad.fun" && tokenInfo?.totalSupply) {
+                // For Nad.fun tokens, use Lens contract to get price and calculate market cap
+                if (factoryName === "Nad.fun") {
                   try {
                     const { getNadFunTokenPrice } = await import("../../../services/blockvision");
                     const priceData = await getNadFunTokenPrice(address).catch(() => null);
-                    if (priceData?.priceUsd) {
+                    if (priceData?.priceUsd && tokenInfo?.totalSupply) {
                       priceUsd = priceData.priceUsd;
                       liquidity = priceData.liquidity;
                       
@@ -459,13 +460,19 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
                       const decimals = tokenInfo.decimals ?? 18;
                       const totalSupplyAdjusted = totalSupply / Math.pow(10, decimals);
                       marketCap = priceUsd * totalSupplyAdjusted;
+                      
+                      logger.debug(`[Telegram Search] Nad.fun token market cap calculated: price=${priceUsd}, totalSupply=${totalSupplyAdjusted}, marketCap=${marketCap}`, {}, true);
                     }
                   } catch (error) {
-                    // Silently fail - price calculation is optional
+                    logger.debug(`[Telegram Search] Nad.fun price calculation failed for ${address}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
                   }
                 }
                 
+                // For other Monad tokens (not Nad.fun, not Clanker), we can still show basic info
+                // but market cap won't be available until they're on DexScreener
+                
                 // It's a Monad token - create a Monad token embed with token info if available
+                // Always include deployer address from contract creation
                 const monadTokenData: import("../../../services/dexscreener").MultiChainTokenData = {
                   chainId: String(MONAD_CHAIN_ID),
                   chainName: "Monad",
@@ -481,11 +488,19 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
                   dexUrl: null,
                   dexName: factoryName === "Nad.fun" ? "Nad.fun" : null,
                   pairAddress: null,
+                  // Always include deployer address if we have contract creation info
                   creatorAddress: contractCreation?.contractCreator ?? null,
                   factoryName: factoryName,
                   createdAt: contractCreation?.createdAt ?? null,
                   creationTxHash: contractCreation?.txHash ?? null,
                 };
+                
+                logger.debug(`[Telegram Search] Monad token data prepared: factory=${factoryName}, creator=${monadTokenData.creatorAddress}, marketCap=${monadTokenData.marketCap}`, {
+                  factoryName,
+                  creatorAddress: monadTokenData.creatorAddress,
+                  marketCap: monadTokenData.marketCap,
+                  priceUsd: monadTokenData.priceUsd,
+                }, true);
                 
                 const { embed, components } = await buildMultiChainTokenEmbed(address, monadTokenData);
                 const telegramMessages = embedsToTelegram([embed]);
