@@ -333,13 +333,13 @@ async function handleWalletSearch(
     return;
   }
 
-  // Fallback: Check if it's a Monad Clanker token not yet indexed by Clanker API
-  // Check if it's a Monad contract from the Clanker factory
+  // Fallback: Check if it's a Monad token (Nad.fun, Clanker, etc.) not yet indexed by Clanker API
+  // Check if it's a Monad contract from a known factory
   if (isEthAddress(address)) {
     try {
-      const { getMonadAccountInfo } = await import("../services/blockvision");
+      const { getMonadAccountInfo, MONAD_CHAIN_ID } = await import("../services/blockvision");
       const { getContractCreation } = await import("../services/contractCreation");
-      const { detectTokenFactory } = await import("../services/baseFactories");
+      const { getTokenFactoryName } = await import("../services/baseFactories");
       
       const [monadAccountInfo, contractCreation] = await Promise.all([
         getMonadAccountInfo(address).catch(() => null),
@@ -347,15 +347,19 @@ async function handleWalletSearch(
       ]);
       
       // Check if it's a contract on Monad
-      if (monadAccountInfo?.isContract && contractCreation?.contractCreator) {
-        // Check if the creator is the Clanker Monad factory (0xf9a0c289eab6b571c6247094a853810987e5b26d)
-        const creatorLower = contractCreation.contractCreator.toLowerCase();
-        const clankerMonadFactory = "0xf9a0c289eab6b571c6247094a853810987e5b26d".toLowerCase();
-        if (creatorLower === clankerMonadFactory) {
-          // It's a Monad Clanker token - create a basic Clanker token embed
+      if (monadAccountInfo?.isContract) {
+        // Check if it's from a known factory (Nad.fun, Clanker, etc.)
+        let factoryName: string | null = null;
+        if (contractCreation?.contractCreator) {
+          factoryName = getTokenFactoryName(contractCreation.contractCreator);
+        }
+        
+        // If it's from a known factory OR we have contract creation info, create a Monad token embed
+        if (factoryName || contractCreation) {
+          // It's a Monad token - create a Monad token embed
           const { buildMultiChainTokenEmbed } = await import("../utils/multiChainTokenEmbeds");
           const monadTokenData: MultiChainTokenData = {
-            chainId: "5001",
+            chainId: String(MONAD_CHAIN_ID),
             chainName: "Monad",
             tokenName: null,
             tokenSymbol: null,
@@ -369,10 +373,10 @@ async function handleWalletSearch(
             dexUrl: null,
             dexName: null,
             pairAddress: null,
-            creatorAddress: contractCreation.contractCreator,
-            factoryName: "Clanker",
-            createdAt: contractCreation.createdAt ?? null,
-            creationTxHash: contractCreation.txHash ?? null,
+            creatorAddress: contractCreation?.contractCreator ?? null,
+            factoryName: factoryName,
+            createdAt: contractCreation?.createdAt ?? null,
+            creationTxHash: contractCreation?.txHash ?? null,
           };
           
           const { embed, components } = await buildMultiChainTokenEmbed(address, monadTokenData);
@@ -384,13 +388,13 @@ async function handleWalletSearch(
           
           logger.search(address, "discord", userId, guildId, channelId, {
             success: true,
-            type: "wallet_monad_clanker_token",
+            type: "wallet_monad_token",
           });
           return;
         }
       }
     } catch (error) {
-      console.error(`[Search] Monad Clanker fallback check failed for ${address}:`, error);
+      console.error(`[Search] Monad token fallback check failed for ${address}:`, error);
     }
   }
 

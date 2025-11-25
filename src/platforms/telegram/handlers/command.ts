@@ -368,12 +368,13 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
           return;
         }
 
-        // Fallback: Check if it's a Monad Clanker token not yet indexed by Clanker API
-        // Check if it's a Monad contract from the Clanker factory
+        // Fallback: Check if it's a Monad token (Nad.fun, Clanker, etc.) not yet indexed by Clanker API
+        // Check if it's a Monad contract from a known factory
         if (isEthAddress(address)) {
           try {
-            const { getMonadAccountInfo } = await import("../../../services/blockvision");
+            const { getMonadAccountInfo, MONAD_CHAIN_ID } = await import("../../../services/blockvision");
             const { getContractCreation } = await import("../../../services/contractCreation");
+            const { getTokenFactoryName } = await import("../../../services/baseFactories");
             
             const [monadAccountInfo, contractCreation] = await Promise.all([
               getMonadAccountInfo(address).catch(() => null),
@@ -383,17 +384,16 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
             // Check if it's a contract on Monad
             if (monadAccountInfo?.isContract) {
               // Check if it's from a known factory (Nad.fun, Clanker, etc.)
-              const { getTokenFactoryName } = await import("../../../services/baseFactories");
               let factoryName: string | null = null;
               if (contractCreation?.contractCreator) {
                 factoryName = getTokenFactoryName(contractCreation.contractCreator);
               }
               
-              // If it's from a known factory, create a Monad token embed
+              // If it's from a known factory OR we have contract creation info, create a Monad token embed
               if (factoryName || contractCreation) {
+                // It's a Monad token - create a Monad token embed
                 const { buildMultiChainTokenEmbed } = await import("../../../utils/multiChainTokenEmbeds");
                 const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
-                const { MONAD_CHAIN_ID } = await import("../../../services/blockvision");
                 
                 const monadTokenData: import("../../../services/dexscreener").MultiChainTokenData = {
                   chainId: String(MONAD_CHAIN_ID),
@@ -433,7 +433,7 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
               }
             }
           } catch (error) {
-            console.error(`[Telegram Search] Monad Clanker fallback check failed for ${address}:`, error);
+            console.error(`[Telegram Search] Monad token fallback check failed for ${address}:`, error);
           }
         }
 
