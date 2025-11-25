@@ -81,19 +81,29 @@ export async function handleXCommand(
     }
 
     // Use Neynar API to search X account directly
-    const byXHandle = await findUserByXHandle(handle);
+    const byXHandle = await findUserByXHandle(handle).catch((error) => {
+      logger.debug(`[X Command] X handle lookup failed for ${handle}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
+      return null;
+    });
     
     // Fallback to username lookup if X handle lookup fails
+    // Only try this if the handle looks like it could be a Farcaster username
+    // (not starting with underscore, which is common for X handles)
     let byUsername: User | null = null;
-    if (!byXHandle) {
+    if (!byXHandle && !handle.startsWith("_")) {
       try {
-        byUsername = await findUserByUsername(handle);
+        byUsername = await findUserByUsername(handle).catch((error) => {
+          // Silently fail - this is expected if handle is not a Farcaster username
+          logger.debug(`[X Command] Username lookup failed for ${handle} (expected if not a Farcaster username)`, {}, true);
+          return null;
+        });
         // Only use if it has matching X account
         if (byUsername && !userHasMatchingXAccount(byUsername, handle)) {
           byUsername = null;
         }
       } catch (error) {
         // User not found, continue
+        logger.debug(`[X Command] Username lookup error for ${handle}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
       }
     }
 
@@ -103,12 +113,18 @@ export async function handleXCommand(
     
     // Search for Zora profile by X handle independently
     // This finds Zora profiles that have the X handle linked, even if not linked to Farcaster
-    const zoraByXHandle = await findZoraByXHandle(handle);
+    const zoraByXHandle = await findZoraByXHandle(handle).catch((error) => {
+      logger.debug(`[X Command] Zora X handle lookup failed for ${handle}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
+      return null;
+    });
     
     // If we found a Farcaster user, also try to get their Zora profile
     let zoraFromFarcaster: Awaited<ReturnType<typeof findBestZoraSummary>> = null;
     if (farcasterUser) {
-      zoraFromFarcaster = await findBestZoraSummary(collectZoraIdentifiers(farcasterUser));
+      zoraFromFarcaster = await findBestZoraSummary(collectZoraIdentifiers(farcasterUser)).catch((error) => {
+        logger.debug(`[X Command] Zora Farcaster lookup failed for ${handle}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
+        return null;
+      });
     }
     
     // Prefer Zora profile found by X handle, but also include Farcaster-linked Zora if different
