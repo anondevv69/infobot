@@ -201,15 +201,16 @@ export async function getMonadTransaction(
 
 /**
  * Get contract creation information for Monad
- * Uses BlockVision RPC to find the creation transaction
+ * Uses MonadScan API (Etherscan-compatible) to find the creation transaction
  */
 export async function getMonadContractCreation(
   contractAddress: string,
 ): Promise<{ contractCreator: string; txHash: string; createdAt: number | null } | null> {
   try {
-    const apiUrl = `${BLOCKVISION_API_BASE}/${env.blockvisionApiKey}`;
+    const normalizedAddress = contractAddress.toLowerCase();
     
     // First, verify it's a contract by checking if it has code
+    const apiUrl = `${BLOCKVISION_API_BASE}/${env.blockvisionApiKey}`;
     const codeResponse = await fetch(apiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -229,13 +230,69 @@ export async function getMonadContractCreation(
       return null;
     }
 
-    // Get the first transaction for this address (creation transaction)
-    // Use eth_getTransactionCount to get the nonce, then find the transaction
-    // Actually, we need to use a different approach - get the contract's first transaction
-    // by checking internal transactions or using a transaction indexer
+    // Use MonadScan API (Etherscan-compatible) to get the first transaction
+    // MonadScan uses the same API format as Etherscan/Basescan
+    const monadScanApiUrl = "https://monadscan.com/api";
+    const txListUrl = `${monadScanApiUrl}?module=account&action=txlist&address=${normalizedAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc`;
     
-    // For now, we'll use the RPC fallback which will try to find the creation tx
-    // The RPC fallback in contractCreation.ts will handle this
+    const txResponse = await fetch(txListUrl, {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (!txResponse.ok) {
+      console.warn(`[BlockVision] MonadScan API request failed for ${contractAddress}: ${txResponse.status} ${txResponse.statusText}`);
+      return null;
+    }
+
+    const txData = await txResponse.json() as {
+      status?: string;
+      message?: string;
+      result?: Array<{
+        hash: string;
+        from: string;
+        to: string | null;
+        timeStamp: string;
+        contractAddress?: string;
+      }> | string;
+    };
+
+    // Check for API errors
+    if (txData.status === "0" || (typeof txData.result === "string" && txData.result.includes("deprecated"))) {
+      console.warn(`[BlockVision] MonadScan API error for ${contractAddress}: ${txData.message || txData.result}`);
+      return null;
+    }
+
+    if (txData.status === "1" && Array.isArray(txData.result) && txData.result.length > 0) {
+      const firstTx = txData.result[0];
+      
+      // Check if this is the creation transaction
+      // For direct contract creation: to is null/empty
+      // For factory-deployed contracts: contractAddress field matches our contract
+      const isContractCreation = 
+        !firstTx.to || 
+        firstTx.to === "" || 
+        firstTx.contractAddress?.toLowerCase() === normalizedAddress ||
+        firstTx.to.toLowerCase() === normalizedAddress;
+
+      if (isContractCreation) {
+        const createdAt = firstTx.timeStamp ? parseInt(firstTx.timeStamp, 10) : null;
+        
+        // For factory-deployed contracts, the deployer is the transaction sender (from)
+        // The factory address is in the "to" field
+        return {
+          contractCreator: firstTx.from.toLowerCase(),
+          txHash: firstTx.hash,
+          createdAt,
+        };
+      } else {
+        console.warn(`[BlockVision] First transaction for ${contractAddress} on Monad doesn't appear to be creation tx. to=${firstTx.to}, contractAddress=${firstTx.contractAddress}`);
+      }
+    } else {
+      console.warn(`[BlockVision] No transactions found for ${contractAddress} on Monad. Status: ${txData.status}, Result type: ${typeof txData.result}`);
+    }
+
     return null;
   } catch (error) {
     console.error(`[BlockVision] Error fetching contract creation for ${contractAddress}:`, error);
