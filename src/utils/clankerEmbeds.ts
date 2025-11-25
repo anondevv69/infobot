@@ -318,6 +318,42 @@ export async function buildTokenEmbed(
     }
   }
   
+  // For Monad Clanker tokens, Clanker API should provide market cap via related.market.marketCap
+  // If not available, we can try Nad.fun Lens contract for Nad.fun tokens
+  if (!marketCap && token.contract_address && (token.chain_id === 5001 || token.chain_id === 143)) {
+    // Check if it's a Nad.fun token by checking if deployer is Nad.fun factory
+    try {
+      const { getTokenFactoryName } = await import("../services/baseFactories");
+      const { getContractCreation } = await import("../services/contractCreation");
+      const contractCreation = await getContractCreation(token.contract_address, "monad").catch(() => null);
+      
+      if (contractCreation?.contractCreator) {
+        const factoryName = getTokenFactoryName(contractCreation.contractCreator);
+        if (factoryName === "Nad.fun") {
+          // Use Nad.fun Lens contract to get price and calculate market cap
+          const { getNadFunTokenPrice } = await import("../services/blockvision");
+          const { detectTokenContract } = await import("../services/tokenDetection");
+          const { MONAD_CHAIN_ID } = await import("../services/blockvision");
+          
+          const [priceData, tokenInfo] = await Promise.all([
+            getNadFunTokenPrice(token.contract_address).catch(() => null),
+            detectTokenContract(token.contract_address, MONAD_CHAIN_ID).catch(() => null),
+          ]);
+          
+          if (priceData?.priceUsd && tokenInfo?.totalSupply) {
+            // Calculate market cap: price * total supply
+            const totalSupply = parseFloat(tokenInfo.totalSupply);
+            const decimals = tokenInfo.decimals ?? 18;
+            const totalSupplyAdjusted = totalSupply / Math.pow(10, decimals);
+            marketCap = priceData.priceUsd * totalSupplyAdjusted;
+          }
+        }
+      }
+    } catch (error) {
+      // Silently fail
+    }
+  }
+  
   const tokenLines = [
     token.symbol ? `Symbol: ${token.symbol}` : null,
     `Chain: ${formatChainName(token.chain_id)}`,

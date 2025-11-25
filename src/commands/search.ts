@@ -195,6 +195,92 @@ async function handleWalletSearch(
   guildId?: string,
   channelId?: string,
 ): Promise<void> {
+  // IMPORTANT: Check Clanker tokens FIRST before checking for Farcaster users
+  // This ensures contract addresses show as Clanker tokens, not wallet profiles
+  const clankerTokens = await fetchTokensByAddress(address);
+  
+  if (clankerTokens.length > 0) {
+    const firstToken = clankerTokens[0];
+    // Resolve user with timeout (3 seconds max)
+    const associatedUser = await Promise.race([
+      resolveUserFromToken(firstToken),
+      new Promise<User | null>((resolve) => 
+        setTimeout(() => resolve(null), 3000)
+      ),
+    ]);
+    
+    if (associatedUser) {
+      const [creatorTokens, latestCast, zoraSummaryForCreator] = await Promise.all([
+        safeFetchTokensByFid(associatedUser.fid),
+        safeFetchMostRecentCast(associatedUser.fid),
+        findBestZoraSummary(collectZoraIdentifiers(associatedUser, address)),
+      ]);
+
+      const zoraSummaryFromAddress = await findBestZoraSummary([address]).catch(() => null);
+      const associatedSummary =
+        zoraSummaryForCreator &&
+        isSummaryAssociatedWithUser(associatedUser, zoraSummaryForCreator)
+          ? zoraSummaryForCreator
+          : zoraSummaryFromAddress;
+
+      const paragraphUser = await import("../services/paragraph").then(m => m.getUserByWallet(address)).catch(() => null);
+
+      const walletResponse = await buildWalletProfileResponse({
+        wallet: address,
+        user: associatedUser,
+        zoraSummary: associatedSummary,
+        clankerTokens: creatorTokens,
+        latestCast,
+        paragraphUser: paragraphUser ?? undefined,
+      });
+
+      await interaction.editReply({
+        content: `No Farcaster profile linked directly to \`${address}\`, but the address is associated with this Clanker creator:`,
+        embeds: walletResponse.embeds,
+        components: walletResponse.components,
+      });
+      return;
+    }
+
+    const zoraSummaryFromAddress = await findBestZoraSummary([address]).catch(() => null);
+    const earliestCast = firstToken.contract_address
+      ? await safeFetchEarliestCastByQuery(firstToken.contract_address)
+      : null;
+    
+    const tokenEmbed = await buildTokenEmbed(firstToken, {
+      farcasterUser: associatedUser ?? undefined,
+      zoraSummary: zoraSummaryFromAddress ?? undefined,
+      earliestCast,
+    });
+
+    // Split into pages if needed
+    const embeds = splitEmbedIntoPages(tokenEmbed, 15);
+    const totalPages = embeds.length;
+    const identifier = `clanker_token_${firstToken.contract_address ?? address}`;
+    
+    if (totalPages > 1) {
+      storeEmbedForPagination(identifier, tokenEmbed);
+    }
+
+    const components: typeof buildPaginationButtons extends (...args: any[]) => infer R ? R : never = [];
+    if (totalPages > 1) {
+      components.push(...buildPaginationButtons(0, totalPages, identifier));
+    }
+
+    await interaction.editReply({
+      content: `No Farcaster profile linked directly to \`${address}\`. Showing Clanker token associated with this address:`,
+      embeds: [embeds[0]],
+      components,
+    });
+    
+    logger.search(address, "discord", userId, guildId, channelId, {
+      success: true,
+      type: "wallet_clanker_token",
+    });
+    return;
+  }
+
+  // Only check for Farcaster users if no Clanker tokens found
   // Run initial lookups in PARALLEL (major performance improvement)
   const [zoraSummaryFromAddress, user, paragraphUser] = await Promise.all([
     findBestZoraSummary([address]).catch(() => null),
@@ -253,7 +339,7 @@ async function handleWalletSearch(
     return;
   }
 
-  // Fetch Clanker tokens (with timeout protection)
+  // Fetch Clanker tokens (with timeout protection) - This is now a fallback
   const tokens = await fetchTokensByAddress(address);
   
   if (tokens.length > 0) {
