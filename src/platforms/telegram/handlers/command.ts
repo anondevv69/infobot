@@ -383,23 +383,31 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
             
             // Check if it's a contract on Monad
             if (monadAccountInfo?.isContract) {
+              // Try to read token information (name, symbol, decimals) via RPC
+              const { detectTokenContract } = await import("../../../services/tokenDetection");
+              const { buildMultiChainTokenEmbed } = await import("../../../utils/multiChainTokenEmbeds");
+              const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
+              
+              // Try to get token info and contract creation info in parallel
+              const [tokenInfo, contractCreation] = await Promise.all([
+                detectTokenContract(address, MONAD_CHAIN_ID).catch(() => null),
+                getContractCreation(address, "monad").catch(() => null),
+              ]);
+              
               // Check if it's from a known factory (Nad.fun, Clanker, etc.)
               let factoryName: string | null = null;
               if (contractCreation?.contractCreator) {
                 factoryName = getTokenFactoryName(contractCreation.contractCreator);
               }
               
-              // If it's from a known factory OR we have contract creation info, create a Monad token embed
-              if (factoryName || contractCreation) {
-                // It's a Monad token - create a Monad token embed
-                const { buildMultiChainTokenEmbed } = await import("../../../utils/multiChainTokenEmbeds");
-                const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
-                
+              // If it's from a known factory OR we have contract creation info OR we detected token info, create a Monad token embed
+              if (factoryName || contractCreation || tokenInfo) {
+                // It's a Monad token - create a Monad token embed with token info if available
                 const monadTokenData: import("../../../services/dexscreener").MultiChainTokenData = {
                   chainId: String(MONAD_CHAIN_ID),
                   chainName: "Monad",
-                  tokenName: null,
-                  tokenSymbol: null,
+                  tokenName: tokenInfo?.name ?? null,
+                  tokenSymbol: tokenInfo?.symbol ?? null,
                   priceUsd: null,
                   priceChange24h: null,
                   volume24h: null,
