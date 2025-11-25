@@ -6,6 +6,7 @@
 import { env } from "../config";
 
 const BLOCKVISION_API_BASE = "https://monad-mainnet.blockvision.org/v1";
+const MONADSCAN_API_BASE = "https://monadscan.com/api";
 
 // Monad chain ID is 5001 (based on common EVM chain ID patterns)
 export const MONAD_CHAIN_ID = 5001;
@@ -48,8 +49,7 @@ export async function getMonadAccountInfo(
   address: string,
 ): Promise<BlockVisionAccountInfo | null> {
   try {
-    // Use BlockVision API to get account info
-    // The API key is used as the endpoint base URL
+    // Try BlockVision API first
     const apiUrl = `${BLOCKVISION_API_BASE}/${env.blockvisionApiKey}`;
     
     // Get account balance
@@ -60,10 +60,17 @@ export async function getMonadAccountInfo(
     });
 
     if (!balanceResponse.ok) {
-      return null;
+      console.warn(`[BlockVision] Balance check failed for ${address}: ${balanceResponse.status} ${balanceResponse.statusText}`);
+      // Fallback to MonadScan API (Etherscan-compatible)
+      return await getMonadAccountInfoViaMonadScan(address);
     }
 
     const balanceData = await balanceResponse.json();
+    if (balanceData.error) {
+      console.warn(`[BlockVision] Balance API error for ${address}:`, balanceData.error);
+      return await getMonadAccountInfoViaMonadScan(address);
+    }
+    
     const balance = balanceData.result || "0x0";
 
     // Get transaction count
@@ -76,7 +83,7 @@ export async function getMonadAccountInfo(
     let transactionCount = 0;
     if (txCountResponse.ok) {
       const txCountData = await txCountResponse.json();
-      if (txCountData.result) {
+      if (txCountData.result && !txCountData.error) {
         transactionCount = parseInt(txCountData.result, 16);
       }
     }
@@ -91,7 +98,7 @@ export async function getMonadAccountInfo(
     let isContract = false;
     if (codeResponse.ok) {
       const codeData = await codeResponse.json();
-      if (codeData.result && codeData.result !== "0x") {
+      if (codeData.result && codeData.result !== "0x" && !codeData.error) {
         isContract = true;
       }
     }
@@ -104,6 +111,130 @@ export async function getMonadAccountInfo(
     };
   } catch (error) {
     console.error(`[BlockVision] Error fetching account info for ${address}:`, error);
+    // Fallback to MonadScan API
+    return await getMonadAccountInfoViaMonadScan(address);
+  }
+}
+
+/**
+ * Fallback: Get account info via MonadScan API (Etherscan-compatible)
+ */
+async function getMonadAccountInfoViaMonadScan(
+  address: string,
+): Promise<BlockVisionAccountInfo | null> {
+  try {
+    // MonadScan uses Etherscan-compatible API
+    const monadScanApiUrl = "https://monadscan.com/api";
+    
+    // Get token info (this will tell us if it's a contract and get token details)
+    const tokenInfoUrl = `${monadScanApiUrl}?module=token&action=tokeninfo&contractaddress=${address}`;
+    const tokenInfoResponse = await fetch(tokenInfoUrl, {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (tokenInfoResponse.ok) {
+      const tokenData = await tokenInfoResponse.json() as {
+        status?: string;
+        message?: string;
+        result?: {
+          contractAddress?: string;
+          tokenName?: string;
+          tokenSymbol?: string;
+          decimals?: string;
+          totalSupply?: string;
+        } | string;
+      };
+
+      // If we get token info, it's definitely a contract
+      if (tokenData.status === "1" && typeof tokenData.result === "object" && tokenData.result) {
+        return {
+          address,
+          balance: "0x0", // We don't have balance from token info endpoint
+          transactionCount: 0, // We don't have tx count from token info endpoint
+          isContract: true,
+        };
+      }
+    }
+
+    // Fallback: Check if it's a contract by getting code via RPC
+    // Use public Monad RPC endpoint
+    const rpcUrl = "https://monad-mainnet.blockvision.org/v1";
+    const codeResponse = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "eth_getCode",
+        params: [address, "latest"],
+        id: 1,
+      }),
+    });
+
+    if (codeResponse.ok) {
+      const codeData = await codeResponse.json() as { result?: string; error?: any };
+      if (codeData.result && codeData.result !== "0x" && !codeData.error) {
+        return {
+          address,
+          balance: "0x0",
+          transactionCount: 0,
+          isContract: true,
+        };
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error(`[BlockVision] MonadScan fallback failed for ${address}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Get token info from MonadScan API (Etherscan-compatible)
+ * This gets token name, symbol, decimals, totalSupply directly from MonadScan
+ * Reference: https://docs.etherscan.io/api-reference/endpoint/tokeninfo#get-token-info-by-contractaddress
+ */
+export async function getMonadTokenInfo(
+  contractAddress: string,
+): Promise<{ name: string | null; symbol: string | null; decimals: number | null; totalSupply: string | null } | null> {
+  try {
+    const tokenInfoUrl = `${MONADSCAN_API_BASE}?module=token&action=tokeninfo&contractaddress=${contractAddress}`;
+    const response = await fetch(tokenInfoUrl, {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json() as {
+      status?: string;
+      message?: string;
+      result?: {
+        contractAddress?: string;
+        tokenName?: string;
+        tokenSymbol?: string;
+        decimals?: string;
+        totalSupply?: string;
+      } | string;
+    };
+
+    if (data.status === "1" && typeof data.result === "object" && data.result) {
+      return {
+        name: data.result.tokenName || null,
+        symbol: data.result.tokenSymbol || null,
+        decimals: data.result.decimals ? parseInt(data.result.decimals, 10) : null,
+        totalSupply: data.result.totalSupply || null,
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.error(`[BlockVision] Error fetching token info for ${contractAddress}:`, error);
     return null;
   }
 }

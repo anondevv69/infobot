@@ -613,10 +613,15 @@ async function handleWalletSearch(
         const { getContractCreation } = await import("../services/contractCreation");
         const { getTokenFactoryName } = await import("../services/baseFactories");
         
-        // Try to get token info and contract creation info in parallel
-        const [tokenInfo, contractCreation] = await Promise.all([
+        // Try to get token info from multiple sources in parallel
+        const { getMonadTokenInfo } = await import("../services/blockvision");
+        const [rpcTokenInfo, monadScanTokenInfo, contractCreation] = await Promise.all([
           detectTokenContract(address, MONAD_CHAIN_ID).catch((error) => {
-            logger.debug(`[Discord Search] Token detection failed for ${address}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
+            logger.debug(`[Discord Search] RPC token detection failed for ${address}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
+            return null;
+          }),
+          getMonadTokenInfo(address).catch((error: unknown) => {
+            logger.debug(`[Discord Search] MonadScan token info failed for ${address}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
             return null;
           }),
           getContractCreation(address, "monad").catch((error) => {
@@ -624,6 +629,18 @@ async function handleWalletSearch(
             return null;
           }),
         ]);
+        
+        // Prefer MonadScan token info (more reliable), fallback to RPC
+        const tokenInfo = monadScanTokenInfo ? {
+          name: monadScanTokenInfo.name,
+          symbol: monadScanTokenInfo.symbol,
+          decimals: monadScanTokenInfo.decimals,
+          totalSupply: monadScanTokenInfo.totalSupply,
+          isToken: true,
+          chainId: MONAD_CHAIN_ID,
+          chainName: "Monad",
+          address,
+        } : rpcTokenInfo;
         
         logger.debug(`[Discord Search] Monad token info: tokenInfo=${!!tokenInfo}, contractCreation=${!!contractCreation}`, {
           hasTokenInfo: !!tokenInfo,

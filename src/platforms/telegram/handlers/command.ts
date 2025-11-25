@@ -394,10 +394,15 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
               const { buildMultiChainTokenEmbed } = await import("../../../utils/multiChainTokenEmbeds");
               const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
               
-              // Try to get token info and contract creation info in parallel
-              const [tokenInfo, contractCreation] = await Promise.all([
+              // Try to get token info from multiple sources in parallel
+              const { getMonadTokenInfo } = await import("../../../services/blockvision");
+              const [rpcTokenInfo, monadScanTokenInfo, contractCreation] = await Promise.all([
                 detectTokenContract(address, MONAD_CHAIN_ID).catch((error) => {
-                  logger.debug(`[Telegram Search] Token detection failed for ${address}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
+                  logger.debug(`[Telegram Search] RPC token detection failed for ${address}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
+                  return null;
+                }),
+                getMonadTokenInfo(address).catch((error: unknown) => {
+                  logger.debug(`[Telegram Search] MonadScan token info failed for ${address}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
                   return null;
                 }),
                 getContractCreation(address, "monad").catch((error) => {
@@ -405,6 +410,18 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
                   return null;
                 }),
               ]);
+              
+              // Prefer MonadScan token info (more reliable), fallback to RPC
+              const tokenInfo = monadScanTokenInfo ? {
+                name: monadScanTokenInfo.name,
+                symbol: monadScanTokenInfo.symbol,
+                decimals: monadScanTokenInfo.decimals,
+                totalSupply: monadScanTokenInfo.totalSupply,
+                isToken: true,
+                chainId: MONAD_CHAIN_ID,
+                chainName: "Monad",
+                address,
+              } : rpcTokenInfo;
               
               logger.debug(`[Telegram Search] Monad token info: tokenInfo=${!!tokenInfo}, contractCreation=${!!contractCreation}`, {
                 hasTokenInfo: !!tokenInfo,
