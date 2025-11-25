@@ -668,9 +668,9 @@ async function handleWalletSearch(
         
         logger.search(address, "discord", userId, guildId, channelId, {
           success: true,
-          type: "wallet_monad_token",
+          type: "wallet_monad_token_dexscreener",
         });
-        return;
+        return; // IMPORTANT: Return early to prevent duplicate responses
       }
       
       // Only show other multi-chain tokens if it's NOT Base (Base tokens handled above)
