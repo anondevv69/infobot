@@ -304,6 +304,7 @@ export class MonadClankerMonitor {
   private isRunning = false;
   private checkInterval: NodeJS.Timeout | null = null;
   private lastCheckedTimestamp: number = Date.now();
+  private lastClankerWorldCheckTimestamp: number = Date.now() - (24 * 60 * 60 * 1000); // Start 24 hours ago to catch recent tokens
   private checkCount: number = 0;
 
   /**
@@ -317,6 +318,10 @@ export class MonadClankerMonitor {
 
     this.isRunning = true;
     logger.info("[Monad Clanker Monitor] Starting Monad Clanker deployment monitoring...");
+
+    // Clear seen contracts on startup to catch any tokens that were missed
+    seenContracts.clear();
+    logger.debug("[Monad Clanker Monitor] Cleared seen contracts cache on startup");
 
     // Send startup notification
     sendStartupNotification().catch((error) => {
@@ -430,8 +435,8 @@ export class MonadClankerMonitor {
    */
   private async checkClankerWorldMonadTokens(): Promise<void> {
     try {
-      // Fetch recent Monad tokens from Clanker API
-      const monadTokens = await fetchRecentMonadTokens(50);
+      // Fetch recent Monad tokens from Clanker API (increase limit to catch more)
+      const monadTokens = await fetchRecentMonadTokens(100);
       
       logger.debug(`[Monad Clanker Monitor] Found ${monadTokens.length} Monad tokens from Clanker.world API`);
       
@@ -452,18 +457,20 @@ export class MonadClankerMonitor {
           continue;
         }
 
-        // Check if token was deployed recently (within last 1 hour)
+        // Check if token was deployed recently (within last 24 hours)
+        // This ensures we catch tokens even if they're a few hours old
         const deployedAt = token.deployed_at || token.created_at;
         if (!deployedAt) {
           continue;
         }
 
         const deployedTime = new Date(deployedAt).getTime();
-        const oneHourAgo = Date.now() - (60 * 60 * 1000);
         
-        if (deployedTime < oneHourAgo) {
-          // Token is older than 1 hour, skip it
-          seenContracts.add(contractAddress); // Mark as seen to avoid checking again
+        // Only process tokens deployed since last check (or within last 24 hours if this is first check)
+        const minTimestamp = this.lastClankerWorldCheckTimestamp;
+        
+        if (deployedTime < minTimestamp) {
+          // Token is older than our last check, skip it
           continue;
         }
 
@@ -554,14 +561,17 @@ export class MonadClankerMonitor {
           farcasterUser,
         };
 
-        // Mark as seen
+        // Mark as seen BEFORE sending notification (to avoid duplicates if notification fails)
         seenContracts.add(contractAddress);
         
         // Send notification (with early FID ping if applicable)
         await sendMonadDeploymentNotification(deployment, isEarlyFid);
         
-        logger.system(`[Monad Clanker Monitor] ✅ Detected Monad deployment from Clanker.world: ${contractAddress}${isEarlyFid ? " (EARLY FID!)" : ""}`);
+        logger.system(`[Monad Clanker Monitor] ✅ Detected Monad deployment from Clanker.world: ${contractAddress}${isEarlyFid ? " (EARLY FID!)" : ""}${farcasterUser ? ` by @${farcasterUser.username || `FID ${farcasterUser.fid}`}` : ""}`);
       }
+      
+      // Update last check timestamp
+      this.lastClankerWorldCheckTimestamp = Date.now();
     } catch (error) {
       logger.error("[Monad Clanker Monitor] Error checking Clanker.world API:", error);
     }
