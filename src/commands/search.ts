@@ -596,13 +596,17 @@ async function handleWalletSearch(
       monadAccountInfo = await getMonadAccountInfo(address).catch(() => null);
       
       if (monadAccountInfo?.isContract) {
-        // It's a contract on Monad, create a basic token embed
+        // It's a contract on Monad, try to read token information (name, symbol, decimals) via RPC
+        const { detectTokenContract } = await import("../services/tokenDetection");
         const { buildMultiChainTokenEmbed } = await import("../utils/multiChainTokenEmbeds");
         const { getContractCreation } = await import("../services/contractCreation");
         const { getTokenFactoryName } = await import("../services/baseFactories");
         
-        // Try to get contract creation info
-        const contractCreation = await getContractCreation(address, "monad").catch(() => null);
+        // Try to get token info and contract creation info in parallel
+        const [tokenInfo, contractCreation] = await Promise.all([
+          detectTokenContract(address, MONAD_CHAIN_ID).catch(() => null),
+          getContractCreation(address, "monad").catch(() => null),
+        ]);
         
         // Check if it's from a known factory (Nad.fun, Clanker, etc.)
         let factoryName: string | null = null;
@@ -610,40 +614,43 @@ async function handleWalletSearch(
           factoryName = getTokenFactoryName(contractCreation.contractCreator);
         }
         
-        // Create a basic Monad token data structure
-        const monadTokenData: MultiChainTokenData = {
-          chainId: String(MONAD_CHAIN_ID),
-          chainName: "Monad",
-          tokenName: null,
-          tokenSymbol: null,
-          priceUsd: null,
-          priceChange24h: null,
-          volume24h: null,
-          liquidity: null,
-          marketCap: null,
-          fdv: null,
-          trades24h: null,
-          dexUrl: null,
-          dexName: null,
-          pairAddress: null,
-          creatorAddress: contractCreation?.contractCreator ?? null,
-          factoryName: factoryName,
-          createdAt: contractCreation?.createdAt ?? null,
-          creationTxHash: contractCreation?.txHash ?? null,
-        };
-        
-        const { embed, components } = await buildMultiChainTokenEmbed(address, monadTokenData);
-        
-        await interaction.editReply({
-          embeds: [embed],
-          components,
-        });
-        
-        logger.search(address, "discord", userId, guildId, channelId, {
-          success: true,
-          type: "wallet_monad_token",
-        });
-        return;
+        // If it's from a known factory OR we have contract creation info OR we detected token info, create a Monad token embed
+        if (factoryName || contractCreation || tokenInfo) {
+          // It's a Monad token - create a Monad token embed with token info if available
+          const monadTokenData: MultiChainTokenData = {
+            chainId: String(MONAD_CHAIN_ID),
+            chainName: "Monad",
+            tokenName: tokenInfo?.name ?? null,
+            tokenSymbol: tokenInfo?.symbol ?? null,
+            priceUsd: null,
+            priceChange24h: null,
+            volume24h: null,
+            liquidity: null,
+            marketCap: null,
+            fdv: null,
+            trades24h: null,
+            dexUrl: null,
+            dexName: null,
+            pairAddress: null,
+            creatorAddress: contractCreation?.contractCreator ?? null,
+            factoryName: factoryName,
+            createdAt: contractCreation?.createdAt ?? null,
+            creationTxHash: contractCreation?.txHash ?? null,
+          };
+          
+          const { embed, components } = await buildMultiChainTokenEmbed(address, monadTokenData);
+          
+          await interaction.editReply({
+            embeds: [embed],
+            components,
+          });
+          
+          logger.search(address, "discord", userId, guildId, channelId, {
+            success: true,
+            type: "wallet_monad_token",
+          });
+          return;
+        }
       }
     }
 
