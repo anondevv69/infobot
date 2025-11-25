@@ -158,12 +158,22 @@ export async function fetchTokensByAddress(
 /**
  * Fetch recent Monad tokens from Clanker API
  * Filters by chain_id = 5001 (Monad)
+ * Uses Clanker API documentation: https://clanker.gitbook.io/clanker-documentation/public/get-tokens
  */
-export async function fetchRecentMonadTokens(limit: number = 50): Promise<ClankerToken[]> {
+export async function fetchRecentMonadTokens(
+  limit: number = 100,
+  startDate?: number, // Unix timestamp to filter tokens created after this date
+): Promise<ClankerToken[]> {
   const url = new URL(`${CLANKER_API_BASE}/tokens`);
   url.searchParams.set("limit", limit.toString());
-  url.searchParams.set("includeUser", "true");
-  url.searchParams.set("includeMarket", "true");
+  url.searchParams.set("includeUser", "true"); // Get creator profile data including FID
+  url.searchParams.set("includeMarket", "false"); // We don't need market data for monitoring
+  url.searchParams.set("sort", "desc"); // Newest first (default, but explicit)
+  
+  // Filter by startDate if provided (Unix timestamp in seconds)
+  if (startDate) {
+    url.searchParams.set("startDate", Math.floor(startDate / 1000).toString()); // Convert ms to seconds
+  }
   
   const tokens = await executeClankerRequest(url, 5000);
   

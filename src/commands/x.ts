@@ -5,6 +5,10 @@ import { safeFetchMostRecentCast, safeFetchTokensByFid } from "../utils/farcaste
 import { buildFarcasterPresentation } from "../utils/farcasterPresentation";
 import { trackUser, trackSearch, trackResponseTime } from "../utils/botStats";
 import { logger } from "../utils/logger";
+import { findBestZoraSummary, findZoraByXHandle } from "../services/zora";
+import { collectZoraIdentifiers } from "../utils/zoraPresentation";
+import { buildZoraProfileEmbed } from "../utils/zoraEmbeds";
+import { appendZoraSummaryFields } from "../utils/zoraEmbeds";
 
 function parseHandleFromInput(input: string): string | null {
   // Remove @ if present
@@ -96,6 +100,20 @@ export async function handleXCommand(
     // Trust the X handle lookup result (it searches X accounts directly)
     // Only use username fallback if X handle lookup failed
     const farcasterUser = byXHandle ?? byUsername;
+    
+    // Search for Zora profile by X handle independently
+    // This finds Zora profiles that have the X handle linked, even if not linked to Farcaster
+    const zoraByXHandle = await findZoraByXHandle(handle);
+    
+    // If we found a Farcaster user, also try to get their Zora profile
+    let zoraFromFarcaster: Awaited<ReturnType<typeof findBestZoraSummary>> = null;
+    if (farcasterUser) {
+      zoraFromFarcaster = await findBestZoraSummary(collectZoraIdentifiers(farcasterUser));
+    }
+    
+    // Prefer Zora profile found by X handle, but also include Farcaster-linked Zora if different
+    const zoraSummary = zoraByXHandle ?? zoraFromFarcaster;
+    
     if (farcasterUser) {
       const [tokens, latestCast] = await Promise.all([
         safeFetchTokensByFid(farcasterUser.fid),
@@ -105,6 +123,7 @@ export async function handleXCommand(
       const presentation = await buildFarcasterPresentation(farcasterUser, {
         tokens,
         latestCast,
+        zoraSummary: zoraSummary, // Show Zora if found by X handle, even if not linked to Farcaster
         titleSuffix: "X/Twitter Lookup",
       });
 
@@ -123,6 +142,26 @@ export async function handleXCommand(
       });
       return;
     }
+    
+    // If no Farcaster user but we found a Zora profile by X handle, show that
+    if (zoraSummary) {
+      const zoraEmbed = buildZoraProfileEmbed(zoraSummary);
+      await appendZoraSummaryFields(zoraEmbed, zoraSummary);
+
+      const responseTime = Date.now() - startTime;
+      trackResponseTime(responseTime);
+      trackSearch();
+
+      logger.search(query, "discord", userId, guildId, channelId, {
+        success: true,
+        type: "x_twitter_zora",
+      });
+
+      await interaction.editReply({
+        embeds: [zoraEmbed],
+      });
+      return;
+    }
 
     const responseTime = Date.now() - startTime;
     trackResponseTime(responseTime);
@@ -134,7 +173,7 @@ export async function handleXCommand(
     });
 
     await interaction.editReply({
-      content: `No Farcaster profile linked to X handle \`@${handle}\`.`,
+      content: `No Farcaster or Zora profile linked to X handle \`@${handle}\`.`,
     });
   } catch (error) {
     const responseTime = Date.now() - startTime;

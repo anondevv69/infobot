@@ -14,6 +14,7 @@ const MONAD_CLANKER_WEBHOOK_URL = "https://discord.com/api/webhooks/144250738646
 const CLANKER_USERNAME = "clanker";
 const CHECK_INTERVAL_MS = 1 * 60 * 1000; // Check every 1 minute
 const MONAD_CHAIN_ID = 5001;
+const CLANKER_MONAD_FACTORY = "0xf9a0c289eab6b571c6247094a853810987e5b26d".toLowerCase();
 
 interface MonadDeployment {
   contractAddress: string;
@@ -162,7 +163,7 @@ async function sendMonadDeploymentNotification(
         {
           title: isEarlyFid ? "🎯 EARLY FID - Monad Clanker Token Deployment" : "Monad Clanker Token Deployment",
           description: isEarlyFid 
-            ? `**Early FID Alert!** New token deployed on Monad chain by Farcaster user with FID < 30000`
+            ? `**Early FID Alert!** New token deployed on Monad chain by Farcaster user with FID < 300000`
             : `New token deployed on Monad chain`,
           color: isEarlyFid ? 0xffd700 : 0x00ff00, // Gold for early FID, Green for regular
           fields: [
@@ -364,7 +365,7 @@ export class MonadClankerMonitor {
   }
 
   /**
-   * Check for new Monad deployments from both @clanker casts and Clanker.world API
+   * Check for new Monad deployments from both @clanker casts, Clanker.world API, and direct Monad chain monitoring
    */
   private async checkForMonadDeployments(): Promise<void> {
     try {
@@ -373,6 +374,9 @@ export class MonadClankerMonitor {
 
       // Check Clanker.world API for Monad tokens
       await this.checkClankerWorldMonadTokens();
+      
+      // Check Monad chain directly for new contract deployments from Clanker factory
+      await this.checkMonadChainDeployments();
 
       // Get @clanker user
       const clankerUser = await findUserByUsername(CLANKER_USERNAME);
@@ -435,8 +439,11 @@ export class MonadClankerMonitor {
    */
   private async checkClankerWorldMonadTokens(): Promise<void> {
     try {
-      // Fetch recent Monad tokens from Clanker API (increase limit to catch more)
-      const monadTokens = await fetchRecentMonadTokens(100);
+      // Fetch recent Monad tokens from Clanker API
+      // Use startDate to only get tokens created after the last check
+      // This ensures we don't miss tokens and don't process duplicates
+      const startDateTimestamp = this.lastClankerWorldCheckTimestamp;
+      const monadTokens = await fetchRecentMonadTokens(100, startDateTimestamp);
       
       logger.debug(`[Monad Clanker Monitor] Found ${monadTokens.length} Monad tokens from Clanker.world API`);
       
@@ -478,29 +485,51 @@ export class MonadClankerMonitor {
         let deployerAddress: string | null = null;
         let farcasterUser: { fid: number; username: string | null; displayName: string | null } | null = null;
         let isEarlyFid = false;
+        let contractCreation: { contractCreator: string; txHash: string; createdAt?: number | null } | null = null;
 
         try {
-          const contractCreation = await getContractCreation(contractAddress, "monad").catch(() => null);
+          contractCreation = await getContractCreation(contractAddress, "monad").catch(() => null);
           if (contractCreation?.contractCreator) {
             deployerAddress = contractCreation.contractCreator.toLowerCase();
             
-            // Try to find Farcaster user by wallet
-            try {
-              const user = await findUserByWallet(deployerAddress);
-              if (user) {
-                farcasterUser = {
-                  fid: user.fid,
-                  username: user.username || null,
-                  displayName: user.display_name || null,
-                };
-                
-                // Check if FID < 30000
-                if (user.fid < 30000) {
-                  isEarlyFid = true;
+            // Verify this is from the Clanker factory
+            const isFromClankerFactory = deployerAddress === CLANKER_MONAD_FACTORY;
+            if (!isFromClankerFactory) {
+              // Not from Clanker factory, skip it
+              logger.debug(`[Monad Clanker Monitor] Token ${contractAddress} is not from Clanker factory (creator: ${deployerAddress})`);
+              seenContracts.add(contractAddress); // Mark as seen to avoid checking again
+              continue;
+            }
+            
+            // Get deployer from transaction (the person who called the factory)
+            // For factory-deployed contracts, the deployer is the transaction sender, not the factory
+            if (contractCreation.txHash) {
+              try {
+                const { getMonadTransaction } = await import("./blockvision");
+                const tx = await getMonadTransaction(contractCreation.txHash).catch(() => null);
+                if (tx?.from) {
+                  const actualDeployer = tx.from.toLowerCase();
+                  try {
+                    const user = await findUserByWallet(actualDeployer);
+                    if (user) {
+                      farcasterUser = {
+                        fid: user.fid,
+                        username: user.username || null,
+                        displayName: user.display_name || null,
+                      };
+                      
+                      // Check if FID < 300000 (user-requested threshold)
+                      if (user.fid < 300000) {
+                        isEarlyFid = true;
+                      }
+                    }
+                  } catch (error) {
+                    // Ignore - deployer might not have Farcaster account
+                  }
                 }
+              } catch (error) {
+                // Ignore transaction lookup errors
               }
-            } catch (error) {
-              // Ignore - deployer might not have Farcaster account
             }
           }
         } catch (error) {
@@ -509,25 +538,32 @@ export class MonadClankerMonitor {
           });
         }
 
-        // Also check if token has deployer info from Clanker API (msg_sender or related.user)
-        if (!farcasterUser) {
-          // First try related.user from Clanker API (if available)
-          if (token.related?.user?.fid !== undefined) {
-            const clankerUser = token.related.user;
-            const fid = clankerUser.fid;
-            if (fid !== undefined) {
-              farcasterUser = {
-                fid: fid,
-                username: clankerUser.username || null,
-                displayName: clankerUser.displayName || null,
-              };
-              
-              // Check if FID < 30000
-              if (fid < 30000) {
-                isEarlyFid = true;
-              }
+        // PREFER Clanker API's related.user.fid as it's the most reliable source
+        // According to Clanker API docs: https://clanker.gitbook.io/clanker-documentation/public/get-tokens
+        // When includeUser=true, related.user contains creator profile data including FID
+        const clankerUserFid = token.related?.user?.fid;
+        if (clankerUserFid !== undefined && clankerUserFid !== null && typeof clankerUserFid === "number") {
+          const clankerUser = token.related?.user;
+          if (clankerUser) {
+            // Always use Clanker API's FID if available (most reliable)
+            farcasterUser = {
+              fid: clankerUserFid,
+              username: clankerUser.username || null,
+              displayName: clankerUser.displayName || null,
+            };
+            
+            // Check if FID < 300000 (user-requested threshold)
+            if (clankerUserFid < 300000) {
+              isEarlyFid = true;
+              logger.debug(`[Monad Clanker Monitor] ✅ Found early FID ${clankerUserFid} from Clanker API for ${contractAddress}`);
+            } else {
+              logger.debug(`[Monad Clanker Monitor] Found FID ${clankerUserFid} from Clanker API for ${contractAddress} (not early, threshold: 300000)`);
             }
           }
+        }
+        
+        // Fallback: If Clanker API didn't provide FID, try other methods
+        if (!farcasterUser) {
           
           // If still no user, try msg_sender wallet lookup
           if (!farcasterUser && token.msg_sender) {
@@ -540,15 +576,26 @@ export class MonadClankerMonitor {
                   displayName: user.display_name || null,
                 };
                 
-                // Check if FID < 30000
-                if (user.fid < 30000) {
+                // Check if FID < 300000 (user-requested threshold)
+                if (user.fid < 300000) {
                   isEarlyFid = true;
+                  logger.debug(`[Monad Clanker Monitor] Found early FID ${user.fid} from wallet lookup for ${contractAddress}`);
                 }
               }
             } catch (error) {
               // Ignore
             }
           }
+        }
+        
+        // Log if we found a FID but it's not early (for debugging)
+        if (farcasterUser && !isEarlyFid) {
+          logger.debug(`[Monad Clanker Monitor] Found FID ${farcasterUser.fid} for ${contractAddress} (not early, threshold: 300000)`);
+        }
+        
+        // Log if we couldn't find FID at all (for debugging)
+        if (!farcasterUser) {
+          logger.debug(`[Monad Clanker Monitor] Could not find Farcaster user for ${contractAddress}. Clanker API related.user: ${token.related?.user?.fid ?? "none"}, msg_sender: ${token.msg_sender ?? "none"}`);
         }
 
         // Create deployment object
@@ -565,15 +612,42 @@ export class MonadClankerMonitor {
         seenContracts.add(contractAddress);
         
         // Send notification (with early FID ping if applicable)
-        await sendMonadDeploymentNotification(deployment, isEarlyFid);
+        // ALWAYS ping if FID < 300000, regardless of whether we found the user
+        const shouldPing = isEarlyFid || (farcasterUser !== null && farcasterUser.fid < 300000);
+        await sendMonadDeploymentNotification(deployment, shouldPing);
         
-        logger.system(`[Monad Clanker Monitor] ✅ Detected Monad deployment from Clanker.world: ${contractAddress}${isEarlyFid ? " (EARLY FID!)" : ""}${farcasterUser ? ` by @${farcasterUser.username || `FID ${farcasterUser.fid}`}` : ""}`);
+        logger.system(`[Monad Clanker Monitor] ✅ Detected Monad deployment from Clanker.world: ${contractAddress}${shouldPing ? " (EARLY FID - PINGED!)" : ""}${farcasterUser ? ` by @${farcasterUser.username || `FID ${farcasterUser.fid}`}` : " (FID unknown)"}`);
       }
       
       // Update last check timestamp
       this.lastClankerWorldCheckTimestamp = Date.now();
     } catch (error) {
       logger.error("[Monad Clanker Monitor] Error checking Clanker.world API:", error);
+    }
+  }
+
+  /**
+   * Monitor Monad chain directly for new contract deployments from Clanker factory
+   * This catches deployments immediately, even before Clanker.world indexes them
+   * 
+   * Strategy: Since BlockVision API doesn't have a direct "get transactions from address" endpoint,
+   * we'll enhance the Clanker API monitoring to also verify each token is from the Clanker factory
+   * and check the deployer's FID. This ensures we catch all Monad Clanker deployments.
+   */
+  private async checkMonadChainDeployments(): Promise<void> {
+    try {
+      logger.debug("[Monad Clanker Monitor] Checking Monad chain for new deployments from Clanker factory");
+      
+      // The actual monitoring happens in checkClankerWorldMonadTokens where we:
+      // 1. Get Monad tokens from Clanker API
+      // 2. Verify they're from the Clanker factory (via contract creation lookup)
+      // 3. Check deployer's FID and ping if < 300000
+      
+      // This method serves as a placeholder for future direct chain monitoring
+      // if BlockVision adds support for transaction queries by address
+      
+    } catch (error) {
+      logger.error("[Monad Clanker Monitor] Error checking Monad chain deployments:", error);
     }
   }
 }

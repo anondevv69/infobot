@@ -528,4 +528,47 @@ export async function findBestZoraSummary(
   return fallback;
 }
 
+/**
+ * Find Zora profile by X/Twitter handle
+ * Searches Zora profiles and checks if they have the matching X handle in their social accounts
+ */
+export async function findZoraByXHandle(xHandle: string): Promise<ZoraLookupResult | null> {
+  const normalized = xHandle.replace(/^@/, "").trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  // Try searching by the X handle as if it were a Zora handle
+  // Some users might use the same handle across platforms
+  const profileRes = await fetchZoraProfile(normalized);
+  
+  // Check if the found Zora profile has the matching X handle in socialAccounts
+  if (profileRes?.profile?.socialAccounts?.twitter?.username) {
+    const twitterHandle = profileRes.profile.socialAccounts.twitter.username.replace(/^@/, "").toLowerCase();
+    if (twitterHandle === normalized) {
+      // Found a match! Fetch the full summary
+      return await fetchZoraSummary(normalized);
+    }
+  }
+  
+  // Also check the socials in the summary (in case the profile was found but we need to verify)
+  const zoraSummary = await fetchZoraSummary(normalized);
+  if (zoraSummary?.profile?.socials) {
+    const hasMatchingXHandle = zoraSummary.profile.socials.some((social) => {
+      if (social.platform !== "X" && social.platform !== "Twitter") {
+        return false;
+      }
+      // Extract handle from label or URL
+      const socialHandle = social.label.replace(/^@/, "").toLowerCase();
+      return socialHandle === normalized;
+    });
+    
+    if (hasMatchingXHandle) {
+      return zoraSummary;
+    }
+  }
+
+  return null;
+}
+
 

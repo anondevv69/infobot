@@ -899,17 +899,30 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
         // Trust the X handle lookup result (it searches X accounts directly)
         // Only use username fallback if X handle lookup failed
         const farcasterUser = byXHandle ?? byUsername;
+        
+        // Search for Zora profile by X handle independently
+        // This finds Zora profiles that have the X handle linked, even if not linked to Farcaster
+        const { findZoraByXHandle } = await import("../../../services/zora");
+        const zoraByXHandle = await findZoraByXHandle(handle);
+        
+        // If we found a Farcaster user, also try to get their Zora profile
+        let zoraFromFarcaster: Awaited<ReturnType<typeof findBestZoraSummary>> = null;
         if (farcasterUser) {
-          const [tokens, latestCast, zoraSummary] = await Promise.all([
+          zoraFromFarcaster = await findBestZoraSummary(collectZoraIdentifiers(farcasterUser));
+        }
+        
+        // Prefer Zora profile found by X handle, but also include Farcaster-linked Zora if different
+        const zoraSummary = zoraByXHandle ?? zoraFromFarcaster;
+        
+        if (farcasterUser) {
+          const [tokens, latestCast] = await Promise.all([
             safeFetchTokensByFid(farcasterUser.fid),
             safeFetchMostRecentCast(farcasterUser.fid),
-            findBestZoraSummary(collectZoraIdentifiers(farcasterUser)),
           ]);
-          const associatedSummary = zoraSummary && isSummaryAssociatedWithUser(farcasterUser, zoraSummary) ? zoraSummary : null;
 
           const result = await buildFarcasterPresentation(farcasterUser, {
             tokens,
-            zoraSummary: associatedSummary,
+            zoraSummary: zoraSummary, // Show Zora if found by X handle, even if not linked to Farcaster
             latestCast,
             returnAllPages: true, // Get all pages for Telegram
           });
@@ -921,7 +934,27 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
           
           logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
             success: true,
-            type: "farcaster",
+            type: "x_twitter",
+          });
+          return;
+        }
+        
+        // If no Farcaster user but we found a Zora profile by X handle, show that
+        if (zoraSummary) {
+          const { buildZoraProfileEmbed, appendZoraSummaryFields } = await import("../../../utils/zoraEmbeds");
+          const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
+          const zoraEmbed = buildZoraProfileEmbed(zoraSummary);
+          await appendZoraSummaryFields(zoraEmbed, zoraSummary);
+          const telegramMessages = embedsToTelegram([zoraEmbed]);
+          const telegramText = Array.isArray(telegramMessages) ? telegramMessages.join("\n\n") : telegramMessages;
+          await bot.sendMessage(chatId, telegramText, {
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          });
+          
+          logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+            success: true,
+            type: "x_twitter_zora",
           });
           return;
         }
