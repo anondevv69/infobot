@@ -643,21 +643,33 @@ async function handleWalletSearch(
         const { getContractCreation } = await import("../services/contractCreation");
         const { getTokenFactoryName } = await import("../services/baseFactories");
         
-        // Get contract creation info for factory detection
-        const contractCreation = await getContractCreation(address, "monad").catch(() => null);
+        // Get contract creation info for factory detection and deployer address
+        const contractCreation = await getContractCreation(address, "monad").catch((error) => {
+          logger.debug(`[Discord Search] Contract creation lookup failed for ${address}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
+          return null;
+        });
         let factoryName: string | null = null;
         if (contractCreation?.contractCreator) {
           factoryName = getTokenFactoryName(contractCreation.contractCreator);
+          logger.debug(`[Discord Search] Monad token deployer: ${contractCreation.contractCreator}, factory: ${factoryName}`, {}, true);
         }
         
         // Merge DexScreener data with contract creation info
+        // Always prioritize contract creation info for deployer address
         const monadTokenData: MultiChainTokenData = {
           ...multiChainTokenData,
+          // Always use contract creation deployer if available (most accurate)
           creatorAddress: contractCreation?.contractCreator ?? multiChainTokenData.creatorAddress ?? null,
           factoryName: factoryName ?? multiChainTokenData.factoryName ?? null,
           createdAt: contractCreation?.createdAt ?? multiChainTokenData.createdAt ?? null,
           creationTxHash: contractCreation?.txHash ?? multiChainTokenData.creationTxHash ?? null,
         };
+        
+        logger.debug(`[Discord Search] Final Monad token data: creatorAddress=${monadTokenData.creatorAddress}, factoryName=${monadTokenData.factoryName}`, {
+          creatorAddress: monadTokenData.creatorAddress,
+          factoryName: monadTokenData.factoryName,
+          hasCreationTx: !!monadTokenData.creationTxHash,
+        }, true);
         
         const { embed, components } = await buildMultiChainTokenEmbed(address, monadTokenData);
         
@@ -673,8 +685,8 @@ async function handleWalletSearch(
         return; // IMPORTANT: Return early to prevent duplicate responses
       }
       
-      // Only show other multi-chain tokens if it's NOT Base (Base tokens handled above)
-      if (chainIdLower !== "base" && multiChainTokenData.chainId !== "8453") {
+      // Only show other multi-chain tokens if it's NOT Base and NOT Monad (Monad handled above)
+      if (chainIdLower !== "base" && multiChainTokenData.chainId !== "8453" && chainIdLower !== "monad" && multiChainTokenData.chainId !== "5001") {
         const { embed, components } = await buildMultiChainTokenEmbed(address, multiChainTokenData);
         
         await interaction.editReply({
