@@ -83,6 +83,13 @@ export async function showAutoDetectPrompt(
   message: Message,
   detected: { type: string; query: string },
 ): Promise<void> {
+  // Prevent duplicate prompts for the same message
+  const { hasMessagePrompt, markMessagePrompt } = await import("../utils/infoConfirmationStore");
+  if (hasMessagePrompt(message.id)) {
+    logger.debug(`[AutoDetect] Skipping duplicate prompt for message ${message.id}`, {}, true);
+    return;
+  }
+  
   const userId = message.author.id;
   const guildId = message.guildId || undefined;
   const channelId = message.channelId;
@@ -137,6 +144,9 @@ export async function showAutoDetectPrompt(
     embeds: [embed],
     components: [row],
   });
+
+  // Mark this message as having a prompt (prevent duplicates)
+  markMessagePrompt(message.id);
 
   // Store the query for button handler
   storeInfoConfirmation(customId, {

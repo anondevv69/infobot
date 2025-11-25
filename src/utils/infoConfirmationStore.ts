@@ -14,7 +14,32 @@ interface InfoConfirmation {
 }
 
 const STORE = new Map<string, InfoConfirmation>();
+const MESSAGE_PROMPTS = new Map<string, number>(); // Track which messages already have prompts
 const TTL = 60 * 60 * 1000; // 1 hour
+const PROMPT_COOLDOWN = 5 * 60 * 1000; // 5 minutes - prevent duplicate prompts for same message
+
+/**
+ * Check if a message already has a prompt (to prevent duplicates)
+ */
+export function hasMessagePrompt(messageId: string): boolean {
+  const timestamp = MESSAGE_PROMPTS.get(messageId);
+  if (!timestamp) {
+    return false;
+  }
+  // Check if cooldown has passed
+  if (Date.now() - timestamp > PROMPT_COOLDOWN) {
+    MESSAGE_PROMPTS.delete(messageId);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Mark a message as having a prompt
+ */
+export function markMessagePrompt(messageId: string): void {
+  MESSAGE_PROMPTS.set(messageId, Date.now());
+}
 
 /**
  * Store a confirmation prompt
