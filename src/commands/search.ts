@@ -593,9 +593,20 @@ async function handleWalletSearch(
     
     if (!isMonadTokenFromDexScreener) {
       const { getMonadAccountInfo, MONAD_CHAIN_ID } = await import("../services/blockvision");
-      monadAccountInfo = await getMonadAccountInfo(address).catch(() => null);
+      const { logger } = await import("../utils/logger");
+      
+      logger.debug(`[Discord Search] Checking Monad for ${address}`, { address }, true);
+      
+      monadAccountInfo = await getMonadAccountInfo(address).catch((error) => {
+        logger.debug(`[Discord Search] Monad account info failed for ${address}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
+        return null;
+      });
+      
+      logger.debug(`[Discord Search] Monad account info for ${address}: isContract=${monadAccountInfo?.isContract}`, { isContract: monadAccountInfo?.isContract }, true);
       
       if (monadAccountInfo?.isContract) {
+        logger.debug(`[Discord Search] ✅ Detected Monad contract: ${address}`, {}, true);
+        
         // It's a contract on Monad, try to read token information (name, symbol, decimals) via RPC
         const { detectTokenContract } = await import("../services/tokenDetection");
         const { buildMultiChainTokenEmbed } = await import("../utils/multiChainTokenEmbeds");
@@ -604,9 +615,24 @@ async function handleWalletSearch(
         
         // Try to get token info and contract creation info in parallel
         const [tokenInfo, contractCreation] = await Promise.all([
-          detectTokenContract(address, MONAD_CHAIN_ID).catch(() => null),
-          getContractCreation(address, "monad").catch(() => null),
+          detectTokenContract(address, MONAD_CHAIN_ID).catch((error) => {
+            logger.debug(`[Discord Search] Token detection failed for ${address}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
+            return null;
+          }),
+          getContractCreation(address, "monad").catch((error) => {
+            logger.debug(`[Discord Search] Contract creation lookup failed for ${address}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
+            return null;
+          }),
         ]);
+        
+        logger.debug(`[Discord Search] Monad token info: tokenInfo=${!!tokenInfo}, contractCreation=${!!contractCreation}`, {
+          hasTokenInfo: !!tokenInfo,
+          hasContractCreation: !!contractCreation,
+          tokenName: tokenInfo?.name,
+          tokenSymbol: tokenInfo?.symbol,
+          creator: contractCreation?.contractCreator,
+          txHash: contractCreation?.txHash,
+        }, true);
         
         // Check if it's from a known factory (Nad.fun, Clanker, etc.)
         let factoryName: string | null = null;
@@ -749,7 +775,14 @@ async function handleWalletSearch(
   }
 
   // Only show Zora profile if no tokens were found
+  const { logger: loggerForZora } = await import("../utils/logger");
+  loggerForZora.debug(`[Discord Search] Checking Zora profile for ${address} (after all token checks)`, {}, true);
+  
   if (zoraSummaryFromAddress?.latestCoin) {
+    loggerForZora.debug(`[Discord Search] ⚠️ Found Zora profile for ${address}, but this should have been detected as a Monad token first`, {
+      zoraHandle: zoraSummaryFromAddress.profile.handle,
+      address,
+    }, true);
     const associated = isSummaryAssociatedWithAddress(zoraSummaryFromAddress, address)
       ? zoraSummaryFromAddress
       : null;

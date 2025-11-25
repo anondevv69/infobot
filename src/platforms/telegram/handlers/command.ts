@@ -376,13 +376,19 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
             const { getContractCreation } = await import("../../../services/contractCreation");
             const { getTokenFactoryName } = await import("../../../services/baseFactories");
             
-            const [monadAccountInfo, contractCreation] = await Promise.all([
-              getMonadAccountInfo(address).catch(() => null),
-              getContractCreation(address, "monad").catch(() => null),
-            ]);
+            logger.debug(`[Telegram Search] Checking Monad for ${address}`, { address }, true);
+            
+            const monadAccountInfo = await getMonadAccountInfo(address).catch((error) => {
+              logger.debug(`[Telegram Search] Monad account info failed for ${address}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
+              return null;
+            });
+            
+            logger.debug(`[Telegram Search] Monad account info for ${address}: isContract=${monadAccountInfo?.isContract}`, { isContract: monadAccountInfo?.isContract }, true);
             
             // Check if it's a contract on Monad
             if (monadAccountInfo?.isContract) {
+              logger.debug(`[Telegram Search] ✅ Detected Monad contract: ${address}`, {}, true);
+              
               // Try to read token information (name, symbol, decimals) via RPC
               const { detectTokenContract } = await import("../../../services/tokenDetection");
               const { buildMultiChainTokenEmbed } = await import("../../../utils/multiChainTokenEmbeds");
@@ -390,9 +396,24 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
               
               // Try to get token info and contract creation info in parallel
               const [tokenInfo, contractCreation] = await Promise.all([
-                detectTokenContract(address, MONAD_CHAIN_ID).catch(() => null),
-                getContractCreation(address, "monad").catch(() => null),
+                detectTokenContract(address, MONAD_CHAIN_ID).catch((error) => {
+                  logger.debug(`[Telegram Search] Token detection failed for ${address}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
+                  return null;
+                }),
+                getContractCreation(address, "monad").catch((error) => {
+                  logger.debug(`[Telegram Search] Contract creation lookup failed for ${address}: ${error instanceof Error ? error.message : String(error)}`, {}, true);
+                  return null;
+                }),
               ]);
+              
+              logger.debug(`[Telegram Search] Monad token info: tokenInfo=${!!tokenInfo}, contractCreation=${!!contractCreation}`, {
+                hasTokenInfo: !!tokenInfo,
+                hasContractCreation: !!contractCreation,
+                tokenName: tokenInfo?.name,
+                tokenSymbol: tokenInfo?.symbol,
+                creator: contractCreation?.contractCreator,
+                txHash: contractCreation?.txHash,
+              }, true);
               
               // Check if it's from a known factory (Nad.fun, Clanker, etc.)
               let factoryName: string | null = null;
