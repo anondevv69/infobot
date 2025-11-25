@@ -446,13 +446,17 @@ export class MonadClankerMonitor {
       // Use startDate to only get tokens created after the last check
       // This ensures we don't miss tokens and don't process duplicates
       const startDateTimestamp = this.lastClankerWorldCheckTimestamp;
+      logger.system(`[Monad Clanker Monitor] Checking Clanker.world API for Monad tokens (startDate: ${new Date(startDateTimestamp).toISOString()})`);
+      
       const monadTokens = await fetchRecentMonadTokens(100, startDateTimestamp);
       
-      logger.debug(`[Monad Clanker Monitor] Found ${monadTokens.length} Monad tokens from Clanker.world API`);
+      logger.system(`[Monad Clanker Monitor] Found ${monadTokens.length} Monad tokens from Clanker.world API`);
       
       // Log all Monad tokens found for debugging
       if (monadTokens.length > 0) {
-        logger.debug(`[Monad Clanker Monitor] Monad tokens: ${monadTokens.map(t => `${t.contract_address} (${t.deployed_at || t.created_at})`).join(", ")}`);
+        logger.system(`[Monad Clanker Monitor] Monad tokens found: ${monadTokens.map(t => `${t.contract_address} (${t.deployed_at || t.created_at}, FID: ${t.related?.user?.fid ?? "none"})`).join(", ")}`);
+      } else {
+        logger.system(`[Monad Clanker Monitor] No new Monad tokens found in Clanker.world API`);
       }
 
       for (const token of monadTokens) {
@@ -464,6 +468,7 @@ export class MonadClankerMonitor {
         
         // Skip if already seen
         if (seenContracts.has(contractAddress)) {
+          logger.debug(`[Monad Clanker Monitor] Skipping ${contractAddress} - already seen`);
           continue;
         }
 
@@ -471,6 +476,7 @@ export class MonadClankerMonitor {
         // This ensures we catch tokens even if they're a few hours old
         const deployedAt = token.deployed_at || token.created_at;
         if (!deployedAt) {
+          logger.debug(`[Monad Clanker Monitor] Skipping ${contractAddress} - no deployment timestamp`);
           continue;
         }
 
@@ -481,8 +487,11 @@ export class MonadClankerMonitor {
         
         if (deployedTime < minTimestamp) {
           // Token is older than our last check, skip it
+          logger.debug(`[Monad Clanker Monitor] Skipping ${contractAddress} - deployed ${new Date(deployedTime).toISOString()} is before last check ${new Date(minTimestamp).toISOString()}`);
           continue;
         }
+        
+        logger.system(`[Monad Clanker Monitor] Processing token ${contractAddress} (deployed: ${new Date(deployedTime).toISOString()}, FID from API: ${token.related?.user?.fid ?? "none"})`);
 
         // Get deployer address from contract creation
         let deployerAddress: string | null = null;
@@ -499,10 +508,12 @@ export class MonadClankerMonitor {
             const isFromClankerFactory = deployerAddress === CLANKER_MONAD_FACTORY;
             if (!isFromClankerFactory) {
               // Not from Clanker factory, skip it
-              logger.debug(`[Monad Clanker Monitor] Token ${contractAddress} is not from Clanker factory (creator: ${deployerAddress})`);
+              logger.system(`[Monad Clanker Monitor] ⚠️ Token ${contractAddress} is NOT from Clanker factory (creator: ${deployerAddress}, expected: ${CLANKER_MONAD_FACTORY})`);
               seenContracts.add(contractAddress); // Mark as seen to avoid checking again
               continue;
             }
+            
+            logger.system(`[Monad Clanker Monitor] ✅ Token ${contractAddress} verified as Clanker factory deployment`);
             
             // Get deployer from transaction (the person who called the factory)
             // For factory-deployed contracts, the deployer is the transaction sender, not the factory
@@ -558,11 +569,13 @@ export class MonadClankerMonitor {
             // Check if FID < 300000 (user-requested threshold)
             if (clankerUserFid < 300000) {
               isEarlyFid = true;
-              logger.debug(`[Monad Clanker Monitor] ✅ Found early FID ${clankerUserFid} from Clanker API for ${contractAddress}`);
+              logger.system(`[Monad Clanker Monitor] 🎯 EARLY FID ${clankerUserFid} from Clanker API for ${contractAddress} - WILL PING!`);
             } else {
-              logger.debug(`[Monad Clanker Monitor] Found FID ${clankerUserFid} from Clanker API for ${contractAddress} (not early, threshold: 300000)`);
+              logger.system(`[Monad Clanker Monitor] Found FID ${clankerUserFid} from Clanker API for ${contractAddress} (not early, threshold: 300000)`);
             }
           }
+        } else {
+          logger.system(`[Monad Clanker Monitor] ⚠️ Clanker API did not provide FID for ${contractAddress}. related.user: ${JSON.stringify(token.related?.user ?? {})}`);
         }
         
         // Fallback: If Clanker API didn't provide FID, try other methods
