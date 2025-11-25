@@ -135,8 +135,8 @@ async function lookupAddressOnChain(
       if (accountInfo) {
         // Convert balance from hex to decimal string
         const balanceWei = BigInt(accountInfo.balance);
-        // Only return if address has activity
-        if (balanceWei > 0n || accountInfo.transactionCount > 0) {
+        // Return if address has activity OR is a contract (contracts should be detected even without balance/transactions)
+        if (balanceWei > 0n || accountInfo.transactionCount > 0 || accountInfo.isContract) {
           return {
             chainId: config.chainId,
             chainName: config.name,

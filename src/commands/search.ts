@@ -570,8 +570,15 @@ async function handleWalletSearch(
 
     // Fallback: Check if it's a Monad contract (BlockVision API)
     // DexScreener might not have all Monad tokens yet, so we check directly
+    // Check Monad even if DexScreener returned data for other chains (Monad might not be in DexScreener)
     let monadAccountInfo: { isContract: boolean } | null = null;
-    if (!baseTokenData && !multiChainTokenData) {
+    // Only skip Monad check if we already found a Monad token from DexScreener
+    const isMonadTokenFromDexScreener = multiChainTokenData && (
+      multiChainTokenData.chainId === "5001" || 
+      multiChainTokenData.chainId?.toLowerCase() === "monad"
+    );
+    
+    if (!isMonadTokenFromDexScreener) {
       const { getMonadAccountInfo, MONAD_CHAIN_ID } = await import("../services/blockvision");
       monadAccountInfo = await getMonadAccountInfo(address).catch(() => null);
       
