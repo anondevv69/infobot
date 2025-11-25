@@ -37,7 +37,8 @@ export const TOKEN_FACTORY_MAP: Record<string, string> = {
   "0x9e68675b4bbaa7c281e07496cf24bae65e8450ec": "Paragraph",
   "0x660eaaedc5ba8d12c5ba8d12c5ba8d12c5ba8d12": "Paragraph", // Partial match - need full address
   // Monad factories
-  "0x961235a9020b05c44df1026d956d1f4d78014276": "Nad.fun", // Nad.fun Factory on Monad
+  "0x6b5f564339dbad6b780249827f2198a841feb7f3": "Nad.fun", // Nad.fun DEX_FACTORY on Monad (from https://nad-fun.gitbook.io/nad.fun/for-developers/contracts-and-abi)
+  "0x961235a9020b05c44df1026d956d1f4d78014276": "Nad.fun", // Nad.fun Factory on Monad (legacy/alternative)
   "0xf9a0c289eab6b571c6247094a853810987e5b26d": "Clanker", // Clanker Factory on Monad
 };
 

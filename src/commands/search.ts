@@ -579,9 +579,16 @@ async function handleWalletSearch(
         // It's a contract on Monad, create a basic token embed
         const { buildMultiChainTokenEmbed } = await import("../utils/multiChainTokenEmbeds");
         const { getContractCreation } = await import("../services/contractCreation");
+        const { getTokenFactoryName } = await import("../services/baseFactories");
         
         // Try to get contract creation info
         const contractCreation = await getContractCreation(address, "monad").catch(() => null);
+        
+        // Check if it's from a known factory (Nad.fun, Clanker, etc.)
+        let factoryName: string | null = null;
+        if (contractCreation?.contractCreator) {
+          factoryName = getTokenFactoryName(contractCreation.contractCreator);
+        }
         
         // Create a basic Monad token data structure
         const monadTokenData: MultiChainTokenData = {
@@ -600,7 +607,7 @@ async function handleWalletSearch(
           dexName: null,
           pairAddress: null,
           creatorAddress: contractCreation?.contractCreator ?? null,
-          factoryName: null,
+          factoryName: factoryName,
           createdAt: contractCreation?.createdAt ?? null,
           creationTxHash: contractCreation?.txHash ?? null,
         };
@@ -816,7 +823,7 @@ async function handleWalletSearch(
     return;
   }
 
-  const errorMsg = `We're continuing to add more wallet tracking systems and cannot connect \`${address}\` to any wallet or contract at this time.\n\n**Note:** This address has no activity on any supported chain (Ethereum, Base, Polygon, Arbitrum, Optimism, Avalanche, BSC, Fantom, Mantle).`;
+  const errorMsg = `We're continuing to add more wallet tracking systems and cannot connect \`${address}\` to any wallet or contract at this time.\n\n**Note:** This address has no activity on any supported chain (Ethereum, Base, Polygon, Arbitrum, Optimism, Avalanche, BSC, Fantom, Mantle, Monad).`;
   const truncatedMsg = errorMsg.length > 2000 
     ? errorMsg.substring(0, 1997) + "..." 
     : errorMsg;
@@ -984,7 +991,7 @@ async function handleTransactionSearch(
   const transaction = await lookupTransaction(txHash, preferredChainId || undefined);
 
   if (!transaction) {
-    const errorMsg = `❌ Transaction \`${txHash}\` not found on any supported chain.\n\n**Supported chains:** Ethereum, Base, Polygon, Arbitrum, Optimism, Avalanche, BSC, Fantom, Mantle, Gnosis, Celo, Linea, Scroll\n\n**Note:** If this is a Relay cross-chain transaction, use \`/relay\` instead.`;
+    const errorMsg = `❌ Transaction \`${txHash}\` not found on any supported chain.\n\n**Supported chains:** Ethereum, Base, Polygon, Arbitrum, Optimism, Avalanche, BSC, Fantom, Mantle, Monad, Gnosis, Celo, Linea, Scroll\n\n**Note:** If this is a Relay cross-chain transaction, use \`/relay\` instead.`;
     const truncatedMsg = errorMsg.length > 2000 
       ? errorMsg.substring(0, 1997) + "..." 
       : errorMsg;

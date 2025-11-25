@@ -381,12 +381,16 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
             ]);
             
             // Check if it's a contract on Monad
-            if (monadAccountInfo?.isContract && contractCreation?.contractCreator) {
-              // Check if the creator is the Clanker Monad factory (0xf9a0c289eab6b571c6247094a853810987e5b26d)
-              const creatorLower = contractCreation.contractCreator.toLowerCase();
-              const clankerMonadFactory = "0xf9a0c289eab6b571c6247094a853810987e5b26d".toLowerCase();
-              if (creatorLower === clankerMonadFactory) {
-                // It's a Monad Clanker token - create a basic Monad token embed
+            if (monadAccountInfo?.isContract) {
+              // Check if it's from a known factory (Nad.fun, Clanker, etc.)
+              const { getTokenFactoryName } = await import("../../../services/baseFactories");
+              let factoryName: string | null = null;
+              if (contractCreation?.contractCreator) {
+                factoryName = getTokenFactoryName(contractCreation.contractCreator);
+              }
+              
+              // If it's from a known factory, create a Monad token embed
+              if (factoryName || contractCreation) {
                 const { buildMultiChainTokenEmbed } = await import("../../../utils/multiChainTokenEmbeds");
                 const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
                 const { MONAD_CHAIN_ID } = await import("../../../services/blockvision");
@@ -406,10 +410,10 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
                   dexUrl: null,
                   dexName: null,
                   pairAddress: null,
-                  creatorAddress: contractCreation.contractCreator,
-                  factoryName: "Clanker",
-                  createdAt: contractCreation.createdAt ?? null,
-                  creationTxHash: contractCreation.txHash ?? null,
+                  creatorAddress: contractCreation?.contractCreator ?? null,
+                  factoryName: factoryName,
+                  createdAt: contractCreation?.createdAt ?? null,
+                  creationTxHash: contractCreation?.txHash ?? null,
                 };
                 
                 const { embed, components } = await buildMultiChainTokenEmbed(address, monadTokenData);
@@ -423,7 +427,7 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
                 
                 logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
                   success: true,
-                  type: "wallet_monad_clanker_token",
+                  type: "wallet_monad_token",
                 });
                 return;
               }
@@ -582,9 +586,16 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
             if (monadAccountInfo?.isContract) {
               // It's a contract on Monad, create a basic token embed
               const { getContractCreation } = await import("../../../services/contractCreation");
+              const { getTokenFactoryName } = await import("../../../services/baseFactories");
               
               // Try to get contract creation info
               const contractCreation = await getContractCreation(address, "monad").catch(() => null);
+              
+              // Check if it's from a known factory (Nad.fun, Clanker, etc.)
+              let factoryName: string | null = null;
+              if (contractCreation?.contractCreator) {
+                factoryName = getTokenFactoryName(contractCreation.contractCreator);
+              }
               
               // Create a basic Monad token data structure
               const monadTokenData: import("../../../services/dexscreener").MultiChainTokenData = {
@@ -603,7 +614,7 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
                 dexName: null,
                 pairAddress: null,
                 creatorAddress: contractCreation?.contractCreator ?? null,
-                factoryName: null,
+                factoryName: factoryName,
                 createdAt: contractCreation?.createdAt ?? null,
                 creationTxHash: contractCreation?.txHash ?? null,
               };
