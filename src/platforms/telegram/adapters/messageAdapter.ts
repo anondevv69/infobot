@@ -175,6 +175,18 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
     }
   }
 
+  // Detect chain from embed URL to use correct explorer for addresses
+  let detectedChain: "base" | "monad" | "ethereum" | null = null;
+  if (data.url) {
+    if (data.url.includes("monadscan.com")) {
+      detectedChain = "monad";
+    } else if (data.url.includes("basescan.org")) {
+      detectedChain = "base";
+    } else if (data.url.includes("etherscan.io")) {
+      detectedChain = "ethereum";
+    }
+  }
+
   // Fields - format cleanly
   if (data.fields && data.fields.length > 0) {
     for (const field of data.fields) {
@@ -244,7 +256,7 @@ export function convertToTelegramMessage(embed: EmbedBuilder): string {
           
           console.log("[Telegram] Trading links field - final value:", value);
         } else {
-          value = formatFieldValueForHtml(field.value, field.name);
+          value = formatFieldValueForHtml(field.value, field.name, detectedChain);
         }
         
         if (value.trim()) {
@@ -325,7 +337,7 @@ function finalCleanup(text: string): string {
  * Format field value for Telegram HTML - handle code blocks, links, etc.
  * NO PLACEHOLDERS - format everything directly
  */
-function formatFieldValueForHtml(value: string, fieldName?: string): string {
+function formatFieldValueForHtml(value: string, fieldName?: string, detectedChain?: "base" | "monad" | "ethereum" | null): string {
   if (!value) return "";
   
   // Convert markdown italic _text_ to HTML <i>text</i> (but not in code blocks)
@@ -354,10 +366,22 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
       const trimmed = line.trim();
       // Check if it's an Ethereum address/contract
       if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
-        // If it's in a Contract field, link to Clanker, otherwise Basescan
-        const url = isContractField 
-          ? `https://www.clanker.world/clanker/${trimmed}`
-          : `https://basescan.org/address/${trimmed}`;
+        // Determine explorer URL based on detected chain
+        let url: string;
+        if (detectedChain === "monad") {
+          url = `https://monadscan.com/address/${trimmed}`;
+        } else if (detectedChain === "base") {
+          url = isContractField 
+            ? `https://www.clanker.world/clanker/${trimmed}`
+            : `https://basescan.org/address/${trimmed}`;
+        } else if (detectedChain === "ethereum") {
+          url = `https://etherscan.io/address/${trimmed}`;
+        } else {
+          // Default to Basescan if chain not detected
+          url = isContractField 
+            ? `https://www.clanker.world/clanker/${trimmed}`
+            : `https://basescan.org/address/${trimmed}`;
+        }
         // Escape the URL properly for HTML href attribute
         const escapedUrl = url
           .replace(/&/g, "&amp;")
@@ -385,10 +409,22 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
     const trimmed = content.trim();
       // Check if it's an Ethereum address/contract
       if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
-        // If it's in a Contract field, link to Clanker, otherwise Basescan
-        const url = isContractField 
-          ? `https://www.clanker.world/clanker/${trimmed}`
-          : `https://basescan.org/address/${trimmed}`;
+        // Determine explorer URL based on detected chain
+        let url: string;
+        if (detectedChain === "monad") {
+          url = `https://monadscan.com/address/${trimmed}`;
+        } else if (detectedChain === "base") {
+          url = isContractField 
+            ? `https://www.clanker.world/clanker/${trimmed}`
+            : `https://basescan.org/address/${trimmed}`;
+        } else if (detectedChain === "ethereum") {
+          url = `https://etherscan.io/address/${trimmed}`;
+        } else {
+          // Default to Basescan if chain not detected
+          url = isContractField 
+            ? `https://www.clanker.world/clanker/${trimmed}`
+            : `https://basescan.org/address/${trimmed}`;
+        }
         // Escape the URL properly for HTML href attribute
         const escapedUrl = url
           .replace(/&/g, "&amp;")
@@ -463,16 +499,26 @@ function formatFieldValueForHtml(value: string, fieldName?: string): string {
   for (let i = ethMatches.length - 1; i >= 0; i--) {
     const { address, index, isContract } = ethMatches[i];
     
-    // If it's a contract, try to link to Clanker first, then Zora, then Basescan
+    // Determine explorer URL based on detected chain
     let url: string;
-    if (isContract) {
-      // Try Clanker first
-      url = `https://www.clanker.world/clanker/${address}`;
-      // Note: We can't check if it's actually a Clanker contract here without API call
-      // So we'll use Clanker URL for contracts, Basescan for wallets
+    if (detectedChain === "monad") {
+      url = `https://monadscan.com/address/${address}`;
+    } else if (detectedChain === "base") {
+      if (isContract) {
+        // Try Clanker first for Base contracts
+        url = `https://www.clanker.world/clanker/${address}`;
+      } else {
+        url = `https://basescan.org/address/${address}`;
+      }
+    } else if (detectedChain === "ethereum") {
+      url = `https://etherscan.io/address/${address}`;
     } else {
-      // Regular wallet address - link to Basescan
-      url = `https://basescan.org/address/${address}`;
+      // Default to Basescan if chain not detected
+      if (isContract) {
+        url = `https://www.clanker.world/clanker/${address}`;
+      } else {
+        url = `https://basescan.org/address/${address}`;
+      }
     }
     
     // Escape the URL properly for HTML href attribute
@@ -680,9 +726,10 @@ function formatFieldValue(value: string): string {
       const trimmed = line.trim();
       // Check if it's an Ethereum address/contract
       if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
-        // Make it clickable - Telegram will show as clickable link
-        const basescanUrl = `https://basescan.org/address/${trimmed}`;
-        return `[${trimmed}](${basescanUrl})`;
+        // Determine explorer URL based on detected chain (from parent function)
+        // Note: formatFieldValue is deprecated, but we'll use a default for now
+        const explorerUrl = `https://basescan.org/address/${trimmed}`;
+        return `[${trimmed}](${explorerUrl})`;
       }
       // Check if it's a Solana address
       if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(trimmed)) {
@@ -699,9 +746,10 @@ function formatFieldValue(value: string): string {
     const trimmed = content.trim();
     // Check if it's an Ethereum address/contract
     if (/^0x[a-fA-F0-9]{40}$/i.test(trimmed)) {
-      // Make it clickable - Telegram will show as clickable link
-      const basescanUrl = `https://basescan.org/address/${trimmed}`;
-      return `[${trimmed}](${basescanUrl})`;
+      // Note: formatFieldValue is deprecated, default to Basescan
+      // The correct chain detection happens in formatFieldValueForHtml
+      const explorerUrl = `https://basescan.org/address/${trimmed}`;
+      return `[${trimmed}](${explorerUrl})`;
     }
     // Check if it's a Solana address
     if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(trimmed)) {

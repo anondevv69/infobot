@@ -184,18 +184,19 @@ export async function buildMultiChainTokenEmbed(
     });
   }
 
-  // Contract Address
+  // Contract Address (make it clickable to explorer)
   embed.addFields({
     name: "🔑 Address",
-    value: `\`\`\`\n${contractAddress}\n\`\`\``,
+    value: `[${contractAddress}](${explorerUrl})`,
     inline: false,
   });
 
-  // Add trading links right after contract address (only for Base chain tokens)
-  if (tokenData.chainId === "8453" || tokenData.chainId === "base" || tokenData.chainId?.toLowerCase() === "base") {
+  // Add trading links right after contract address (for Base and Monad chain tokens)
+  const chainIdLower = String(tokenData.chainId).toLowerCase();
+  if (chainIdLower === "8453" || chainIdLower === "base" || chainIdLower === "5001" || chainIdLower === "monad") {
     embed.addFields({
       name: "\u200b", // Zero-width space to make it appear on same line
-      value: buildTradingLinks(contractAddress),
+      value: buildTradingLinks(contractAddress, tokenData.chainId),
       inline: false,
     });
   }
