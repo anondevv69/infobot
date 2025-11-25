@@ -209,47 +209,27 @@ async function handleWalletSearch(
       ),
     ]);
     
-    if (associatedUser) {
-      const [creatorTokens, latestCast, zoraSummaryForCreator] = await Promise.all([
-        safeFetchTokensByFid(associatedUser.fid),
-        safeFetchMostRecentCast(associatedUser.fid),
-        findBestZoraSummary(collectZoraIdentifiers(associatedUser, address)),
-      ]);
-
-      const zoraSummaryFromAddress = await findBestZoraSummary([address]).catch(() => null);
-      const associatedSummary =
-        zoraSummaryForCreator &&
-        isSummaryAssociatedWithUser(associatedUser, zoraSummaryForCreator)
-          ? zoraSummaryForCreator
-          : zoraSummaryFromAddress;
-
-      const paragraphUser = await import("../services/paragraph").then(m => m.getUserByWallet(address)).catch(() => null);
-
-      const walletResponse = await buildWalletProfileResponse({
-        wallet: address,
-        user: associatedUser,
-        zoraSummary: associatedSummary,
-        clankerTokens: creatorTokens,
-        latestCast,
-        paragraphUser: paragraphUser ?? undefined,
-      });
-
-      await interaction.editReply({
-        content: `No Farcaster profile linked directly to \`${address}\`, but the address is associated with this Clanker creator:`,
-        embeds: walletResponse.embeds,
-        components: walletResponse.components,
-      });
-      return;
-    }
-
+    // ALWAYS show the token embed when we find Clanker tokens
+    // The associated user info will be included IN the token embed, not as a separate wallet profile
     const zoraSummaryFromAddress = await findBestZoraSummary([address]).catch(() => null);
+    const zoraSummaryForCreator = associatedUser 
+      ? await findBestZoraSummary(collectZoraIdentifiers(associatedUser, address)).catch(() => null)
+      : null;
+    
+    const associatedSummary =
+      zoraSummaryForCreator &&
+      associatedUser &&
+      isSummaryAssociatedWithUser(associatedUser, zoraSummaryForCreator)
+        ? zoraSummaryForCreator
+        : zoraSummaryFromAddress;
+    
     const earliestCast = firstToken.contract_address
       ? await safeFetchEarliestCastByQuery(firstToken.contract_address)
       : null;
     
     const tokenEmbed = await buildTokenEmbed(firstToken, {
       farcasterUser: associatedUser ?? undefined,
-      zoraSummary: zoraSummaryFromAddress ?? undefined,
+      zoraSummary: associatedSummary ?? undefined,
       earliestCast,
     });
 
