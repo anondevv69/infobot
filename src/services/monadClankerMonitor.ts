@@ -78,8 +78,11 @@ async function sendStartupNotification(): Promise<void> {
   try {
     const message = {
       content: `✅ **Monad Clanker Monitor Started**\n\n` +
-        `**Status:** Now monitoring @clanker for Monad token deployments\n` +
+        `**Status:** Monitoring Clanker.world API + @clanker Farcaster profile for Monad token deployments\n` +
         `**Check Interval:** Every 1 minute\n` +
+        `**Sources:**\n` +
+        `• Clanker.world API (primary - most reliable)\n` +
+        `• @clanker Farcaster casts (secondary)\n` +
         `**Started:** <t:${Math.floor(Date.now() / 1000)}:R>`,
     };
 
@@ -106,7 +109,7 @@ async function sendStatusUpdate(checkCount: number, newCastsFound: number): Prom
   try {
     const message = {
       content: `👀 **Monad Clanker Monitor - Active**\n\n` +
-        `**Status:** Monitoring @clanker for Monad deployments\n` +
+        `**Status:** Monitoring Clanker.world API + @clanker Farcaster for Monad deployments\n` +
         `**Checks Completed:** ${checkCount}\n` +
         `**New Casts Checked:** ${newCastsFound}\n` +
         `**Last Check:** <t:${Math.floor(Date.now() / 1000)}:R>`,
