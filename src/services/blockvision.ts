@@ -1,16 +1,12 @@
 /**
- * BlockVision API service for Monad chain
- * Documentation: https://docs.blockvision.org/reference/monad-indexing-api
+ * MonadScan API service for Monad chain
+ * Uses MonadScan API (Etherscan-compatible) for all Monad chain operations
  */
 
-import { env } from "../config";
-
-const BLOCKVISION_API_BASE = "https://monad-mainnet.blockvision.org/v1";
 const MONADSCAN_API_BASE = "https://monadscan.com/api";
 
 // Monad chain ID is 5001 (based on common EVM chain ID patterns)
 export const MONAD_CHAIN_ID = 5001;
-const BLOCKVISION_API_KEY = process.env.BLOCKVISION_API_KEY || "35tVwNXLcX6v9pGXcxQYrb852Qx";
 
 export interface BlockVisionAccountTokens {
   address: string;
@@ -43,81 +39,17 @@ export interface BlockVisionTransaction {
 }
 
 /**
- * Get account information from BlockVision API
+ * Get account information from MonadScan API
  */
 export async function getMonadAccountInfo(
   address: string,
 ): Promise<BlockVisionAccountInfo | null> {
-  try {
-    // Try BlockVision API first
-    const apiUrl = `${BLOCKVISION_API_BASE}/${env.blockvisionApiKey}`;
-    
-    // Get account balance
-    const balanceResponse = await fetch(`${apiUrl}/eth_getBalance?address=${address}&tag=latest`, {
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    if (!balanceResponse.ok) {
-      console.warn(`[BlockVision] Balance check failed for ${address}: ${balanceResponse.status} ${balanceResponse.statusText}`);
-      // Fallback to MonadScan API (Etherscan-compatible)
-      return await getMonadAccountInfoViaMonadScan(address);
-    }
-
-    const balanceData = await balanceResponse.json();
-    if (balanceData.error) {
-      console.warn(`[BlockVision] Balance API error for ${address}:`, balanceData.error);
-      return await getMonadAccountInfoViaMonadScan(address);
-    }
-    
-    const balance = balanceData.result || "0x0";
-
-    // Get transaction count
-    const txCountResponse = await fetch(`${apiUrl}/eth_getTransactionCount?address=${address}&tag=latest`, {
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    let transactionCount = 0;
-    if (txCountResponse.ok) {
-      const txCountData = await txCountResponse.json();
-      if (txCountData.result && !txCountData.error) {
-        transactionCount = parseInt(txCountData.result, 16);
-      }
-    }
-
-    // Check if it's a contract
-    const codeResponse = await fetch(`${apiUrl}/eth_getCode?address=${address}&tag=latest`, {
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    let isContract = false;
-    if (codeResponse.ok) {
-      const codeData = await codeResponse.json();
-      if (codeData.result && codeData.result !== "0x" && !codeData.error) {
-        isContract = true;
-      }
-    }
-
-    return {
-      address,
-      balance,
-      transactionCount,
-      isContract,
-    };
-  } catch (error) {
-    console.error(`[BlockVision] Error fetching account info for ${address}:`, error);
-    // Fallback to MonadScan API
-    return await getMonadAccountInfoViaMonadScan(address);
-  }
+  // Use MonadScan API (Etherscan-compatible) exclusively
+  return await getMonadAccountInfoViaMonadScan(address);
 }
 
 /**
- * Fallback: Get account info via MonadScan API (Etherscan-compatible)
+ * Get account info via MonadScan API (Etherscan-compatible)
  */
 async function getMonadAccountInfoViaMonadScan(
   address: string,
@@ -158,18 +90,12 @@ async function getMonadAccountInfoViaMonadScan(
       }
     }
 
-    // Fallback: Check if it's a contract by getting code via RPC
-    // Use public Monad RPC endpoint
-    const rpcUrl = "https://monad-mainnet.blockvision.org/v1";
-    const codeResponse = await fetch(rpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "eth_getCode",
-        params: [address, "latest"],
-        id: 1,
-      }),
+    // Fallback: Check if it's a contract by getting code via MonadScan RPC proxy
+    const codeUrl = `${MONADSCAN_API_BASE}?module=proxy&action=eth_getCode&address=${address}&tag=latest`;
+    const codeResponse = await fetch(codeUrl, {
+      headers: {
+        Accept: "application/json",
+      },
     });
 
     if (codeResponse.ok) {
@@ -186,7 +112,7 @@ async function getMonadAccountInfoViaMonadScan(
 
     return null;
   } catch (error) {
-    console.error(`[BlockVision] MonadScan fallback failed for ${address}:`, error);
+    console.error(`[MonadScan] Failed to get account info for ${address}:`, error);
     return null;
   }
 }
@@ -234,22 +160,21 @@ export async function getMonadTokenInfo(
 
     return null;
   } catch (error) {
-    console.error(`[BlockVision] Error fetching token info for ${contractAddress}:`, error);
+    console.error(`[MonadScan] Error fetching token info for ${contractAddress}:`, error);
     return null;
   }
 }
 
 /**
- * Get transaction information from BlockVision API
+ * Get transaction information from MonadScan API
  */
 export async function getMonadTransaction(
   txHash: string,
 ): Promise<BlockVisionTransaction | null> {
   try {
-    const apiUrl = `${BLOCKVISION_API_BASE}/${env.blockvisionApiKey}`;
-    
-    // Get transaction
-    const txResponse = await fetch(`${apiUrl}/eth_getTransactionByHash?txhash=${txHash}`, {
+    // Use MonadScan API (Etherscan-compatible) to get transaction
+    const txInfoUrl = `${MONADSCAN_API_BASE}?module=proxy&action=eth_getTransactionByHash&txhash=${txHash}`;
+    const txResponse = await fetch(txInfoUrl, {
       headers: {
         Accept: "application/json",
       },
@@ -259,7 +184,7 @@ export async function getMonadTransaction(
       return null;
     }
 
-    const txData = await txResponse.json();
+    const txData = await txResponse.json() as { result?: BlockVisionTransaction; error?: any };
     if (txData.error || !txData.result) {
       return null;
     }
@@ -267,7 +192,8 @@ export async function getMonadTransaction(
     const tx = txData.result;
 
     // Get receipt
-    const receiptResponse = await fetch(`${apiUrl}/eth_getTransactionReceipt?txhash=${txHash}`, {
+    const receiptUrl = `${MONADSCAN_API_BASE}?module=proxy&action=eth_getTransactionReceipt&txhash=${txHash}`;
+    const receiptResponse = await fetch(receiptUrl, {
       headers: {
         Accept: "application/json",
       },
@@ -277,7 +203,7 @@ export async function getMonadTransaction(
       return null;
     }
 
-    const receiptData = await receiptResponse.json();
+    const receiptData = await receiptResponse.json() as { result?: { status?: string; blockNumber?: string; gasUsed?: string }; error?: any };
     if (receiptData.error || !receiptData.result) {
       return null;
     }
@@ -292,18 +218,19 @@ export async function getMonadTransaction(
       status = "failed";
     }
 
-    // Get block timestamp
+    // Get block timestamp from block info
     let timestamp: number | null = null;
     if (receipt.blockNumber) {
       try {
-        const blockResponse = await fetch(`${apiUrl}/eth_getBlockByNumber?tag=${receipt.blockNumber}&boolean=false`, {
+        const blockUrl = `${MONADSCAN_API_BASE}?module=proxy&action=eth_getBlockByNumber&tag=${receipt.blockNumber}&boolean=false`;
+        const blockResponse = await fetch(blockUrl, {
           headers: {
             Accept: "application/json",
           },
         });
 
         if (blockResponse.ok) {
-          const blockData = await blockResponse.json();
+          const blockData = await blockResponse.json() as { result?: { timestamp?: string } };
           if (blockData.result?.timestamp) {
             timestamp = parseInt(blockData.result.timestamp, 16);
           }
@@ -321,11 +248,11 @@ export async function getMonadTransaction(
       status,
       blockNumber: receipt.blockNumber ? parseInt(receipt.blockNumber, 16) : null,
       timestamp,
-      gasUsed: receipt.gasUsed || null,
-      gasPrice: tx.gasPrice || null,
+      gasUsed: receipt.gasUsed || undefined,
+      gasPrice: tx.gasPrice || undefined,
     };
   } catch (error) {
-    console.error(`[BlockVision] Error fetching transaction ${txHash}:`, error);
+    console.error(`[MonadScan] Error fetching transaction ${txHash}:`, error);
     return null;
   }
 }
@@ -340,31 +267,24 @@ export async function getMonadContractCreation(
   try {
     const normalizedAddress = contractAddress.toLowerCase();
     
-    // First, verify it's a contract by checking if it has code
-    const apiUrl = `${BLOCKVISION_API_BASE}/${env.blockvisionApiKey}`;
-    const codeResponse = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "eth_getCode",
-        params: [contractAddress, "latest"],
-        id: 1,
-      }),
+    // First, verify it's a contract by checking if it has code via MonadScan RPC proxy
+    const codeUrl = `${MONADSCAN_API_BASE}?module=proxy&action=eth_getCode&address=${contractAddress}&tag=latest`;
+    const codeResponse = await fetch(codeUrl, {
+      headers: {
+        Accept: "application/json",
+      },
     });
 
-    if (!codeResponse.ok) return null;
-
-    const codeData = await codeResponse.json() as { result?: string };
-    if (!codeData.result || codeData.result === "0x") {
-      // Not a contract
-      return null;
+    if (codeResponse.ok) {
+      const codeData = await codeResponse.json() as { result?: string; error?: any };
+      if (codeData.error || !codeData.result || codeData.result === "0x") {
+        // Not a contract
+        return null;
+      }
     }
 
     // Use MonadScan API (Etherscan-compatible) to get the first transaction
-    // MonadScan uses the same API format as Etherscan/Basescan
-    const monadScanApiUrl = "https://monadscan.com/api";
-    const txListUrl = `${monadScanApiUrl}?module=account&action=txlist&address=${normalizedAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc`;
+    const txListUrl = `${MONADSCAN_API_BASE}?module=account&action=txlist&address=${normalizedAddress}&startblock=0&endblock=99999999&page=1&offset=1&sort=asc`;
     
     const txResponse = await fetch(txListUrl, {
       headers: {
@@ -373,7 +293,7 @@ export async function getMonadContractCreation(
     });
 
     if (!txResponse.ok) {
-      console.warn(`[BlockVision] MonadScan API request failed for ${contractAddress}: ${txResponse.status} ${txResponse.statusText}`);
+      console.warn(`[MonadScan] API request failed for ${contractAddress}: ${txResponse.status} ${txResponse.statusText}`);
       return null;
     }
 
@@ -391,7 +311,7 @@ export async function getMonadContractCreation(
 
     // Check for API errors
     if (txData.status === "0" || (typeof txData.result === "string" && txData.result.includes("deprecated"))) {
-      console.warn(`[BlockVision] MonadScan API error for ${contractAddress}: ${txData.message || txData.result}`);
+      console.warn(`[MonadScan] API error for ${contractAddress}: ${txData.message || txData.result}`);
       return null;
     }
 
@@ -418,15 +338,15 @@ export async function getMonadContractCreation(
           createdAt,
         };
       } else {
-        console.warn(`[BlockVision] First transaction for ${contractAddress} on Monad doesn't appear to be creation tx. to=${firstTx.to}, contractAddress=${firstTx.contractAddress}`);
+        console.warn(`[MonadScan] First transaction for ${contractAddress} on Monad doesn't appear to be creation tx. to=${firstTx.to}, contractAddress=${firstTx.contractAddress}`);
       }
     } else {
-      console.warn(`[BlockVision] No transactions found for ${contractAddress} on Monad. Status: ${txData.status}, Result type: ${typeof txData.result}`);
+      console.warn(`[MonadScan] No transactions found for ${contractAddress} on Monad. Status: ${txData.status}, Result type: ${typeof txData.result}`);
     }
 
     return null;
   } catch (error) {
-    console.error(`[BlockVision] Error fetching contract creation for ${contractAddress}:`, error);
+    console.error(`[MonadScan] Error fetching contract creation for ${contractAddress}:`, error);
     return null;
   }
 }
