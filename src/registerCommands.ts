@@ -107,6 +107,15 @@ async function registerCommands(): Promise<void> {
           .setRequired(true),
       ),
     new SlashCommandBuilder()
+      .setName("wallet")
+      .setDescription("Search wallet address across all EVM chains (Ethereum, Base, Monad).")
+      .addStringOption((option) =>
+        option
+          .setName("query")
+          .setDescription("Wallet address (0x...)")
+          .setRequired(true),
+      ),
+    new SlashCommandBuilder()
       .setName("x")
       .setDescription("Lookup Farcaster profile by X/Twitter handle or URL.")
       .addStringOption((option) =>

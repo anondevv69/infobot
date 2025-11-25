@@ -25,6 +25,7 @@ import { handleClankerCommand, handleClankerPagination } from "./commands/clanke
 import { handleRelayCommand } from "./commands/relay";
 import { handleFarCommand } from "./commands/far";
 import { handleWCommand } from "./commands/w";
+import { handleWalletCommand } from "./commands/wallet";
 import { handleXCommand } from "./commands/x";
 import { parsePaginationButton } from "./utils/pagination";
 import { handleGeneralPagination } from "./handlers/pagination";
@@ -297,6 +298,9 @@ async function handleChatCommand(
       break;
     case "w":
       await handleWCommand(interaction);
+      break;
+    case "wallet":
+      await handleWalletCommand(interaction);
       break;
     case "x":
       await handleXCommand(interaction);
