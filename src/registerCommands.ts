@@ -152,10 +152,13 @@ export async function registerCommands(): Promise<void> {
 
   // ALWAYS register globally first (for all servers)
   // This ensures commands work universally across all servers the bot is in
+  // Global commands will automatically replace any old guild-specific commands over time
   try {
     await rest.put(Routes.applicationCommands(clientId), { body: commands });
     console.log("✅ Registered global commands (works in ALL servers)");
-    console.log("   ⏳ Global commands may take up to 1 hour to propagate, but usually appear within minutes.");
+    console.log(`   📋 Registered ${commands.length} commands: ${commands.map((c: any) => c.name).join(", ")}`);
+    console.log("   ⏳ Global commands may take up to 1 hour to propagate to all servers, but usually appear within minutes.");
+    console.log("   💡 All servers will eventually show the same commands once Discord's cache updates.");
   } catch (error: any) {
     if (error?.code === 50001) {
       console.warn(`⚠️ Missing permissions to register global commands. Bot needs "applications.commands" scope.`);
@@ -167,12 +170,16 @@ export async function registerCommands(): Promise<void> {
   }
 
   // Optionally also register to specific guilds (for faster testing/development)
-  // This is useful for instant command updates during development
+  // NOTE: Guild-specific commands take precedence over global commands in those specific guilds
+  // This is useful for instant command updates during development, but can cause inconsistency
+  // For production, it's recommended to leave DISCORD_GUILD_ID empty to use only global commands
   addGuildIds(env.discordGuildIds);
   addGuildIds(env.discordGuildId);
 
   if (guildIds.size > 0) {
     console.log(`\n📋 Also registering to ${guildIds.size} specific guild(s) for instant updates...`);
+    console.log("   ⚠️  Note: Guild-specific commands override global commands in these servers.");
+    console.log("   💡 For consistency across all servers, consider removing DISCORD_GUILD_ID to use only global commands.");
     for (const guildId of guildIds) {
       try {
         await rest.put(Routes.applicationGuildCommands(clientId, guildId), {
@@ -188,6 +195,9 @@ export async function registerCommands(): Promise<void> {
         // Continue to next guild - this is optional
       }
     }
+  } else {
+    console.log("\n💡 No DISCORD_GUILD_ID set - using global commands only (recommended for production)");
+    console.log("   All servers will show the same commands once Discord's cache updates.");
   }
 }
 

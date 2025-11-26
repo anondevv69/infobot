@@ -37,12 +37,19 @@ export async function handleTelegramCommand(
         const helpText = `<b>📚 InfoBot Commands & Features</b>
 
 <b>Commands:</b>
-• <code>/search &lt;query&gt;</code> — Universal search (wallets, contracts, profiles)
+• <code>/search &lt;query&gt;</code> — Universal search (wallets, contracts, profiles, transactions)
+• <code>/info &lt;query&gt;</code> — Alias for <code>/search</code>
 • <code>/wallet &lt;address&gt;</code> — Search wallet across all EVM chains (Ethereum, Base, Monad)
+• <code>/w &lt;address&gt;</code> — Wallet lookup (Ethereum or Solana)
 • <code>/zora &lt;query&gt;</code> — Zora accounts, contracts, or creator coins
+• <code>/z &lt;query&gt;</code> — Alias for <code>/zora</code>
 • <code>/clanker &lt;query&gt;</code> — Clanker token deployments
 • <code>/casts &lt;keyword&gt;</code> — Search Farcaster casts by keyword
+• <code>/cast &lt;keyword&gt;</code> — Alias for <code>/casts</code>
+• <code>/far &lt;query&gt;</code> — Search Farcaster users (username or wallet)
+• <code>/x &lt;query&gt;</code> — Farcaster profile by X/Twitter handle or URL
 • <code>/relay &lt;tx&gt;</code> — Cross-chain transaction details
+• <code>/help</code> — Show this help message
 
 <b>Auto-Detection:</b>
 Paste in chat:
@@ -57,6 +64,7 @@ Paste in chat:
 • <code>far &lt;keyword&gt;</code> — Farcaster user search
 • <code>zora &lt;query&gt;</code> — Zora search
 • <code>wallet 0x...</code> — Wallet lookup
+• <code>info &lt;query&gt;</code> — Universal search (no slash needed)
 
 <b>Features:</b>
 • Multi-page cards with pagination
@@ -64,7 +72,8 @@ Paste in chat:
 • Farcaster profiles, casts, wallet links
 • Clanker tokens with deployer info
 • Base token factory detection
-• Multi-chain token support
+• Multi-chain token support (Ethereum, Base, Monad, Solana)
+• Cross-chain transaction tracking
 
 Fast blockchain discovery—drop any address, profile, or link.`;
         await bot.sendMessage(chatId, helpText, { parse_mode: "HTML" });
@@ -580,20 +589,70 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
           
           // Only show if there are posts/coins OR X/Farcaster links
           if (shouldShowZoraFallback(zoraSummary)) {
-            // Use buildZoraWalletProfileResponse for wallet lookups (same as Discord)
-            const zoraResponse = buildZoraWalletProfileResponse({
-              wallet: address,
-              summary: zoraSummary,
-              returnAllPages: true, // Get all pages for Telegram
-            });
+            // If Zora profile has a Farcaster handle, fetch and display the Farcaster profile
+            // This provides complete profile context that users rely on (same as Discord)
+            const { findUserByUsername } = await import("../../../services/neynar");
+            const { buildFarcasterPresentation } = await import("../../../utils/farcasterPresentation");
+            const { safeFetchTokensByFid, safeFetchMostRecentCast } = await import("../../../utils/farcasterHelpers");
+            const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
+            const { sendPaginatedTelegramMessage } = await import("../utils/sendPaginated");
             
-            const identifier = `zora_wallet_${address.toLowerCase()}`;
-            await sendPaginatedTelegramMessage(bot, chatId, zoraResponse.embeds, identifier);
+            let farcasterEmbeds: Awaited<ReturnType<typeof buildFarcasterPresentation>> | null = null;
+            const farcasterHandle = zoraSummary.profile.farcasterHandle;
             
-            logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
-              success: true,
-              type: "wallet_zora_profile",
-            });
+            if (farcasterHandle) {
+              try {
+                const farcasterUser = await findUserByUsername(farcasterHandle.replace(/^@/, ""));
+                if (farcasterUser) {
+                  // Fetch tokens and latest cast for complete Farcaster profile
+                  const [tokens, latestCast] = await Promise.all([
+                    safeFetchTokensByFid(farcasterUser.fid),
+                    safeFetchMostRecentCast(farcasterUser.fid),
+                  ]);
+                  
+                  farcasterEmbeds = await buildFarcasterPresentation(farcasterUser, {
+                    tokens,
+                    latestCast,
+                    zoraSummary: zoraSummary, // Include Zora data in Farcaster presentation
+                    titleSuffix: "Farcaster Profile",
+                  });
+                }
+              } catch (error) {
+                console.warn("Failed to fetch Farcaster profile for Zora fallback:", error);
+              }
+            }
+
+            // If we have Farcaster embeds, use those (they include Zora data and have better presentation)
+            // Otherwise, fall back to Zora-only profile
+            if (farcasterEmbeds) {
+              const telegramMessages = embedsToTelegram(farcasterEmbeds.embeds);
+              const telegramText = Array.isArray(telegramMessages) ? telegramMessages.join("\n\n") : telegramMessages;
+              
+              await bot.sendMessage(chatId, telegramText, {
+                parse_mode: "HTML",
+                disable_web_page_preview: true,
+              });
+              
+              logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+                success: true,
+                type: "wallet_farcaster_via_zora",
+              });
+            } else {
+              // Use buildZoraWalletProfileResponse for wallet lookups (same as Discord)
+              const zoraResponse = buildZoraWalletProfileResponse({
+                wallet: address,
+                summary: zoraSummary,
+                returnAllPages: true, // Get all pages for Telegram
+              });
+              
+              const identifier = `zora_wallet_${address.toLowerCase()}`;
+              await sendPaginatedTelegramMessage(bot, chatId, zoraResponse.embeds, identifier);
+              
+              logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+                success: true,
+                type: "wallet_zora_profile",
+              });
+            }
             return;
           }
         }

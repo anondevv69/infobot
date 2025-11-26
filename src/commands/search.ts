@@ -710,20 +710,57 @@ async function handleWalletSearch(
     
     // Only show if there are posts/coins OR X/Farcaster links
     if (shouldShowZoraFallback(zoraSummaryFromAddress)) {
-      const zoraResponse = buildZoraWalletProfileResponse({
-        wallet: address,
-        summary: zoraSummaryFromAddress,
-      });
+      // If Zora profile has a Farcaster handle, fetch and display the Farcaster profile
+      // This provides complete profile context that users rely on
+      let farcasterEmbeds: Awaited<ReturnType<typeof buildFarcasterPresentation>> | null = null;
+      const farcasterHandle = zoraSummaryFromAddress.profile.farcasterHandle;
+      
+      if (farcasterHandle) {
+        try {
+          const farcasterUser = await findUserByUsername(farcasterHandle.replace(/^@/, ""));
+          if (farcasterUser) {
+            // Fetch tokens and latest cast for complete Farcaster profile
+            const [tokens, latestCast] = await Promise.all([
+              safeFetchTokensByFid(farcasterUser.fid),
+              safeFetchMostRecentCast(farcasterUser.fid),
+            ]);
+            
+            farcasterEmbeds = await buildFarcasterPresentation(farcasterUser, {
+              tokens,
+              latestCast,
+              zoraSummary: zoraSummaryFromAddress, // Include Zora data in Farcaster presentation
+              titleSuffix: "Farcaster Profile",
+            });
+          }
+        } catch (error) {
+          console.warn("Failed to fetch Farcaster profile for Zora fallback:", error);
+        }
+      }
 
-      await interaction.editReply({
-        content: `No Farcaster profile, Clanker deployments, or token information found for \`${address}\`, but the address is associated with this Zora profile:`,
-        embeds: zoraResponse.embeds,
-        components: zoraResponse.components ?? [],
-      });
+      // If we have Farcaster embeds, use those (they include Zora data and have better presentation)
+      // Otherwise, fall back to Zora-only profile
+      if (farcasterEmbeds) {
+        await interaction.editReply({
+          content: `No Farcaster profile, Clanker deployments, or token information found for \`${address}\`, but the address is associated with this profile:`,
+          embeds: farcasterEmbeds.embeds,
+          components: farcasterEmbeds.components ?? [],
+        });
+      } else {
+        const zoraResponse = buildZoraWalletProfileResponse({
+          wallet: address,
+          summary: zoraSummaryFromAddress,
+        });
+
+        await interaction.editReply({
+          content: `No Farcaster profile, Clanker deployments, or token information found for \`${address}\`, but the address is associated with this Zora profile:`,
+          embeds: zoraResponse.embeds,
+          components: zoraResponse.components ?? [],
+        });
+      }
       
       logger.search(address, "discord", userId, guildId, channelId, {
         success: true,
-        type: "wallet_zora_profile",
+        type: farcasterEmbeds ? "wallet_farcaster_via_zora" : "wallet_zora_profile",
       });
       return;
     }
