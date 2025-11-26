@@ -286,11 +286,9 @@ async function handleChatCommand(
       await handleSearchCommand(interaction);
       break;
     case "casts":
-    case "cast":
       await handleCastsCommand(interaction);
       break;
     case "zora":
-    case "z":
       await handleZoraProfileCommand(interaction);
       break;
     case "help":
@@ -303,7 +301,6 @@ async function handleChatCommand(
       await handleRelayCommand(interaction);
       break;
     case "far":
-    case "f":
       await handleFarCommand(interaction);
       break;
     case "w":

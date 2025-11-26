@@ -223,20 +223,6 @@ export async function startTelegramBot(): Promise<void> {
     await handleTelegramCommand(bot, msg, "far");
   });
 
-  // Handle /f with parameters (alias for /far)
-  bot.onText(/^\/f (.+)$/, async (msg, match) => {
-    const query = match?.[1]?.trim();
-    if (query) {
-      await handleTelegramCommand(bot, msg, "far", query);
-    } else {
-      await handleTelegramCommand(bot, msg, "far");
-    }
-  });
-
-  // Handle /f without parameters
-  bot.onText(/^\/f$/, async (msg) => {
-    await handleTelegramCommand(bot, msg, "far");
-  });
 
   bot.onText(/\/zora (.+)/, async (msg, match) => {
     const query = match?.[1];

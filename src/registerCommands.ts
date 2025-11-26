@@ -64,46 +64,12 @@ export async function registerCommands(): Promise<void> {
           .setRequired(true),
       ),
     new SlashCommandBuilder()
-      .setName("cast")
-      .setDescription("Search Farcaster casts by keyword (alias for /casts).")
-      .addStringOption((option) =>
-        option
-          .setName("keyword")
-          .setDescription("Keyword or phrase to search for in casts")
-          .setRequired(true),
-      )
-      .addIntegerOption((option) =>
-        option
-          .setName("recent_count")
-          .setDescription("Number of recent casts to include (0-5, default 2)")
-          .setMinValue(0)
-          .setMaxValue(5),
-      ),
-    new SlashCommandBuilder()
       .setName("far")
       .setDescription("Search Farcaster users by username or wallet address.")
       .addStringOption((option) =>
         option
           .setName("query")
           .setDescription("Farcaster username (with or without @) or wallet address (0x...)")
-          .setRequired(true),
-      ),
-    new SlashCommandBuilder()
-      .setName("f")
-      .setDescription("Search Farcaster users by username or wallet address (alias for /far).")
-      .addStringOption((option) =>
-        option
-          .setName("query")
-          .setDescription("Farcaster username (with or without @) or wallet address (0x...)")
-          .setRequired(true),
-      ),
-    new SlashCommandBuilder()
-      .setName("z")
-      .setDescription("Search Zora accounts, contracts, or creator coins (alias for /zora).")
-      .addStringOption((option) =>
-        option
-          .setName("query")
-          .setDescription("Zora account handle, contract address, or creator coin")
           .setRequired(true),
       ),
     new SlashCommandBuilder()

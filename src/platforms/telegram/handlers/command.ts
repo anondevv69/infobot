@@ -40,12 +40,9 @@ export async function handleTelegramCommand(
 • <code>/search &lt;query&gt;</code> — Universal search (wallets, contracts, profiles, transactions)
 • <code>/w &lt;address&gt;</code> — Search wallet across all EVM chains (Ethereum, Base, Monad) or Solana
 • <code>/zora &lt;query&gt;</code> — Zora accounts, contracts, or creator coins
-• <code>/z &lt;query&gt;</code> — Alias for <code>/zora</code>
 • <code>/clanker &lt;query&gt;</code> — Clanker token deployments
 • <code>/casts &lt;keyword&gt;</code> — Search Farcaster casts by keyword
-• <code>/cast &lt;keyword&gt;</code> — Alias for <code>/casts</code>
 • <code>/far &lt;query&gt;</code> — Search Farcaster users (username with or without @, or wallet)
-• <code>/f &lt;query&gt;</code> — Alias for <code>/far</code>
 • <code>/x &lt;query&gt;</code> — Farcaster profile by X/Twitter handle or URL
 • <code>/relay &lt;tx&gt;</code> — Cross-chain transaction details
 • <code>/help</code> — Show this help message
