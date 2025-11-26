@@ -853,10 +853,32 @@ async function replyWithUsernameLookup(
     findBestZoraSummary(identifiers),
   ]);
 
-  const associatedZoraSummary =
-    zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary)
-      ? zoraSummary
-      : null;
+  // If we found a Zora summary using the user's identifiers, show it
+  // The association check is less strict - if findBestZoraSummary found it using user identifiers, it's likely associated
+  // We only filter out if it's clearly not associated (e.g., different Farcaster handle that doesn't match)
+  let associatedZoraSummary = null;
+  if (zoraSummary) {
+    // First check strict association
+    if (isSummaryAssociatedWithUser(user, zoraSummary)) {
+      associatedZoraSummary = zoraSummary;
+    } else {
+      // Less strict: if summary was found using user's identifiers, check if any identifier matches
+      // This handles cases where Zora profile might not have Farcaster handle linked but wallets match
+      const identifierSet = new Set(identifiers.map(id => id.toLowerCase()));
+      const hasMatchingIdentifier = 
+        zoraSummary.profile?.walletAddresses?.some(addr => identifierSet.has(addr.toLowerCase())) ||
+        (zoraSummary.profile?.handle && identifierSet.has(zoraSummary.profile.handle.toLowerCase())) ||
+        (zoraSummary.profile?.farcasterHandle && identifierSet.has(zoraSummary.profile.farcasterHandle.replace(/^@/, "").toLowerCase()));
+      
+      // Only exclude if there's a conflicting Farcaster handle (different user)
+      const hasConflictingFarcaster = zoraSummary.profile?.farcasterHandle && 
+        zoraSummary.profile.farcasterHandle.replace(/^@/, "").toLowerCase() !== user.username.toLowerCase();
+      
+      if (hasMatchingIdentifier && !hasConflictingFarcaster) {
+        associatedZoraSummary = zoraSummary;
+      }
+    }
+  }
 
   const paginationIdentifier = `farcaster_username_${username}`;
 

@@ -673,35 +673,48 @@ export async function appendZoraSummaryFields(
       }
     }
     
-    let creatorCoinTitle = "Creator Coin";
+    // Highlight creator coin prominently
+    let creatorCoinTitle = "⭐ Creator Coin";
     if (creatorCoinMarketCap != null && creatorCoinMarketCap > 0) {
       const formattedMC = formatCompactNumber(creatorCoinMarketCap);
-      creatorCoinTitle = `Creator Coin • MC: ${formattedMC}`;
+      creatorCoinTitle = `⭐ Creator Coin • MC: ${formattedMC}`;
     }
     zoraLines.push(`**${creatorCoinTitle}:**\n${formatContractBlock(profile.creatorCoinAddress)}`);
   }
 
-  if (summary?.latestCoin?.coin) {
-    // Fetch market cap for latest coin
-    let latestCoinMarketCap: number | null = null;
-    const latestCoin = summary.latestCoin.coin;
-    if (latestCoin.marketCap) {
-      const parsed = parseFloat(latestCoin.marketCap);
+  // Prefer showing latest created coin over latest coin (which might be a purchase)
+  const latestCreatedCoin = summary ? getLatestCreatedCoin(summary) : null;
+  const coinToShow = latestCreatedCoin ?? summary?.latestCoin?.coin;
+  const coinSource = summary?.latestCoin?.source; // "created" or "holding"
+  
+  // Don't show latest coin if it's the same as creator coin (already shown above)
+  const isCreatorCoin = coinToShow && profile?.creatorCoinAddress && 
+    coinToShow.address?.toLowerCase() === profile.creatorCoinAddress.toLowerCase();
+  
+  if (coinToShow && !isCreatorCoin) {
+    // Fetch market cap for the coin
+    let coinMarketCap: number | null = null;
+    if (coinToShow.marketCap) {
+      const parsed = parseFloat(coinToShow.marketCap);
       if (!isNaN(parsed) && parsed > 0) {
-        latestCoinMarketCap = parsed;
+        coinMarketCap = parsed;
       }
     }
     // Fallback to DexScreener for Base chain
-    if (!latestCoinMarketCap && latestCoin.address && (latestCoin.chainId === 8453 || latestCoin.chainId === BASE_CHAIN_ID)) {
+    if (!coinMarketCap && coinToShow.address && (coinToShow.chainId === 8453 || coinToShow.chainId === BASE_CHAIN_ID)) {
       try {
         const { fetchBaseTokenData } = await import("../services/dexscreener");
-        const metrics = await fetchBaseTokenData(latestCoin.address);
-        latestCoinMarketCap = metrics?.marketCap ?? null;
+        const metrics = await fetchBaseTokenData(coinToShow.address);
+        coinMarketCap = metrics?.marketCap ?? null;
       } catch (error) {
         // Silently fail
       }
     }
-    const coinField = buildLatestCoinLine(latestCoin, latestCoinMarketCap);
+    // Use different label based on whether it's created or purchased
+    // If we have latestCreatedCoin, it's definitely created; otherwise check the source
+    const isCreated = latestCreatedCoin === coinToShow || coinSource === "created";
+    const isPurchase = coinSource === "holding" && latestCreatedCoin !== coinToShow;
+    const coinField = buildLatestCoinLine(coinToShow, coinMarketCap, isCreated, isPurchase);
     zoraLines.push(coinField);
   }
 
@@ -815,15 +828,22 @@ function formatCastSummary(cast: Cast): string {
   return `${truncated}\n[Open Cast](${url}) • ${timestamp}\n👍 ${likes.toLocaleString()} • 🔁 ${recasts.toLocaleString()}`;
 }
 
-function buildLatestCoinLine(coin: ZoraCoin, marketCap?: number | null): string {
+function buildLatestCoinLine(coin: ZoraCoin, marketCap?: number | null, isCreated = false, isPurchase = false): string {
   const rawLabel = coin.name ?? coin.symbol ?? coin.address ?? "Coin";
   const truncatedLabel = truncateLabel(rawLabel, 36);
   const url = getZoraCoinUrl(coin);
   const clickableLabel = url ? `[${truncatedLabel}](${url})` : truncatedLabel;
-  let title = "Latest Zora Coin";
+  let title: string;
+  if (isCreated) {
+    title = "Latest Created Coin";
+  } else if (isPurchase) {
+    title = "Latest Purchase";
+  } else {
+    title = "Latest Zora Coin";
+  }
   if (marketCap != null && marketCap > 0) {
     const formattedMC = formatCompactNumber(marketCap);
-    title = `Latest Zora Coin • MC: ${formattedMC}`;
+    title = `${title} • MC: ${formattedMC}`;
   }
   return `**${title}:** ${clickableLabel}\n${formatContractBlock(coin.address)}`;
 }
