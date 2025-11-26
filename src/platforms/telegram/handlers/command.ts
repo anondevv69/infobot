@@ -37,14 +37,15 @@ export async function handleTelegramCommand(
         const helpText = `<b>📚 InfoBot Commands & Features</b>
 
 <b>Commands:</b>
-• <code>/search &lt;query&gt;</code> — Universal search (wallets, contracts, profiles, transactions)
-• <code>/w &lt;address&gt;</code> — Search wallet across all EVM chains (Ethereum, Base, Monad) or Solana
-• <code>/zora &lt;query&gt;</code> — Zora accounts, contracts, or creator coins
-• <code>/clanker &lt;query&gt;</code> — Clanker token deployments
-• <code>/casts &lt;keyword&gt;</code> — Search Farcaster casts by keyword
-• <code>/far &lt;query&gt;</code> — Search Farcaster users (username with or without @, or wallet)
+• <code>/info &lt;query&gt;</code> — Universal search (wallets, contracts, profiles, transactions)
+• <code>/w &lt;address&gt;</code> — Wallet lookup (matches Farcaster/Zora first, then shows wallet info)
+• <code>/f &lt;query&gt;</code> — Farcaster user lookup (username with or without @, or wallet)
+• <code>/c &lt;keyword&gt;</code> — Farcaster cast search by keyword
+• <code>/cl &lt;query&gt;</code> — Clanker token deployment search
+• <code>/z &lt;query&gt;</code> — Zora account, contract, or creator coin search
+• <code>/t &lt;address&gt;</code> — Token lookup (get all info about a token contract)
+• <code>/r &lt;tx&gt;</code> — Cross-chain transaction details (Relay.link)
 • <code>/x &lt;query&gt;</code> — Farcaster profile by X/Twitter handle or URL
-• <code>/relay &lt;tx&gt;</code> — Cross-chain transaction details
 • <code>/help</code> — Show this help message
 
 <b>Auto-Detection:</b>
@@ -76,9 +77,10 @@ Fast blockchain discovery—drop any address, profile, or link.`;
         break;
       }
 
+      case "info":
       case "search": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a search query.\n\nUsage: <code>/search &lt;query&gt;</code>\nExample: <code>/search 0x1234...</code> or <code>/search @username</code>", { parse_mode: "HTML" });
+          await bot.sendMessage(chatId, "Please provide a search query.\n\nUsage: <code>/info &lt;query&gt;</code>\nExample: <code>/info 0x1234...</code> or <code>/info @username</code>", { parse_mode: "HTML" });
           return;
         }
         
@@ -89,9 +91,10 @@ Fast blockchain discovery—drop any address, profile, or link.`;
         break;
       }
 
-      case "zora": {
+      case "zora":
+      case "z": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a Zora query.\n\nUsage: <code>/zora &lt;query&gt;</code>\nExample: <code>/zora @username</code> or <code>/zora 0x1234...</code>", { parse_mode: "HTML" });
+          await bot.sendMessage(chatId, "Please provide a Zora query.\n\nUsage: <code>/z &lt;query&gt;</code>\nExample: <code>/z @username</code> or <code>/z 0x1234...</code>", { parse_mode: "HTML" });
           return;
         }
         
@@ -102,9 +105,10 @@ Fast blockchain discovery—drop any address, profile, or link.`;
         break;
       }
 
-      case "clanker": {
+      case "clanker":
+      case "cl": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a Clanker query.\n\nUsage: <code>/clanker &lt;query&gt;</code>\nExample: <code>/clanker tokenname</code> or <code>/clanker 0x1234...</code>", { parse_mode: "HTML" });
+          await bot.sendMessage(chatId, "Please provide a Clanker query.\n\nUsage: <code>/cl &lt;query&gt;</code>\nExample: <code>/cl tokenname</code> or <code>/cl 0x1234...</code>", { parse_mode: "HTML" });
           return;
         }
         
@@ -115,7 +119,8 @@ Fast blockchain discovery—drop any address, profile, or link.`;
         break;
       }
 
-      case "relay": {
+      case "relay":
+      case "r": {
         if (!query) {
           await bot.sendMessage(chatId, "Please provide a full transaction link from a block explorer.\n\nUsage: <code>/relay &lt;transaction_link&gt;</code>\n\n<b>Example:</b>\n<code>/relay https://basescan.org/tx/0x281d831decc5fd1832f5a84155a88da8918a16f68c57c512b7ca7d6a687d8e70</code>\n\nOr provide a transaction hash:\n<code>/relay 0x281d831decc5fd1832f5a84155a88da8918a16f68c57c512b7ca7d6a687d8e70</code>", { parse_mode: "HTML" });
           return;
@@ -319,9 +324,10 @@ Fast blockchain discovery—drop any address, profile, or link.`;
         break;
       }
 
-      case "casts": {
+      case "casts":
+      case "c": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a keyword to search for casts.\n\nUsage: <code>/casts &lt;keyword&gt;</code>\nExample: <code>/casts base</code>", { parse_mode: "HTML" });
+          await bot.sendMessage(chatId, "Please provide a keyword to search for casts.\n\nUsage: <code>/c &lt;keyword&gt;</code>\nExample: <code>/c base</code>", { parse_mode: "HTML" });
           return;
         }
         
@@ -332,7 +338,8 @@ Fast blockchain discovery—drop any address, profile, or link.`;
         break;
       }
 
-      case "wallet": {
+      case "wallet":
+      case "w": {
         if (!query) {
           await bot.sendMessage(chatId, "Please provide a wallet address.\n\nUsage: <code>/w &lt;address&gt;</code>\nExample: <code>/w 0x1234...</code>", { parse_mode: "HTML" });
           return;
@@ -341,14 +348,15 @@ Fast blockchain discovery—drop any address, profile, or link.`;
         // Send typing indicator
         await bot.sendChatAction(chatId, "typing");
         
-        // Use the same search handler as /search for addresses
+        // Use the same search handler as /info for addresses
         await handleSearchQuery(bot, chatId, query, msg.from?.id);
         break;
       }
 
-      case "far": {
+      case "far":
+      case "f": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a Farcaster username (with or without @) or wallet address.\n\nUsage: <code>/far &lt;query&gt;</code>\nExample: <code>/far gregory</code> or <code>/far @gregory</code> or <code>/far 0x1234...</code>", { parse_mode: "HTML" });
+          await bot.sendMessage(chatId, "Please provide a Farcaster username (with or without @) or wallet address.\n\nUsage: <code>/f &lt;query&gt;</code>\nExample: <code>/f gregory</code> or <code>/f @gregory</code> or <code>/f 0x1234...</code>", { parse_mode: "HTML" });
           return;
         }
         
@@ -358,6 +366,34 @@ Fast blockchain discovery—drop any address, profile, or link.`;
         // Remove @ if present and search
         const normalizedQuery = query.replace(/^@/, "");
         await handleSearchQuery(bot, chatId, normalizedQuery, msg.from?.id);
+        break;
+      }
+
+      case "token":
+      case "t": {
+        if (!query) {
+          await bot.sendMessage(chatId, "Please provide a token contract address.\n\nUsage: <code>/t &lt;address&gt;</code>\nExample: <code>/t 0x1234...</code>", { parse_mode: "HTML" });
+          return;
+        }
+        
+        // Send typing indicator
+        await bot.sendChatAction(chatId, "typing");
+        
+        // Use search handler which handles token lookups
+        await handleSearchQuery(bot, chatId, query, msg.from?.id);
+        break;
+      }
+
+      case "x": {
+        if (!query) {
+          await bot.sendMessage(chatId, "Please provide an X/Twitter handle or URL.\n\nUsage: <code>/x &lt;query&gt;</code>\nExample: <code>/x @username</code> or <code>/x https://x.com/username</code>", { parse_mode: "HTML" });
+          return;
+        }
+        
+        // Send typing indicator
+        await bot.sendChatAction(chatId, "typing");
+        
+        await handleSearchQuery(bot, chatId, query, msg.from?.id);
         break;
       }
 

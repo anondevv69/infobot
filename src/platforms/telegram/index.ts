@@ -33,12 +33,15 @@ export async function startTelegramBot(): Promise<void> {
   await bot.setMyCommands([
     { command: "start", description: "Start the bot and see help" },
     { command: "help", description: "Show help and available commands" },
-    { command: "search", description: "Search wallets, contracts, Farcaster profiles, or Zora accounts" },
-    { command: "wallet", description: "Search wallet address across all EVM chains (Ethereum, Base, Monad)" },
-    { command: "zora", description: "Search Zora accounts, contracts, or creator coins" },
-    { command: "clanker", description: "Search Clanker deployments" },
-    { command: "casts", description: "Search Farcaster casts by keyword" },
-    { command: "relay", description: "Get cross-chain transaction details from Relay.link. Provide a full transaction link from a block explorer (e.g., https://basescan.org/tx/0x...)" },
+    { command: "info", description: "Universal search (wallets, contracts, profiles, transactions)" },
+    { command: "w", description: "Wallet lookup (matches Farcaster/Zora first, then wallet info)" },
+    { command: "f", description: "Farcaster user lookup (username or wallet)" },
+    { command: "c", description: "Farcaster cast search by keyword" },
+    { command: "cl", description: "Clanker token deployment search" },
+    { command: "z", description: "Zora account, contract, or creator coin search" },
+    { command: "t", description: "Token lookup (get all info about a token contract)" },
+    { command: "r", description: "Cross-chain transaction details (Relay.link)" },
+    { command: "x", description: "Farcaster profile by X/Twitter handle or URL" },
   ]);
 
   bot.on("message", async (msg) => {
@@ -170,84 +173,105 @@ export async function startTelegramBot(): Promise<void> {
     await handleTelegramCommand(bot, msg, "help");
   });
 
-  // Commands with parameters
-  bot.onText(/\/search (.+)/, async (msg, match) => {
+  // Commands with parameters - single letter commands
+  bot.onText(/^\/info (.+)$/, async (msg, match) => {
     const query = match?.[1];
     if (query) {
-      await handleTelegramCommand(bot, msg, "search", query);
+      await handleTelegramCommand(bot, msg, "info", query);
     }
   });
 
-  // Handle /w with parameters (wallet search - same as /wallet)
   bot.onText(/^\/w (.+)$/, async (msg, match) => {
     const query = match?.[1]?.trim();
     if (query) {
       await handleTelegramCommand(bot, msg, "wallet", query);
-    } else {
-      await handleTelegramCommand(bot, msg, "wallet");
     }
   });
 
-  // Handle /w without parameters
-  bot.onText(/^\/w$/, async (msg) => {
-    await handleTelegramCommand(bot, msg, "wallet");
-  });
-
-  // Handle /wallet with parameters (legacy - redirects to same handler as /w)
-  bot.onText(/^\/wallet (.+)$/, async (msg, match) => {
-    const query = match?.[1]?.trim();
-    if (query) {
-      await handleTelegramCommand(bot, msg, "wallet", query);
-    } else {
-      await handleTelegramCommand(bot, msg, "wallet");
-    }
-  });
-
-  // Handle /wallet without parameters
-  bot.onText(/^\/wallet$/, async (msg) => {
-    await handleTelegramCommand(bot, msg, "wallet");
-  });
-
-  // Handle /far with parameters
-  bot.onText(/^\/far (.+)$/, async (msg, match) => {
+  bot.onText(/^\/f (.+)$/, async (msg, match) => {
     const query = match?.[1]?.trim();
     if (query) {
       await handleTelegramCommand(bot, msg, "far", query);
-    } else {
-      await handleTelegramCommand(bot, msg, "far");
     }
   });
 
-  // Handle /far without parameters
-  bot.onText(/^\/far$/, async (msg) => {
-    await handleTelegramCommand(bot, msg, "far");
-  });
-
-
-  bot.onText(/\/zora (.+)/, async (msg, match) => {
-    const query = match?.[1];
-    if (query) {
-      await handleTelegramCommand(bot, msg, "zora", query);
-    }
-  });
-
-  bot.onText(/\/clanker (.+)/, async (msg, match) => {
-    const query = match?.[1];
-    if (query) {
-      await handleTelegramCommand(bot, msg, "clanker", query);
-    }
-  });
-
-  bot.onText(/\/casts (.+)/, async (msg, match) => {
+  bot.onText(/^\/c (.+)$/, async (msg, match) => {
     const keyword = match?.[1];
     if (keyword) {
       await handleTelegramCommand(bot, msg, "casts", keyword);
     }
   });
 
+  bot.onText(/^\/cl (.+)$/, async (msg, match) => {
+    const query = match?.[1];
+    if (query) {
+      await handleTelegramCommand(bot, msg, "clanker", query);
+    }
+  });
+
+  bot.onText(/^\/z (.+)$/, async (msg, match) => {
+    const query = match?.[1];
+    if (query) {
+      await handleTelegramCommand(bot, msg, "zora", query);
+    }
+  });
+
+  bot.onText(/^\/t (.+)$/, async (msg, match) => {
+    const query = match?.[1]?.trim();
+    if (query) {
+      await handleTelegramCommand(bot, msg, "token", query);
+    }
+  });
+
+  bot.onText(/^\/r (.+)$/, async (msg, match) => {
+    const query = match?.[1];
+    if (query) {
+      await handleTelegramCommand(bot, msg, "relay", query);
+    }
+  });
+
+  bot.onText(/^\/x (.+)$/, async (msg, match) => {
+    const query = match?.[1];
+    if (query) {
+      await handleTelegramCommand(bot, msg, "x", query);
+    }
+  });
+
   // Commands without parameters (show usage)
-  bot.onText(/\/search$/, async (msg) => {
-    await handleTelegramCommand(bot, msg, "search");
+  bot.onText(/^\/info$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "info");
+  });
+
+  bot.onText(/^\/w$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "wallet");
+  });
+
+  bot.onText(/^\/f$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "far");
+  });
+
+  bot.onText(/^\/c$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "casts");
+  });
+
+  bot.onText(/^\/cl$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "clanker");
+  });
+
+  bot.onText(/^\/z$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "zora");
+  });
+
+  bot.onText(/^\/t$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "token");
+  });
+
+  bot.onText(/^\/r$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "relay");
+  });
+
+  bot.onText(/^\/x$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "x");
   });
 
   bot.onText(/\/zora$/, async (msg) => {

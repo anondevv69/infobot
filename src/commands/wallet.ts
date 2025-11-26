@@ -42,40 +42,158 @@ export async function handleWalletCommand(
       return;
     }
 
-    // Lookup address across all EVM chains (Ethereum, Base, Monad)
-    const addressInfo = await lookupAddress(query);
+    const address = query.toLowerCase();
 
-    if (!addressInfo || addressInfo.length === 0) {
+    // PRIORITY 1: Check for Farcaster user by wallet
+    const user = await findUserByWallet(address).catch(() => null);
+    
+    // PRIORITY 2: Check for Zora profile
+    const [zoraSummaryFromAddress, paragraphUser] = await Promise.all([
+      findBestZoraSummary([address]).catch(() => null),
+      import("../services/paragraph").then(m => m.getUserByWallet(address)).catch(() => null),
+    ]);
+
+    // If no user found but Zora has Farcaster handle, try that lookup
+    let finalUser = user;
+    if (!finalUser && zoraSummaryFromAddress?.profile?.farcasterHandle) {
+      try {
+        const { findUserByUsername } = await import("../services/neynar");
+        const handle = zoraSummaryFromAddress.profile.farcasterHandle.replace(/^@/, "");
+        finalUser = await Promise.race([
+          findUserByUsername(handle),
+          new Promise<import("@neynar/nodejs-sdk/build/api").User | null>((resolve) =>
+            setTimeout(() => resolve(null), 3000)
+          ),
+        ]);
+      } catch (error) {
+        console.warn("Failed to resolve user from Zora Farcaster handle:", error);
+      }
+    }
+
+    // If we found a Farcaster user, show Farcaster profile
+    if (finalUser) {
+      const { safeFetchTokensByFid, safeFetchMostRecentCast } = await import("../utils/farcasterHelpers");
+      const { isSummaryAssociatedWithUser } = await import("../utils/zoraAssociation");
+      
+      const zoraIdentifiers = collectZoraIdentifiers(finalUser, address);
+      const [tokens, latestCast, zoraSummaryForUser] = await Promise.all([
+        safeFetchTokensByFid(finalUser.fid),
+        safeFetchMostRecentCast(finalUser.fid),
+        findBestZoraSummary(zoraIdentifiers),
+      ]);
+
+      const associatedSummary =
+        zoraSummaryForUser && isSummaryAssociatedWithUser(finalUser, zoraSummaryForUser)
+          ? zoraSummaryForUser
+          : zoraSummaryFromAddress;
+
+      const walletResponse = await buildWalletProfileResponse({
+        wallet: address,
+        user: finalUser,
+        zoraSummary: associatedSummary,
+        clankerTokens: tokens,
+        latestCast,
+        paragraphUser: paragraphUser ?? undefined,
+      });
+
+      const responseTime = Date.now() - startTime;
+      trackResponseTime(responseTime);
+      trackSearch();
+
+      logger.search(query, "discord", userId, guildId, channelId, {
+        success: true,
+        type: "wallet_farcaster",
+      });
+
       await interaction.editReply({
-        content: `No activity found for address \`${query}\` on any supported EVM chain (Ethereum, Base, Monad).`,
+        embeds: walletResponse.embeds,
+        components: walletResponse.components,
       });
       return;
     }
 
-    // Check for Farcaster user by wallet
-    const farcasterUser = await findUserByWallet(query).catch(() => null);
-    
-    // Get Zora summary if available
-    const zoraSummary = farcasterUser
-      ? await findBestZoraSummary(collectZoraIdentifiers(farcasterUser, query)).catch(() => null)
-      : await findBestZoraSummary([query]).catch(() => null);
+    // PRIORITY 3: Check for Zora profile (without Farcaster)
+    if (zoraSummaryFromAddress) {
+      const { isSummaryAssociatedWithAddress, shouldShowZoraFallback } = await import("../utils/zoraAssociation");
+      
+      if (isSummaryAssociatedWithAddress(zoraSummaryFromAddress, address) && shouldShowZoraFallback(zoraSummaryFromAddress)) {
+        const { buildZoraWalletProfileResponse } = await import("../utils/walletEmbed");
+        const { buildFarcasterPresentation } = await import("../utils/farcasterPresentation");
+        const { findUserByUsername } = await import("../services/neynar");
+        const { safeFetchTokensByFid, safeFetchMostRecentCast } = await import("../utils/farcasterHelpers");
+        
+        // If Zora profile has a Farcaster handle, fetch and display the Farcaster profile
+        let farcasterEmbeds: Awaited<ReturnType<typeof buildFarcasterPresentation>> | null = null;
+        const farcasterHandle = zoraSummaryFromAddress.profile.farcasterHandle;
+        
+        if (farcasterHandle) {
+          try {
+            const farcasterUser = await findUserByUsername(farcasterHandle.replace(/^@/, ""));
+            if (farcasterUser) {
+              const [tokens, latestCast] = await Promise.all([
+                safeFetchTokensByFid(farcasterUser.fid),
+                safeFetchMostRecentCast(farcasterUser.fid),
+              ]);
+              
+              farcasterEmbeds = await buildFarcasterPresentation(farcasterUser, {
+                tokens,
+                latestCast,
+                zoraSummary: zoraSummaryFromAddress,
+                titleSuffix: "Farcaster Profile",
+              });
+            }
+          } catch (error) {
+            console.warn("Failed to fetch Farcaster profile for Zora fallback:", error);
+          }
+        }
 
-    // Get Clanker tokens if available
-    const clankerTokens = farcasterUser
-      ? await safeFetchTokensByFid(farcasterUser.fid).catch(() => [])
-      : [];
+        if (farcasterEmbeds) {
+          const responseTime = Date.now() - startTime;
+          trackResponseTime(responseTime);
+          trackSearch();
 
-    // Build comprehensive wallet profile (only if we have a Farcaster user)
-    let walletResponse: { embeds: EmbedBuilder[]; components: any[] } | null = null;
-    if (farcasterUser) {
-      walletResponse = await buildWalletProfileResponse({
-        wallet: query,
-        user: farcasterUser,
-        zoraSummary: zoraSummary ?? undefined,
-        clankerTokens,
-        latestCast: undefined,
-        paragraphUser: undefined,
+          logger.search(query, "discord", userId, guildId, channelId, {
+            success: true,
+            type: "wallet_farcaster_via_zora",
+          });
+
+          await interaction.editReply({
+            embeds: farcasterEmbeds.embeds,
+            components: farcasterEmbeds.components ?? [],
+          });
+          return;
+        } else {
+          const zoraResponse = buildZoraWalletProfileResponse({
+            wallet: address,
+            summary: zoraSummaryFromAddress,
+          });
+
+          const responseTime = Date.now() - startTime;
+          trackResponseTime(responseTime);
+          trackSearch();
+
+          logger.search(query, "discord", userId, guildId, channelId, {
+            success: true,
+            type: "wallet_zora_profile",
+          });
+
+          await interaction.editReply({
+            embeds: zoraResponse.embeds,
+            components: zoraResponse.components ?? [],
+          });
+          return;
+        }
+      }
+    }
+
+    // PRIORITY 4: Fallback to multi-chain wallet information
+    const addressInfo = await lookupAddress(address);
+
+    if (!addressInfo || addressInfo.length === 0) {
+      await interaction.editReply({
+        content: `No Farcaster profile, Zora account, or activity found for address \`${query}\` on any supported EVM chain (Ethereum, Base, Monad).`,
       });
+      return;
     }
 
     // Add multi-chain address information
@@ -107,10 +225,6 @@ export async function handleWalletCommand(
 
     applyBranding(addressEmbed, "wallet lookup");
 
-    // Combine wallet profile with address info (if we have a wallet profile)
-    const allEmbeds = walletResponse ? [...walletResponse.embeds, addressEmbed] : [addressEmbed];
-    const components = walletResponse?.components ?? [];
-
     const responseTime = Date.now() - startTime;
     trackResponseTime(responseTime);
     trackSearch();
@@ -121,8 +235,8 @@ export async function handleWalletCommand(
     });
 
     await interaction.editReply({
-      embeds: allEmbeds,
-      components,
+      embeds: [addressEmbed],
+      components: [],
     });
   } catch (error) {
     const responseTime = Date.now() - startTime;

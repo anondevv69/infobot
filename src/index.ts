@@ -26,6 +26,7 @@ import { handleRelayCommand } from "./commands/relay";
 import { handleFarCommand } from "./commands/far";
 import { handleWalletCommand } from "./commands/wallet";
 import { handleXCommand } from "./commands/x";
+import { handleTokenCommand } from "./commands/token";
 import { parsePaginationButton } from "./utils/pagination";
 import { handleGeneralPagination } from "./handlers/pagination";
 import { showDiscordTypingIndicator, showDiscordCommandTyping } from "./utils/typingIndicator";
@@ -282,32 +283,35 @@ async function handleChatCommand(
   await showDiscordCommandTyping(interaction);
 
   switch (interaction.commandName) {
-    case "search":
+    case "info":
       await handleSearchCommand(interaction);
-      break;
-    case "casts":
-      await handleCastsCommand(interaction);
-      break;
-    case "zora":
-      await handleZoraProfileCommand(interaction);
-      break;
-    case "help":
-      await handleHelpCommand(interaction);
-      break;
-    case "clanker":
-      await handleClankerCommand(interaction);
-      break;
-    case "relay":
-      await handleRelayCommand(interaction);
-      break;
-    case "far":
-      await handleFarCommand(interaction);
       break;
     case "w":
       await handleWalletCommand(interaction);
       break;
+    case "f":
+      await handleFarCommand(interaction);
+      break;
+    case "c":
+      await handleCastsCommand(interaction);
+      break;
+    case "cl":
+      await handleClankerCommand(interaction);
+      break;
+    case "z":
+      await handleZoraProfileCommand(interaction);
+      break;
+    case "t":
+      await handleTokenCommand(interaction);
+      break;
+    case "r":
+      await handleRelayCommand(interaction);
+      break;
     case "x":
       await handleXCommand(interaction);
+      break;
+    case "help":
+      await handleHelpCommand(interaction);
       break;
     default:
       await interaction.reply({

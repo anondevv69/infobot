@@ -9,8 +9,8 @@ export async function registerCommands(): Promise<void> {
 
   const commands = [
     new SlashCommandBuilder()
-      .setName("search")
-      .setDescription("Search wallets, contracts, Farcaster profiles, Zora accounts, or transactions.")
+      .setName("info")
+      .setDescription("Universal search for wallets, contracts, Farcaster profiles, Zora accounts, or transactions.")
       .addStringOption((option) =>
         option
           .setName("query")
@@ -18,8 +18,26 @@ export async function registerCommands(): Promise<void> {
           .setRequired(true),
       ),
     new SlashCommandBuilder()
-      .setName("casts")
-      .setDescription("Show the earliest and recent Farcaster casts that mention a keyword.")
+      .setName("w")
+      .setDescription("Wallet lookup - matches to Farcaster/Zora first, then shows wallet info.")
+      .addStringOption((option) =>
+        option
+          .setName("query")
+          .setDescription("Wallet address (0x... for Ethereum/Base/Monad or base58 for Solana)")
+          .setRequired(true),
+      ),
+    new SlashCommandBuilder()
+      .setName("f")
+      .setDescription("Farcaster user lookup by username or wallet address.")
+      .addStringOption((option) =>
+        option
+          .setName("query")
+          .setDescription("Farcaster username (with or without @) or wallet address (0x...)")
+          .setRequired(true),
+      ),
+    new SlashCommandBuilder()
+      .setName("c")
+      .setDescription("Search Farcaster casts by keyword.")
       .addStringOption((option) =>
         option
           .setName("keyword")
@@ -34,20 +52,8 @@ export async function registerCommands(): Promise<void> {
           .setMaxValue(5),
       ),
     new SlashCommandBuilder()
-      .setName("help")
-      .setDescription("Display a rundown of commands and automatic responses."),
-    new SlashCommandBuilder()
-      .setName("zora")
-      .setDescription("Search Zora accounts, contracts, or creator coins.")
-      .addStringOption((option) =>
-        option
-          .setName("query")
-          .setDescription("Zora account handle, contract address, or creator coin")
-          .setRequired(true),
-      ),
-    new SlashCommandBuilder()
-      .setName("clanker")
-      .setDescription("Search Clanker deployments by keyword, symbol, address, username, or wallet.")
+      .setName("cl")
+      .setDescription("Clanker token deployment search.")
       .addStringOption((option) =>
         option
           .setName("query")
@@ -55,8 +61,26 @@ export async function registerCommands(): Promise<void> {
           .setRequired(true),
       ),
     new SlashCommandBuilder()
-      .setName("relay")
-      .setDescription("Get cross-chain transaction details from Relay.link. Provide a transaction link.")
+      .setName("z")
+      .setDescription("Zora account, contract, or creator coin search.")
+      .addStringOption((option) =>
+        option
+          .setName("query")
+          .setDescription("Zora account handle, contract address, or creator coin")
+          .setRequired(true),
+      ),
+    new SlashCommandBuilder()
+      .setName("t")
+      .setDescription("Token lookup - get all information about a token contract address.")
+      .addStringOption((option) =>
+        option
+          .setName("query")
+          .setDescription("Token contract address (0x...)")
+          .setRequired(true),
+      ),
+    new SlashCommandBuilder()
+      .setName("r")
+      .setDescription("Cross-chain transaction details from Relay.link.")
       .addStringOption((option) =>
         option
           .setName("transaction")
@@ -64,32 +88,17 @@ export async function registerCommands(): Promise<void> {
           .setRequired(true),
       ),
     new SlashCommandBuilder()
-      .setName("far")
-      .setDescription("Search Farcaster users by username or wallet address.")
-      .addStringOption((option) =>
-        option
-          .setName("query")
-          .setDescription("Farcaster username (with or without @) or wallet address (0x...)")
-          .setRequired(true),
-      ),
-    new SlashCommandBuilder()
-      .setName("w")
-      .setDescription("Search wallet address across all EVM chains (Ethereum, Base, Monad) or Solana.")
-      .addStringOption((option) =>
-        option
-          .setName("query")
-          .setDescription("Wallet address (0x... for Ethereum/Base/Monad or base58 for Solana)")
-          .setRequired(true),
-      ),
-    new SlashCommandBuilder()
       .setName("x")
-      .setDescription("Lookup Farcaster profile by X/Twitter handle or URL.")
+      .setDescription("Farcaster profile lookup by X/Twitter handle or URL.")
       .addStringOption((option) =>
         option
           .setName("query")
           .setDescription("X/Twitter handle (@username) or URL (https://x.com/username)")
           .setRequired(true),
       ),
+    new SlashCommandBuilder()
+      .setName("help")
+      .setDescription("Display a rundown of commands and automatic responses."),
   ].map((command) => command.toJSON());
 
   const rest = new REST({ version: "10" }).setToken(token);
