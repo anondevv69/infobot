@@ -852,45 +852,27 @@ async function replyWithUsernameLookup(
     safeFetchMostRecentCast(user.fid),
     findBestZoraSummary(identifiers),
   ]);
-  const { embed, clankerEntries } = await buildUserClankerEmbed(
-    user,
-    "Username Lookup",
+
+  const associatedZoraSummary =
+    zoraSummary && isSummaryAssociatedWithUser(user, zoraSummary)
+      ? zoraSummary
+      : null;
+
+  const paginationIdentifier = `farcaster_username_${username}`;
+
+  // Use buildFarcasterPresentation for proper pagination with Zora info
+  const presentation = await buildFarcasterPresentation(user, {
     tokens,
-  );
-  const detailRows = buildTokenDetailRows(
-    clankerEntries.map((entry) => entry.token),
-    { includeButtons: false },
-  );
-  await appendZoraSummaryFields(embed, zoraSummary, { latestCast });
-
-  // Split into pages if needed
-  const embeds = splitEmbedIntoPages(embed, 15);
-  const totalPages = embeds.length;
-  const identifier = `farcaster_username_${username}`;
-
-  // Store for pagination
-  if (totalPages > 1) {
-    embeds.forEach((embed, index) => {
-      if (index === 0) {
-        storeEmbedForPagination(identifier, embed);
-      } else {
-        storeEmbedForPagination(`${identifier}_page${index + 1}`, embed);
-      }
-    });
-  }
-
-  const components: ActionRowBuilder<ButtonBuilder>[] = [];
-  if (totalPages > 1) {
-    components.push(...buildPaginationButtons(0, totalPages, identifier));
-  }
-  // Add detail rows if any
-  if (detailRows.length > 0) {
-    components.push(...detailRows);
-  }
+    zoraSummary: associatedZoraSummary,
+    latestCast,
+    titleSuffix: "Farcaster Profile",
+    includeButtons: false,
+    paginationIdentifier,
+  });
 
   await interaction.editReply({
-    embeds: [embeds[0]],
-    components,
+    embeds: presentation.embeds,
+    components: presentation.components,
   });
 
   return true;
