@@ -70,8 +70,9 @@ export async function handleClankerCommand(
       console.warn("Failed to lookup user by username:", error);
     }
 
-    // If no user found, try as token query
-    if (allTokens.length === 0) {
+    // Only try token query if no user was found
+    // If a user was found, we should only show their deployed tokens (even if empty)
+    if (!user && allTokens.length === 0) {
       allTokens = await fetchTokensByQuery(query);
     }
   }
@@ -169,7 +170,9 @@ export async function handleClankerPagination(
       console.warn("Failed to lookup user by username:", error);
     }
 
-    if (allTokens.length === 0) {
+    // Only try token query if no user was found
+    // If a user was found, we should only show their deployed tokens (even if empty)
+    if (!user && allTokens.length === 0) {
       allTokens = await fetchTokensByQuery(query);
     }
   }
