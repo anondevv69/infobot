@@ -7,7 +7,7 @@ const HELP_MESSAGE = [
   "• `/w <address>` — Wallet lookup (matches Farcaster/Zora first, then shows wallet info)",
   "• `/f <query>` — Farcaster user lookup (username with or without @, or wallet)",
   "• `/c <keyword>` — Farcaster cast search by keyword",
-  "• `/cl <query>` — Clanker token deployment search",
+  "• `/cl <query>` — Clanker token search (Farcaster username or wallet to see all deployments)",
   "• `/z <query>` — Zora account, contract, or creator coin search",
   "• `/t <address>` — Token lookup (get all info about a token contract)",
   "• `/r <tx>` — Cross-chain transaction details (Relay.link)",

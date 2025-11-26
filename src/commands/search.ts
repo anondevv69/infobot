@@ -900,6 +900,61 @@ function normalizeUsername(value: string): string {
   return value.replace(/^@/, "").toLowerCase();
 }
 
+/**
+ * Check if a username, token name, or symbol actually matches the query
+ * Only returns true for real matches to prevent false positives
+ */
+function queryMatchesResult(username: string | undefined, tokenName: string | undefined, tokenSymbol: string | undefined, query: string): boolean {
+  const normalizedQuery = query.replace(/^@/, "").toLowerCase().trim();
+  
+  // Must have at least 2 characters to match
+  if (normalizedQuery.length < 2) {
+    return false;
+  }
+  
+  // Check username match
+  if (username) {
+    const normalizedUsername = username.replace(/^@/, "").toLowerCase();
+    
+    // Exact match
+    if (normalizedUsername === normalizedQuery) {
+      return true;
+    }
+    
+    // Username starts with query (e.g., "few" matches "fewfe")
+    if (normalizedUsername.startsWith(normalizedQuery) && normalizedQuery.length >= 3) {
+      return true;
+    }
+    
+    // Query starts with username (e.g., "fewfe" matches "few")
+    if (normalizedQuery.startsWith(normalizedUsername) && normalizedUsername.length >= 3) {
+      return true;
+    }
+  }
+  
+  // Check token name match
+  if (tokenName) {
+    const normalizedName = tokenName.toLowerCase();
+    if (normalizedName === normalizedQuery || normalizedName.includes(normalizedQuery) || normalizedQuery.includes(normalizedName)) {
+      // Only allow if it's a reasonable match (not too different in length)
+      const lengthDiff = Math.abs(normalizedName.length - normalizedQuery.length);
+      if (lengthDiff <= 3 || normalizedQuery.length >= 4) {
+        return true;
+      }
+    }
+  }
+  
+  // Check token symbol match
+  if (tokenSymbol) {
+    const normalizedSymbol = tokenSymbol.toLowerCase();
+    if (normalizedSymbol === normalizedQuery || normalizedSymbol.includes(normalizedQuery) || normalizedQuery.includes(normalizedSymbol)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 async function replyWithClankerTokenLookup(
   interaction: ChatInputCommandInteraction,
   query: string,
@@ -925,8 +980,47 @@ async function replyWithClankerTokenLookup(
     return false;
   }
 
-  const primaryToken = tokens[0];
-  const associatedUser = await resolveUserFromToken(primaryToken);
+  // For non-address queries, validate that the username actually matches
+  const normalizedQuery = query.replace(/^@/, "").toLowerCase();
+  const isAddressQuery = isEthAddress(query) || isSolAddress(query);
+  
+  // Find a token with a matching username (if not an address query)
+  let primaryToken = tokens[0];
+  let associatedUser: User | null = null;
+  
+  if (!isAddressQuery) {
+    // Try to find a token where the username, token name, or symbol actually matches the query
+    for (const token of tokens) {
+      const user = await resolveUserFromToken(token);
+      const username = user?.username;
+      const tokenName = token.name;
+      const tokenSymbol = token.symbol;
+      
+      // Check if query matches username, token name, or symbol
+      if (queryMatchesResult(username, tokenName, tokenSymbol, query)) {
+        primaryToken = token;
+        associatedUser = user;
+        break;
+      }
+    }
+    
+    // If no match found, don't show results (to avoid false matches)
+    if (!primaryToken || !queryMatchesResult(
+      associatedUser?.username,
+      primaryToken.name,
+      primaryToken.symbol,
+      query
+    )) {
+      await interaction.editReply({
+        content: `No Farcaster profile or Clanker deployments found for \`${query}\`.`,
+      });
+      return false;
+    }
+  } else {
+    // For address queries, resolve user normally
+    associatedUser = await resolveUserFromToken(primaryToken);
+  }
+  
   if (associatedUser) {
     const [creatorTokens, latestCast] = await Promise.all([
       safeFetchTokensByFid(associatedUser.fid),

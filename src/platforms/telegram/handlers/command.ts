@@ -41,7 +41,7 @@ export async function handleTelegramCommand(
 • <code>/w &lt;address&gt;</code> — Wallet lookup (matches Farcaster/Zora first, then shows wallet info)
 • <code>/f &lt;query&gt;</code> — Farcaster user lookup (username with or without @, or wallet)
 • <code>/c &lt;keyword&gt;</code> — Farcaster cast search by keyword
-• <code>/cl &lt;query&gt;</code> — Clanker token deployment search
+• <code>/cl &lt;query&gt;</code> — Clanker token search (Farcaster username or wallet to see all deployments)
 • <code>/z &lt;query&gt;</code> — Zora account, contract, or creator coin search
 • <code>/t &lt;address&gt;</code> — Token lookup (get all info about a token contract)
 • <code>/r &lt;tx&gt;</code> — Cross-chain transaction details (Relay.link)
@@ -108,7 +108,7 @@ Fast blockchain discovery—drop any address, profile, or link.`;
       case "clanker":
       case "cl": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a Clanker query.\n\nUsage: <code>/cl &lt;query&gt;</code>\nExample: <code>/cl tokenname</code> or <code>/cl 0x1234...</code>", { parse_mode: "HTML" });
+          await bot.sendMessage(chatId, "Please provide a Farcaster username or wallet address.\n\nUsage: <code>/cl &lt;query&gt;</code>\nExample: <code>/cl @username</code> or <code>/cl 0x1234...</code> to see all Clanker deployments", { parse_mode: "HTML" });
           return;
         }
         

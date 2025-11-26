@@ -31,7 +31,7 @@ export async function handleClankerCommand(
 
   if (!query) {
     await interaction.reply({
-      content: "Please provide a keyword, token symbol, contract address, Farcaster username, or wallet address to search.",
+      content: "Please provide a Farcaster username (with or without @) or wallet address (0x...) to see all Clanker deployments.\n\nExample: `/cl @username` or `/cl 0x1234...`",
     });
     return;
   }

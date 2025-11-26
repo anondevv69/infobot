@@ -53,11 +53,11 @@ export async function registerCommands(): Promise<void> {
       ),
     new SlashCommandBuilder()
       .setName("cl")
-      .setDescription("Clanker token deployment search.")
+      .setDescription("Clanker token deployment search - search by Farcaster username or wallet address to see all deployments.")
       .addStringOption((option) =>
         option
           .setName("query")
-          .setDescription("Keyword, symbol, contract, Farcaster username, or wallet")
+          .setDescription("Farcaster username (with or without @), wallet address (0x...), token name, or symbol")
           .setRequired(true),
       ),
     new SlashCommandBuilder()

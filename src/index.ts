@@ -30,8 +30,7 @@ import { handleTokenCommand } from "./commands/token";
 import { parsePaginationButton } from "./utils/pagination";
 import { handleGeneralPagination } from "./handlers/pagination";
 import { showDiscordTypingIndicator, showDiscordCommandTyping } from "./utils/typingIndicator";
-import { initializeBroadcastClient } from "./services/clankerBroadcast";
-import { ClankerWatcher } from "./services/clankerWatcher";
+// Monitoring code removed - will be rewritten later
 import { logger } from "./utils/logger";
 
 async function main(): Promise<void> {
@@ -105,19 +104,7 @@ async function main(): Promise<void> {
       }
     }
     
-    // Initialize broadcast client
-    initializeBroadcastClient(readyClient);
-    
-    // Start Clanker watcher
-    const watcher = new ClankerWatcher();
-    watcher.start();
-    logger.system("Clanker Watcher: Started monitoring Clanker deployments");
-    
-    // Start Monad Clanker monitor
-    const { MonadClankerMonitor } = await import("./services/monadClankerMonitor");
-    const monadMonitor = new MonadClankerMonitor();
-    monadMonitor.start();
-    logger.system("Monad Clanker Monitor: Started monitoring @clanker for Monad deployments");
+    // Monitoring code removed - will be rewritten later
   });
 
   // Track when bot is added to a new Discord server
