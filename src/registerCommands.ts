@@ -85,7 +85,16 @@ export async function registerCommands(): Promise<void> {
       .addStringOption((option) =>
         option
           .setName("query")
-          .setDescription("Farcaster username (@username) or wallet address (0x...)")
+          .setDescription("Farcaster username (with or without @) or wallet address (0x...)")
+          .setRequired(true),
+      ),
+    new SlashCommandBuilder()
+      .setName("f")
+      .setDescription("Search Farcaster users by username or wallet address (alias for /far).")
+      .addStringOption((option) =>
+        option
+          .setName("query")
+          .setDescription("Farcaster username (with or without @) or wallet address (0x...)")
           .setRequired(true),
       ),
     new SlashCommandBuilder()
@@ -99,20 +108,11 @@ export async function registerCommands(): Promise<void> {
       ),
     new SlashCommandBuilder()
       .setName("w")
-      .setDescription("Lookup wallet address (Ethereum or Solana).")
+      .setDescription("Search wallet address across all EVM chains (Ethereum, Base, Monad) or Solana.")
       .addStringOption((option) =>
         option
           .setName("query")
-          .setDescription("Wallet address (0x... for Ethereum or base58 for Solana)")
-          .setRequired(true),
-      ),
-    new SlashCommandBuilder()
-      .setName("wallet")
-      .setDescription("Search wallet address across all EVM chains (Ethereum, Base, Monad).")
-      .addStringOption((option) =>
-        option
-          .setName("query")
-          .setDescription("Wallet address (0x...)")
+          .setDescription("Wallet address (0x... for Ethereum/Base/Monad or base58 for Solana)")
           .setRequired(true),
       ),
     new SlashCommandBuilder()
@@ -122,15 +122,6 @@ export async function registerCommands(): Promise<void> {
         option
           .setName("query")
           .setDescription("X/Twitter handle (@username) or URL (https://x.com/username)")
-          .setRequired(true),
-      ),
-    new SlashCommandBuilder()
-      .setName("info")
-      .setDescription("Universal search for wallets, contracts, profiles, or transactions (alias for /search).")
-      .addStringOption((option) =>
-        option
-          .setName("query")
-          .setDescription("Wallet (0x...), contract, Farcaster username, Zora account, or transaction hash")
           .setRequired(true),
       ),
   ].map((command) => command.toJSON());

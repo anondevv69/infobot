@@ -24,7 +24,6 @@ import { handleCopyValueButton } from "./handlers/copyValueButton";
 import { handleClankerCommand, handleClankerPagination } from "./commands/clanker";
 import { handleRelayCommand } from "./commands/relay";
 import { handleFarCommand } from "./commands/far";
-import { handleWCommand } from "./commands/w";
 import { handleWalletCommand } from "./commands/wallet";
 import { handleXCommand } from "./commands/x";
 import { parsePaginationButton } from "./utils/pagination";
@@ -284,7 +283,6 @@ async function handleChatCommand(
 
   switch (interaction.commandName) {
     case "search":
-    case "info":
       await handleSearchCommand(interaction);
       break;
     case "casts":
@@ -305,12 +303,10 @@ async function handleChatCommand(
       await handleRelayCommand(interaction);
       break;
     case "far":
+    case "f":
       await handleFarCommand(interaction);
       break;
     case "w":
-      await handleWCommand(interaction);
-      break;
-    case "wallet":
       await handleWalletCommand(interaction);
       break;
     case "x":

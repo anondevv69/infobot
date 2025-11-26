@@ -178,7 +178,22 @@ export async function startTelegramBot(): Promise<void> {
     }
   });
 
-  // Handle /wallet with parameters (must come before /wallet$ to match first)
+  // Handle /w with parameters (wallet search - same as /wallet)
+  bot.onText(/^\/w (.+)$/, async (msg, match) => {
+    const query = match?.[1]?.trim();
+    if (query) {
+      await handleTelegramCommand(bot, msg, "wallet", query);
+    } else {
+      await handleTelegramCommand(bot, msg, "wallet");
+    }
+  });
+
+  // Handle /w without parameters
+  bot.onText(/^\/w$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "wallet");
+  });
+
+  // Handle /wallet with parameters (legacy - redirects to same handler as /w)
   bot.onText(/^\/wallet (.+)$/, async (msg, match) => {
     const query = match?.[1]?.trim();
     if (query) {
@@ -191,6 +206,36 @@ export async function startTelegramBot(): Promise<void> {
   // Handle /wallet without parameters
   bot.onText(/^\/wallet$/, async (msg) => {
     await handleTelegramCommand(bot, msg, "wallet");
+  });
+
+  // Handle /far with parameters
+  bot.onText(/^\/far (.+)$/, async (msg, match) => {
+    const query = match?.[1]?.trim();
+    if (query) {
+      await handleTelegramCommand(bot, msg, "far", query);
+    } else {
+      await handleTelegramCommand(bot, msg, "far");
+    }
+  });
+
+  // Handle /far without parameters
+  bot.onText(/^\/far$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "far");
+  });
+
+  // Handle /f with parameters (alias for /far)
+  bot.onText(/^\/f (.+)$/, async (msg, match) => {
+    const query = match?.[1]?.trim();
+    if (query) {
+      await handleTelegramCommand(bot, msg, "far", query);
+    } else {
+      await handleTelegramCommand(bot, msg, "far");
+    }
+  });
+
+  // Handle /f without parameters
+  bot.onText(/^\/f$/, async (msg) => {
+    await handleTelegramCommand(bot, msg, "far");
   });
 
   bot.onText(/\/zora (.+)/, async (msg, match) => {

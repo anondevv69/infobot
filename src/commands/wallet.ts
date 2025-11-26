@@ -30,17 +30,24 @@ export async function handleWalletCommand(
     // Validate address format
     if (!isEthAddress(query) && !isSolAddress(query)) {
       await interaction.editReply({
-        content: `Invalid address format: \`${query}\`. Please provide a valid Ethereum (0x...) or Solana address.`,
+        content: `Invalid address format: \`${query}\`. Please provide a valid Ethereum (0x...), Base, Monad, or Solana address.`,
       });
       return;
     }
 
-    // Lookup address across all EVM chains
+    // For Solana addresses, use search command handler (it handles Solana better)
+    if (isSolAddress(query)) {
+      const { handleSearchCommand } = await import("./search");
+      await handleSearchCommand(interaction);
+      return;
+    }
+
+    // Lookup address across all EVM chains (Ethereum, Base, Monad)
     const addressInfo = await lookupAddress(query);
 
     if (!addressInfo || addressInfo.length === 0) {
       await interaction.editReply({
-        content: `No activity found for address \`${query}\` on any supported chain (Ethereum, Base, Monad).`,
+        content: `No activity found for address \`${query}\` on any supported EVM chain (Ethereum, Base, Monad).`,
       });
       return;
     }

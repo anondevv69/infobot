@@ -38,15 +38,14 @@ export async function handleTelegramCommand(
 
 <b>Commands:</b>
 • <code>/search &lt;query&gt;</code> — Universal search (wallets, contracts, profiles, transactions)
-• <code>/info &lt;query&gt;</code> — Alias for <code>/search</code>
-• <code>/wallet &lt;address&gt;</code> — Search wallet across all EVM chains (Ethereum, Base, Monad)
-• <code>/w &lt;address&gt;</code> — Wallet lookup (Ethereum or Solana)
+• <code>/w &lt;address&gt;</code> — Search wallet across all EVM chains (Ethereum, Base, Monad) or Solana
 • <code>/zora &lt;query&gt;</code> — Zora accounts, contracts, or creator coins
 • <code>/z &lt;query&gt;</code> — Alias for <code>/zora</code>
 • <code>/clanker &lt;query&gt;</code> — Clanker token deployments
 • <code>/casts &lt;keyword&gt;</code> — Search Farcaster casts by keyword
 • <code>/cast &lt;keyword&gt;</code> — Alias for <code>/casts</code>
-• <code>/far &lt;query&gt;</code> — Search Farcaster users (username or wallet)
+• <code>/far &lt;query&gt;</code> — Search Farcaster users (username with or without @, or wallet)
+• <code>/f &lt;query&gt;</code> — Alias for <code>/far</code>
 • <code>/x &lt;query&gt;</code> — Farcaster profile by X/Twitter handle or URL
 • <code>/relay &lt;tx&gt;</code> — Cross-chain transaction details
 • <code>/help</code> — Show this help message
@@ -338,7 +337,7 @@ Fast blockchain discovery—drop any address, profile, or link.`;
 
       case "wallet": {
         if (!query) {
-          await bot.sendMessage(chatId, "Please provide a wallet address.\n\nUsage: <code>/wallet &lt;address&gt;</code>\nExample: <code>/wallet 0x1234...</code>", { parse_mode: "HTML" });
+          await bot.sendMessage(chatId, "Please provide a wallet address.\n\nUsage: <code>/w &lt;address&gt;</code>\nExample: <code>/w 0x1234...</code>", { parse_mode: "HTML" });
           return;
         }
         
@@ -347,6 +346,21 @@ Fast blockchain discovery—drop any address, profile, or link.`;
         
         // Use the same search handler as /search for addresses
         await handleSearchQuery(bot, chatId, query, msg.from?.id);
+        break;
+      }
+
+      case "far": {
+        if (!query) {
+          await bot.sendMessage(chatId, "Please provide a Farcaster username (with or without @) or wallet address.\n\nUsage: <code>/far &lt;query&gt;</code>\nExample: <code>/far gregory</code> or <code>/far @gregory</code> or <code>/far 0x1234...</code>", { parse_mode: "HTML" });
+          return;
+        }
+        
+        // Send typing indicator
+        await bot.sendChatAction(chatId, "typing");
+        
+        // Remove @ if present and search
+        const normalizedQuery = query.replace(/^@/, "");
+        await handleSearchQuery(bot, chatId, normalizedQuery, msg.from?.id);
         break;
       }
 
