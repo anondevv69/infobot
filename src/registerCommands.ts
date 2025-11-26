@@ -1,7 +1,7 @@
 import { REST, Routes, SlashCommandBuilder } from "discord.js";
 import { env, requireEnv, validateRequiredEnv } from "./config";
 
-async function registerCommands(): Promise<void> {
+export async function registerCommands(): Promise<void> {
   validateRequiredEnv();
 
   const clientId = requireEnv(env.discordClientId, "DISCORD_CLIENT_ID");
@@ -150,24 +150,52 @@ async function registerCommands(): Promise<void> {
       .forEach((part) => guildIds.add(part));
   };
 
+  // ALWAYS register globally first (for all servers)
+  // This ensures commands work universally across all servers the bot is in
+  try {
+    await rest.put(Routes.applicationCommands(clientId), { body: commands });
+    console.log("✅ Registered global commands (works in ALL servers)");
+    console.log("   ⏳ Global commands may take up to 1 hour to propagate, but usually appear within minutes.");
+  } catch (error: any) {
+    if (error?.code === 50001) {
+      console.warn(`⚠️ Missing permissions to register global commands. Bot needs "applications.commands" scope.`);
+      console.warn(`   Tip: Re-invite the bot with the "applications.commands" scope in the OAuth2 URL.`);
+    } else {
+      console.error(`❌ Failed to register global commands:`, error);
+    }
+    // Don't throw - try guild-specific registration as fallback
+  }
+
+  // Optionally also register to specific guilds (for faster testing/development)
+  // This is useful for instant command updates during development
   addGuildIds(env.discordGuildIds);
   addGuildIds(env.discordGuildId);
 
   if (guildIds.size > 0) {
+    console.log(`\n📋 Also registering to ${guildIds.size} specific guild(s) for instant updates...`);
     for (const guildId of guildIds) {
-      await rest.put(Routes.applicationGuildCommands(clientId, guildId), {
-        body: commands,
-      });
-      console.log(`Registered guild commands for guild ${guildId}`);
+      try {
+        await rest.put(Routes.applicationGuildCommands(clientId, guildId), {
+          body: commands,
+        });
+        console.log(`   ✅ Registered guild commands for guild ${guildId} (instant updates)`);
+      } catch (error: any) {
+        if (error?.code === 50001) {
+          console.warn(`   ⚠️ Missing permissions to register commands in guild ${guildId}. Bot needs "applications.commands" permission.`);
+        } else {
+          console.warn(`   ⚠️ Failed to register commands for guild ${guildId}:`, error?.message || error);
+        }
+        // Continue to next guild - this is optional
+      }
     }
-  } else {
-    await rest.put(Routes.applicationCommands(clientId), { body: commands });
-    console.log("Registered global commands");
   }
 }
 
-registerCommands().catch((error) => {
-  console.error("Failed to register Discord commands:", error);
-  process.exitCode = 1;
-});
+// Only run if this file is executed directly (not imported)
+if (require.main === module) {
+  registerCommands().catch((error) => {
+    console.error("Failed to register Discord commands:", error);
+    process.exitCode = 1;
+  });
+}
 

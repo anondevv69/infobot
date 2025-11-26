@@ -178,14 +178,18 @@ export async function startTelegramBot(): Promise<void> {
     }
   });
 
-  bot.onText(/\/wallet (.+)/, async (msg, match) => {
-    const query = match?.[1];
+  // Handle /wallet with parameters (must come before /wallet$ to match first)
+  bot.onText(/^\/wallet (.+)$/, async (msg, match) => {
+    const query = match?.[1]?.trim();
     if (query) {
       await handleTelegramCommand(bot, msg, "wallet", query);
+    } else {
+      await handleTelegramCommand(bot, msg, "wallet");
     }
   });
 
-  bot.onText(/\/wallet$/, async (msg) => {
+  // Handle /wallet without parameters
+  bot.onText(/^\/wallet$/, async (msg) => {
     await handleTelegramCommand(bot, msg, "wallet");
   });
 

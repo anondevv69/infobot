@@ -62,6 +62,17 @@ async function main(): Promise<void> {
   client.once(Events.ClientReady, async (readyClient) => {
     logger.info(`Discord bot logged in as ${readyClient.user.tag}`);
     
+    // Register commands automatically on startup (for Railway deployment)
+    try {
+      const { registerCommands } = await import("./registerCommands");
+      await registerCommands();
+      logger.info("Discord commands registered successfully");
+    } catch (error) {
+      logger.error("Failed to register Discord commands on startup", error);
+      // Don't crash - commands might already be registered or bot might not have permissions
+      // This is a non-critical error for Railway deployment
+    }
+    
     // Check if bot is in the webhook channel's server
     const { getWebhookChannelId } = await import("./utils/webhookChannel");
     const webhookChannelId = await getWebhookChannelId(process.env.LOG_WEBHOOK_URL || null);

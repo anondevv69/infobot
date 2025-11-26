@@ -74,3 +74,37 @@ export function isSummaryAssociatedWithAddress(
     .map(normalizeAddress)
     .some((value) => value === normalized);
 }
+
+/**
+ * Check if a Zora summary should be shown as a fallback when no Farcaster user is found.
+ * Only show if:
+ * 1. Has posts/coins (createdCoins or latestCoin)
+ * 2. OR has X/Twitter or Farcaster associated (farcasterHandle or socials with X)
+ * 
+ * Do NOT show if:
+ * - No posts/coins AND no X/Farcaster links
+ */
+export function shouldShowZoraFallback(
+  summary: ZoraLookupResult | null | undefined,
+): boolean {
+  if (!summary?.profile) {
+    return false;
+  }
+
+  // Check if there are posts/coins
+  const hasPosts = Boolean(
+    summary.latestCoin?.coin ||
+    (summary.createdCoins && summary.createdCoins.length > 0)
+  );
+
+  // Check if there's a Farcaster handle
+  const hasFarcaster = Boolean(summary.profile.farcasterHandle);
+
+  // Check if there's an X/Twitter link in socials
+  const hasXLink = summary.profile.socials?.some(
+    (social) => social.platform === "x" || social.platform === "twitter"
+  ) ?? false;
+
+  // Only show if there are posts OR there's X/Farcaster associated
+  return hasPosts || hasFarcaster || hasXLink;
+}

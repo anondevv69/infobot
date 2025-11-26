@@ -825,47 +825,25 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
   }
 
   if (zoraSummaryFromAddress) {
-
-    const hasZoraCoinData =
-      Boolean(zoraSummaryFromAddress.latestCoin?.coin) ||
-      (zoraSummaryFromAddress.createdCoins ?? []).length > 0;
-
-    if (zoraReference && !hasZoraCoinData && directClankerMatches.length === 0) {
-      // Let the zoraAddress handler take over so the coin lookup can reply.
-      return false;
-    }
-
+    const { shouldShowZoraFallback } = await import("../utils/zoraAssociation");
+    
+    // Only show if it's associated with the address AND meets our criteria
     const associated = isSummaryAssociatedWithAddress(zoraSummaryFromAddress, address)
       ? zoraSummaryFromAddress
       : null;
 
-    const zoraResponse = buildZoraWalletProfileResponse({
-      wallet: address,
-      summary: associated ?? zoraSummaryFromAddress,
-    });
+    if (associated && shouldShowZoraFallback(associated)) {
+      const zoraResponse = buildZoraWalletProfileResponse({
+        wallet: address,
+        summary: associated,
+      });
 
-    let farcasterEmbeds: Awaited<ReturnType<typeof buildFarcasterPresentation>> | null = null;
-    const farcasterHandle = zoraSummaryFromAddress.profile.farcasterHandle;
-    if (farcasterHandle) {
-      try {
-        const user = await findUserByUsername(farcasterHandle.replace(/^@/, ""));
-        if (user) {
-          farcasterEmbeds = await buildFarcasterPresentation(user, {
-            zoraSummary: associated,
-          });
-        }
-      } catch (error) {
-        console.warn("Failed to fetch Farcaster profile for Zora summary:", error);
-      }
+      await message.reply({
+        embeds: zoraResponse.embeds,
+        components: zoraResponse.components ?? [],
+      });
+      return true;
     }
-
-    await message.reply({
-      embeds: farcasterEmbeds
-        ? [...farcasterEmbeds.embeds, ...zoraResponse.embeds]
-        : zoraResponse.embeds,
-      components: farcasterEmbeds?.components ?? [],
-    });
-    return true;
   }
 
   if (isEthAddress(address) || isSolAddress(address)) {

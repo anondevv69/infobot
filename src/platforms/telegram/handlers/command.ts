@@ -327,6 +327,20 @@ Fast blockchain discovery—drop any address, profile, or link.`;
         break;
       }
 
+      case "wallet": {
+        if (!query) {
+          await bot.sendMessage(chatId, "Please provide a wallet address.\n\nUsage: <code>/wallet &lt;address&gt;</code>\nExample: <code>/wallet 0x1234...</code>", { parse_mode: "HTML" });
+          return;
+        }
+        
+        // Send typing indicator
+        await bot.sendChatAction(chatId, "typing");
+        
+        // Use the same search handler as /search for addresses
+        await handleSearchQuery(bot, chatId, query, msg.from?.id);
+        break;
+      }
+
       default:
         await bot.sendMessage(chatId, "Unknown command. Use /help to see available commands.");
     }
@@ -554,243 +568,34 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
             }
           }
 
-          // Fallback: Check if it's a Monad contract (only if not already found on DexScreener)
-          // Only treat as token if it has token info or is from a known factory
-          const isMonadTokenFromDexScreener = multiChainTokenData && (
-            multiChainTokenData.chainId === "5001" || 
-            multiChainTokenData.chainId?.toLowerCase() === "monad"
-          );
-          
-          if (!isMonadTokenFromDexScreener) {
-            try {
-              const { getMonadAccountInfo, MONAD_CHAIN_ID } = await import("../../../services/blockvision");
-              const { getContractCreation } = await import("../../../services/contractCreation");
-              const { getTokenFactoryName } = await import("../../../services/baseFactories");
-              const { detectTokenContract } = await import("../../../services/tokenDetection");
-              const { getMonadTokenInfo } = await import("../../../services/blockvision");
-              
-              const monadAccountInfo = await getMonadAccountInfo(address).catch(() => null);
-              
-              if (monadAccountInfo?.isContract) {
-                // Try to get token info from multiple sources in parallel
-                const [rpcTokenInfo, monadScanTokenInfo, contractCreation] = await Promise.all([
-                  detectTokenContract(address, MONAD_CHAIN_ID).catch(() => null),
-                  getMonadTokenInfo(address).catch(() => null),
-                  getContractCreation(address, "monad").catch(() => null),
-                ]);
-                
-                // Prefer MonadScan token info, fallback to RPC
-                const tokenInfo = monadScanTokenInfo ? {
-                  name: monadScanTokenInfo.name,
-                  symbol: monadScanTokenInfo.symbol,
-                  decimals: monadScanTokenInfo.decimals,
-                  totalSupply: monadScanTokenInfo.totalSupply,
-                  isToken: true,
-                  chainId: MONAD_CHAIN_ID,
-                  chainName: "Monad",
-                  address,
-                } : rpcTokenInfo;
-                
-                // Check if it's from a known factory
-                let factoryName: string | null = null;
-                if (contractCreation?.contractCreator) {
-                  factoryName = getTokenFactoryName(contractCreation.contractCreator);
-                }
-                
-                // Only treat as token if we have token info OR it's from a known factory
-                const hasTokenInfo = tokenInfo && (tokenInfo.name || tokenInfo.symbol);
-                const isFromKnownFactory = factoryName !== null;
-                
-                if (hasTokenInfo || isFromKnownFactory) {
-                  // Try to get price for Nad.fun tokens
-                  let priceUsd: number | null = null;
-                  let marketCap: number | null = null;
-                  let liquidity: number | null = null;
-                  
-                  if (factoryName === "Nad.fun" && tokenInfo?.totalSupply) {
-                    try {
-                      const { getNadFunTokenPrice } = await import("../../../services/blockvision");
-                      const priceData = await getNadFunTokenPrice(address).catch(() => null);
-                      if (priceData?.priceUsd) {
-                        priceUsd = priceData.priceUsd;
-                        liquidity = priceData.liquidity;
-                        const totalSupply = parseFloat(tokenInfo.totalSupply);
-                        const decimals = tokenInfo.decimals ?? 18;
-                        const totalSupplyAdjusted = totalSupply / Math.pow(10, decimals);
-                        marketCap = priceUsd * totalSupplyAdjusted;
-                      }
-                    } catch (error) {
-                      // Ignore price calculation errors
-                    }
-                  }
-                  
-                  const { buildMultiChainTokenEmbed } = await import("../../../utils/multiChainTokenEmbeds");
-                  const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
-                  
-                  const monadTokenData: import("../../../services/dexscreener").MultiChainTokenData = {
-                    chainId: String(MONAD_CHAIN_ID),
-                    chainName: "Monad",
-                    tokenName: tokenInfo?.name ?? null,
-                    tokenSymbol: tokenInfo?.symbol ?? null,
-                    priceUsd,
-                    priceChange24h: null,
-                    volume24h: null,
-                    liquidity,
-                    marketCap,
-                    fdv: marketCap,
-                    trades24h: null,
-                    dexUrl: null,
-                    dexName: factoryName === "Nad.fun" ? "Nad.fun" : null,
-                    pairAddress: null,
-                    creatorAddress: contractCreation?.contractCreator ?? null,
-                    factoryName: factoryName,
-                    createdAt: contractCreation?.createdAt ?? null,
-                    creationTxHash: contractCreation?.txHash ?? null,
-                  };
-                  
-                  const { embed, components } = await buildMultiChainTokenEmbed(address, monadTokenData);
-                  const telegramMessages = embedsToTelegram([embed]);
-                  const telegramText = Array.isArray(telegramMessages) ? telegramMessages.join("\n\n") : telegramMessages;
-                  
-                  await bot.sendMessage(chatId, telegramText, {
-                    parse_mode: "HTML",
-                    disable_web_page_preview: true,
-                  });
-                  
-                  logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
-                    success: true,
-                    type: "wallet_monad_token",
-                  });
-                  return;
-                }
-              }
-            } catch (error) {
-              console.error(`[Telegram Search] Monad token check failed for ${address}:`, error);
-            }
-          }
-
-          // Fallback: Check for ERC-20 tokens not on DEXes (via RPC calls)
-          // This catches tokens that DexScreener doesn't have yet
-          if (!baseTokenData && !multiChainTokenData) {
-            try {
-              const { detectTokenContract } = await import("../../../services/tokenDetection");
-              const tokenDetectionPromise = detectTokenContract(address);
-              const timeoutPromise = new Promise<null>((resolve) => {
-                setTimeout(() => {
-                  console.log(`[Telegram Search] Token detection timeout for ${address}`);
-                  resolve(null);
-                }, 8000); // 8 second timeout
-              });
-              const tokenInfo = await Promise.race([tokenDetectionPromise, timeoutPromise]).catch(() => null);
-
-              if (tokenInfo && tokenInfo.isToken) {
-                const { getContractCreation } = await import("../../../services/contractCreation");
-                const contractCreation = await getContractCreation(address, tokenInfo.chainName.toLowerCase()).catch(() => null);
-                
-                const { EmbedBuilder } = await import("discord.js");
-                const { applyBranding } = await import("../../../utils/branding");
-                const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
-                
-                // Build a basic token embed
-                const embed = new EmbedBuilder()
-                  .setTitle(`🪙 ${tokenInfo.symbol || "Token"} • ${tokenInfo.name || "Unknown"}`)
-                  .setDescription(`Token contract detected on ${tokenInfo.chainName}`)
-                  .addFields(
-                    {
-                      name: "🔗 Chain",
-                      value: tokenInfo.chainName,
-                      inline: true,
-                    },
-                    {
-                      name: "🏠 Name",
-                      value: tokenInfo.name || "Unknown",
-                      inline: true,
-                    },
-                    {
-                      name: "🔖 Symbol",
-                      value: tokenInfo.symbol || "Unknown",
-                      inline: true,
-                    },
-                    {
-                      name: "🔑 Address",
-                      value: `\`${address}\``,
-                      inline: false,
-                    }
-                  )
-                  .setColor(0x5865f2);
-
-                if (tokenInfo.decimals !== null) {
-                  embed.addFields({
-                    name: "🔢 Decimals",
-                    value: String(tokenInfo.decimals),
-                    inline: true,
-                  });
-                }
-
-                if (tokenInfo.totalSupply) {
-                  embed.addFields({
-                    name: "📊 Total Supply",
-                    value: tokenInfo.totalSupply,
-                    inline: true,
-                  });
-                }
-
-                if (contractCreation?.contractCreator) {
-                  embed.addFields({
-                    name: "👤 Creator",
-                    value: `\`${contractCreation.contractCreator}\``,
-                    inline: false,
-                  });
-                }
-
-                embed.addFields({
-                  name: "⚠️ Note",
-                  value: "This token is not yet listed on any DEX tracked by DexScreener. It may be a new token that hasn't created a liquidity pool yet.",
-                  inline: false,
-                });
-
-                applyBranding(embed, "erc20 token");
-
-                const telegramMessages = embedsToTelegram([embed]);
-                const telegramText = Array.isArray(telegramMessages) ? telegramMessages.join("\n\n") : telegramMessages;
-                
-                await bot.sendMessage(chatId, telegramText, {
-                  parse_mode: "HTML",
-                  disable_web_page_preview: true,
-                });
-
-                logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
-                  success: true,
-                  type: "wallet_erc20_token",
-                });
-                return;
-              }
-            } catch (error) {
-              console.error(`[Telegram Search] Token detection failed for ${address}:`, error);
-            }
-          }
         }
 
         // Try Zora profile lookup (Zora-only wallet, no Farcaster user)
         // Only show if the summary is actually associated with the address
         // AND only if no tokens were found above
+        // AND only if it meets our criteria (has posts or X/Farcaster links)
         const zoraSummary = await findBestZoraSummary([address.toLowerCase()]);
         if (zoraSummary && isSummaryAssociatedWithAddress(zoraSummary, address)) {
-          // Use buildZoraWalletProfileResponse for wallet lookups (same as Discord)
-          const zoraResponse = buildZoraWalletProfileResponse({
-            wallet: address,
-            summary: zoraSummary,
-            returnAllPages: true, // Get all pages for Telegram
-          });
+          const { shouldShowZoraFallback } = await import("../../../utils/zoraAssociation");
           
-          const identifier = `zora_wallet_${address.toLowerCase()}`;
-          await sendPaginatedTelegramMessage(bot, chatId, zoraResponse.embeds, identifier);
-          
-          logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
-            success: true,
-            type: "wallet_zora_profile",
-          });
-          return;
+          // Only show if there are posts/coins OR X/Farcaster links
+          if (shouldShowZoraFallback(zoraSummary)) {
+            // Use buildZoraWalletProfileResponse for wallet lookups (same as Discord)
+            const zoraResponse = buildZoraWalletProfileResponse({
+              wallet: address,
+              summary: zoraSummary,
+              returnAllPages: true, // Get all pages for Telegram
+            });
+            
+            const identifier = `zora_wallet_${address.toLowerCase()}`;
+            await sendPaginatedTelegramMessage(bot, chatId, zoraResponse.embeds, identifier);
+            
+            logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+              success: true,
+              type: "wallet_zora_profile",
+            });
+            return;
+          }
         }
 
         // Final fallback: Try to get basic address information across chains (same as Discord)
