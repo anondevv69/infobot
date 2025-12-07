@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Connect Wallet - Trading Bot</title>
+    <title>InfoBot - Trading Bot</title>
     <style>
       * {
         margin: 0;
@@ -14,18 +14,52 @@
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
         padding: 20px;
       }
-      .container {
+      .app-container {
+        max-width: 900px;
+        margin: 0 auto;
         background: white;
         border-radius: 20px;
-        padding: 40px;
-        max-width: 500px;
-        width: 100%;
         box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        overflow: hidden;
+      }
+      .tabs {
+        display: flex;
+        background: #f5f5f5;
+        border-bottom: 2px solid #e0e0e0;
+      }
+      .tab {
+        flex: 1;
+        padding: 15px 20px;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 600;
+        color: #666;
+        transition: all 0.3s;
+        border-bottom: 3px solid transparent;
+      }
+      .tab:hover {
+        background: #e8e8e8;
+        color: #333;
+      }
+      .tab.active {
+        color: #667eea;
+        border-bottom-color: #667eea;
+        background: white;
+      }
+      .tab-content {
+        display: none;
+        padding: 40px;
+        max-height: calc(100vh - 100px);
+        overflow-y: auto;
+      }
+      .tab-content.active {
+        display: block;
+      }
+      .container {
         text-align: center;
       }
       h1 {
@@ -117,10 +151,99 @@
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
       }
+      /* Documentation Styles */
+      .doc-section {
+        margin: 30px 0;
+        text-align: left;
+      }
+      .doc-section h2 {
+        color: #667eea;
+        margin-bottom: 15px;
+        font-size: 24px;
+        border-bottom: 2px solid #667eea;
+        padding-bottom: 10px;
+      }
+      .doc-section h3 {
+        color: #764ba2;
+        margin-top: 25px;
+        margin-bottom: 12px;
+        font-size: 20px;
+      }
+      .doc-section h4 {
+        color: #555;
+        margin-top: 20px;
+        margin-bottom: 10px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .doc-section p {
+        color: #333;
+        line-height: 1.6;
+        margin-bottom: 12px;
+      }
+      .doc-section ul, .doc-section ol {
+        margin: 15px 0;
+        padding-left: 30px;
+        color: #333;
+      }
+      .doc-section li {
+        margin: 8px 0;
+        line-height: 1.6;
+      }
+      .doc-section code {
+        background: #f5f5f5;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: 'Courier New', monospace;
+        font-size: 14px;
+        color: #e83e8c;
+      }
+      .doc-section pre {
+        background: #2d2d2d;
+        color: #f8f8f2;
+        padding: 15px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 15px 0;
+      }
+      .doc-section pre code {
+        background: transparent;
+        color: #f8f8f2;
+        padding: 0;
+      }
+      .doc-section a {
+        color: #667eea;
+        text-decoration: none;
+      }
+      .doc-section a:hover {
+        text-decoration: underline;
+      }
+      .doc-section blockquote {
+        border-left: 4px solid #667eea;
+        padding-left: 15px;
+        margin: 15px 0;
+        color: #666;
+        font-style: italic;
+      }
+      .highlight-box {
+        background: #e8f4f8;
+        border-left: 4px solid #667eea;
+        padding: 15px;
+        margin: 15px 0;
+        border-radius: 4px;
+      }
     </style>
   </head>
   <body>
-    <div class="container">
+    <div class="app-container">
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('home')">Home</button>
+        <button class="tab" onclick="switchTab('doc')">Doc</button>
+      </div>
+      
+      <!-- Home Tab -->
+      <div id="homeTab" class="tab-content active">
+        <div class="container">
       <h1>🔗 Connect Your Wallet</h1>
       <p class="subtitle">Link your Farcaster account to Discord/Telegram bot</p>
       
@@ -167,8 +290,266 @@
       <button id="linkBotBtn" onclick="linkBot()" style="display: none; background: #00ff00; color: #000;">
         ✅ Link Accounts & Complete Setup
       </button>
+        </div>
+      </div>
+      
+      <!-- Doc Tab -->
+      <div id="docTab" class="tab-content">
+        <div class="doc-section">
+          <h2>📚 InfoBot Documentation</h2>
+          <p>Welcome to InfoBot! This guide will help you understand how to use the bot, what each command does, and how to interpret the information you receive.</p>
+          
+          <h3>What is InfoBot?</h3>
+          <p>InfoBot is a powerful Discord and Telegram bot that helps you search and analyze blockchain data, including:</p>
+          <ul>
+            <li>Wallet addresses and transactions</li>
+            <li>Farcaster profiles and casts</li>
+            <li>Zora creator coins and accounts</li>
+            <li>Clanker token deployments</li>
+            <li>Cross-chain transactions</li>
+          </ul>
+          
+          <h3>Getting Started</h3>
+          <p>To use InfoBot, you'll need to connect your Farcaster account. Use the <code>/connect</code> command in Discord or Telegram to get started.</p>
+          
+          <h3>Understanding Commands</h3>
+          <p>InfoBot supports various commands to help you search and analyze different types of data. Each command is designed to provide specific information about the blockchain ecosystem.</p>
+          
+          <h4>Universal Search</h4>
+          <p><code>/search &lt;query&gt;</code> or <code>/info &lt;query&gt;</code> - This is your go-to command for finding information. It automatically detects what you're searching for (wallet, contract, username, etc.) and returns relevant results.</p>
+          
+          <h4>Specialized Commands</h4>
+          <ul>
+            <li><code>/zora &lt;query&gt;</code> - Search Zora-specific data (accounts, contracts, creator coins)</li>
+            <li><code>/clanker &lt;query&gt;</code> - Search Clanker token deployments</li>
+            <li><code>/casts &lt;keyword&gt;</code> - Search Farcaster casts by keyword</li>
+            <li><code>/far &lt;query&gt;</code> - Search Farcaster users</li>
+            <li><code>/w &lt;query&gt;</code> - Wallet lookup (Ethereum or Solana)</li>
+            <li><code>/x &lt;query&gt;</code> - Find Farcaster profile by X/Twitter handle</li>
+            <li><code>/relay &lt;transaction&gt;</code> - Cross-chain transaction lookup</li>
+          </ul>
+          
+          <h3>How to Read Results</h3>
+          <p>When InfoBot returns results, you'll see various types of information:</p>
+          <ul>
+            <li><strong>Wallet Addresses:</strong> Shows the address, associated tokens, and transaction history</li>
+            <li><strong>Farcaster Profiles:</strong> Displays username, FID, bio, and associated wallets</li>
+            <li><strong>Token Information:</strong> Shows contract details, supply, and trading links</li>
+            <li><strong>Transaction Data:</strong> Provides transaction hash, status, and related addresses</li>
+          </ul>
+          
+          <h3>Interpreting Data</h3>
+          <p>InfoBot provides raw blockchain data that you can use to make informed decisions. Always verify important information by checking the source on block explorers like BaseScan.</p>
+        </div>
+        
+        <div class="doc-section" id="clanker-section">
+          <h2>🔍 Clanker Coin Detection & Explanation</h2>
+          
+          <p>This document explains how to identify where a Clanker-compatible token was deployed (Clanker Platform, Farcaster, Bankr, or other affiliates) and how users can verify whether a deployment is real, legitimate, and properly attributed.</p>
+          
+          <p>It also covers how to read deployment data, how to confirm creators, and how to investigate split-reward configurations—especially for Bankr deployments on X (Twitter).</p>
+          
+          <h3>1. Deployment Categories</h3>
+          <p>Token deployments within the Clanker ecosystem currently fall into four main groups:</p>
+          <ol>
+            <li><strong>Clanker Platform Deployment</strong></li>
+            <li><strong>Farcaster Deployment</strong></li>
+            <li><strong>Bankr Deployment</strong> (multiple methods)</li>
+            <li><strong>Other Clanker Affiliates</strong></li>
+          </ol>
+          <p>Each deployment method leaves different on-chain fingerprints that help users verify authenticity.</p>
+          
+          <h3>2. How to Verify Where a Token Was Deployed</h3>
+          <p>Every Clanker-compatible token has a unique Clanker page and an on-chain creation transaction.</p>
+          <p><strong>Example:</strong> <code>https://clanker.world/clanker/&lt;contractAddress&gt;</code></p>
+          
+          <p>To determine where a token was deployed:</p>
+          <ol>
+            <li><strong>Visit the Clanker page.</strong>
+              <ul>
+                <li>Deployment metadata is often visible under "Creation Transaction" or "Deployment Config".</li>
+              </ul>
+            </li>
+            <li><strong>Open the creation transaction on BaseScan</strong> via the link provided.
+              <ul>
+                <li>Example: <code>https://basescan.org/tx/&lt;txHash&gt;</code></li>
+              </ul>
+            </li>
+            <li><strong>Look for:</strong>
+              <ul>
+                <li><code>deploymentConfig.tokenConfig</code></li>
+                <li><code>deploymentConfig.rewardsConfig</code></li>
+                <li>Metadata containing context links (X post, cast URL, message ID, etc.).</li>
+              </ul>
+            </li>
+          </ol>
+          <p>This information is consistent across Clanker Platform, Bankr, and affiliate deployments.</p>
+          
+          <h3>3. Clanker Platform Deployments</h3>
+          <p>Tokens deployed directly through the Clanker platform will usually show:</p>
+          <ul>
+            <li>Clear metadata pointing to Clanker as the origin.</li>
+            <li>The deploying wallet's address in the <code>creatorAdmin</code> or <code>creatorRewardRecipient</code> fields.</li>
+            <li>No split accounts unless manually configured.</li>
+          </ul>
+          <p>Clanker Platform deployments are usually the most straightforward: the deployer wallet = the creator reward wallet (unless the user registered additional reward wallets).</p>
+          <p>Clanker also allows multiple registered reward wallets, so you may see more than one reward recipient depending on the user's settings.</p>
+          
+          <h3>4. Farcaster Deployments</h3>
+          <p>Deployments started through Farcaster (casts to integrations using Clanker-compatible bots or tools) typically include:</p>
+          <ul>
+            <li>A Farcaster cast URL in the metadata.</li>
+            <li>A reference to the cast author.</li>
+            <li>A single reward address unless a split was configured in advance.</li>
+          </ul>
+          <p>Farcaster-origin deployments behave similarly to Clanker deployments, but the initiating context is usually a cast ID instead of an X post.</p>
+          
+          <h3>5. Bankr Deployments</h3>
+          <p>Bankr deployments are more complex because Bankr supports multiple input channels:</p>
+          
+          <h4>Bankr Deployment Methods</h4>
+          <ul>
+            <li>Sending a message to Bankr on the Base app</li>
+            <li>Messaging Bankr in Terminal</li>
+            <li>Tweeting @bankrbot on X</li>
+            <li>Casting at @bankrbot on Farcaster</li>
+          </ul>
+          <p>All of these methods perform the same core deployment function, except for one special case:</p>
+          
+          <div class="highlight-box">
+            <h4>X (Twitter) Reply Deployments — Split Rewards</h4>
+            <p>Bankr has a special rule for deployments made as direct replies on X.</p>
+            <p><strong>Bankr Announcement (paraphrased):</strong></p>
+            <p>If a user deploys a token by replying to someone's original post, the token's fees are split 50/50 between the reply author (the deployer) and the original post author.</p>
+            <p><strong>Source tweet:</strong> <a href="https://x.com/bankrbot/status/1904668350753771868" target="_blank">https://x.com/bankrbot/status/1904668350753771868</a></p>
+          </div>
+          
+          <p><strong>Example reply-based deployment:</strong></p>
+          <ul>
+            <li>Clanker page: <a href="https://clanker.world/clanker/0x4F4c8378900B9Bf5Dc8Ee724Fb99aAf50f786b8a" target="_blank">https://clanker.world/clanker/0x4F4c8378900B9Bf5Dc8Ee724Fb99aAf50f786b8a</a></li>
+            <li>Related X post: <a href="https://x.com/ayowtfchil/status/1904668851305914804" target="_blank">https://x.com/ayowtfchil/status/1904668851305914804</a></li>
+          </ul>
+          
+          <h3>6. How to Verify a Bankr Split Deployment</h3>
+          <p>Open the creation transaction on BaseScan: <a href="https://basescan.org/tx/0x65660c6fd570ac34afced7e52c3b716a53f0f8d12675d1c957dd06ee26141e8f" target="_blank">https://basescan.org/tx/0x65660c6fd570ac34afced7e52c3b716a53f0f8d12675d1c957dd06ee26141e8f</a></p>
+          
+          <p>Inside the decoded input, locate:</p>
+          
+          <h4>deploymentConfig.tokenConfig</h4>
+          <p>This section often includes:</p>
+          <ul>
+            <li>Metadata</li>
+            <li>Context links (X post URL, cast URL, message ID)</li>
+            <li>Deployment origin</li>
+          </ul>
+          
+          <h4>deploymentConfig.rewardsConfig</h4>
+          <p>This is the most important section for confirming authenticity.</p>
+          
+          <p><strong>Key fields:</strong></p>
+          
+          <p><strong>creatorAdmin</strong></p>
+          <ul>
+            <li>The address that executed the deployment.</li>
+            <li>For X deployments from social accounts, this may be:
+              <ul>
+                <li>The Bankr admin wallet</li>
+                <li>A dead address (e.g., <code>0x000…dEaD</code>) if the creator is not meant to control the token</li>
+                <li>A system address</li>
+              </ul>
+            </li>
+          </ul>
+          
+          <p><strong>creatorRewardRecipient</strong></p>
+          <ul>
+            <li>The wallet(s) receiving rewards from trading fees.</li>
+            <li>In a split deployment, this is a Split contract address, not a normal wallet.</li>
+            <li>Example: <code>0xa2Fe377b9a8432AF3707094A7252E415B859962D</code></li>
+          </ul>
+          
+          <p>If you open this address on Splits.org: <a href="https://app.splits.org/accounts/0xa2Fe377b9a8432AF3707094A7252E415B859962D/?chainId=8453" target="_blank">https://app.splits.org/accounts/0xa2Fe377b9a8432AF3707094A7252E415B859962D/?chainId=8453</a></p>
+          
+          <p>You will see two underlying wallets:</p>
+          <ul>
+            <li>One belonging to the reply author (the person who deployed)</li>
+            <li>One belonging to the original post author</li>
+          </ul>
+          
+          <p>In the example case:</p>
+          <ul>
+            <li>Wallet 1 → @hodljpegs (the deployer)</li>
+            <li>Wallet 2 → @elonmusk Bankr wallet (original post author)</li>
+          </ul>
+          
+          <h4>How to Confirm These Identities</h4>
+          <p>There are two common methods:</p>
+          <ol>
+            <li><strong>Ask @bankrbot on X</strong> — Bankr will confirm the split participants.</li>
+            <li><strong>Search the wallet addresses on X</strong> — Many users have posted their Bankr wallet addresses publicly. This makes it possible to link the Split account back to real X accounts.</li>
+          </ol>
+          
+          <h3>7. Understanding Legacy Behavior</h3>
+          <p>Before the new X reply-split system:</p>
+          <ul>
+            <li>X deployments only credited the deployer.</li>
+            <li>No automatic fee splits existed.</li>
+            <li>Clanker allowed users to manually register multiple reward wallets.</li>
+          </ul>
+          <p>Both old and new approaches still appear today depending on how the token was deployed.</p>
+          
+          <h3>8. Summary of Verification Steps</h3>
+          <p>To determine if a deployment is real and how it was created:</p>
+          <ol>
+            <li><strong>Check the Clanker page</strong>
+              <ul>
+                <li>See if metadata indicates Clanker, Farcaster, Bankr, or another affiliate.</li>
+              </ul>
+            </li>
+            <li><strong>Open the creation transaction</strong>
+              <ul>
+                <li>Look at:
+                  <ul>
+                    <li><code>tokenConfig</code> → origin context</li>
+                    <li><code>rewardsConfig</code> → who receives rewards</li>
+                  </ul>
+                </li>
+              </ul>
+            </li>
+            <li><strong>If rewardsConfig uses a Splits contract</strong>
+              <ul>
+                <li>It is likely a Bankr X reply deployment.</li>
+              </ul>
+            </li>
+            <li><strong>Use Splits.org to inspect reward participants</strong>
+              <ul>
+                <li>Confirm who the two wallets are.</li>
+              </ul>
+            </li>
+            <li><strong>Compare context links (X post, cast, etc.)</strong>
+              <ul>
+                <li>This verifies whether the deployment is legitimate.</li>
+              </ul>
+            </li>
+          </ol>
+        </div>
+      </div>
     </div>
 
+    <script>
+      function switchTab(tabName) {
+        // Hide all tabs
+        document.querySelectorAll('.tab-content').forEach(tab => {
+          tab.classList.remove('active');
+        });
+        document.querySelectorAll('.tab').forEach(btn => {
+          btn.classList.remove('active');
+        });
+        
+        // Show selected tab
+        document.getElementById(tabName + 'Tab').classList.add('active');
+        event.target.classList.add('active');
+      }
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
