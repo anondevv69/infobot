@@ -1,20 +1,11 @@
 import { EmbedBuilder } from "discord.js";
 import type { User } from "@neynar/nodejs-sdk/build/api";
 import type { BankrLaunch } from "../services/bankr";
-import type { TokenMetrics } from "../services/dexscreener";
-import { findUserByWallet } from "../services/neynar";
+import { findUserByWallet, findUserByUsername } from "../services/neynar";
 import { buildTradingLinks } from "./tradingButtons";
 import { applyBranding } from "./branding";
 
 const BASESCAN = "https://basescan.org";
-
-function formatCurrency(value?: number | null): string {
-  if (value == null) return "N/A";
-  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(2)}B`;
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(2)}K`;
-  return `$${value.toFixed(6)}`;
-}
 
 function xProfileUrl(handle: string): string {
   const u = handle.startsWith("@") ? handle.slice(1) : handle;
@@ -69,7 +60,6 @@ function buildEntitySection(
 
 export async function buildBankrTokenEmbed(
   launch: BankrLaunch,
-  metrics?: TokenMetrics | null,
 ): Promise<EmbedBuilder> {
   const tokenName = launch.tokenName ?? "Token";
   const tokenSymbol = launch.tokenSymbol ?? "?";
@@ -79,7 +69,7 @@ export async function buildBankrTokenEmbed(
   const img = imageUrl(launch.imageUri);
 
   const deployerWallet = launch.deployer?.walletAddress ?? null;
-  const deployerX = launch.deployer?.xUsername ?? null;
+  const deployerX = launch.deployer?.xUsername ?? launch.deployer?.xUsername ?? null;
   const deployerFc =
     launch.deployer?.farcasterUsername ??
     launch.deployer?.farcaster ??
@@ -113,18 +103,9 @@ export async function buildBankrTokenEmbed(
   if (img) embed.setThumbnail(img);
 
   const tokenLines = [
-    `**Chain:** Base`,
-    `**CA:** [\`${tokenAddress.slice(0, 10)}...\`](${basescanTokenUrl})`,
+    `**CA:** \`${tokenAddress}\` • [Basescan](${basescanTokenUrl})`,
     `**Bankr:** [View Launch](${bankrUrl})`,
   ];
-  if (metrics?.marketCap != null && metrics.marketCap > 0) {
-    tokenLines.push(`**Market Cap:** ${formatCurrency(metrics.marketCap)}`);
-  }
-  if (metrics?.trades24h && (metrics.trades24h.buys ?? 0) + (metrics.trades24h.sells ?? 0) > 0) {
-    const buys = metrics.trades24h.buys ?? 0;
-    const sells = metrics.trades24h.sells ?? 0;
-    tokenLines.push(`**24H:** 🟢 ${buys} buys • 🔴 ${sells} sells`);
-  }
   embed.addFields({
     name: "Token",
     value: tokenLines.join("\n"),
