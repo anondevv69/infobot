@@ -106,6 +106,22 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
     }
   }
 
+  // Check Bankr API for Base token launches (deployer + fee recipient)
+  if (isEthAddress(address) && process.env.BANKR_API_KEY) {
+    const bankrLaunch = await import("../services/bankr")
+      .then((m) => m.fetchBankrTokenByAddress(address))
+      .catch(() => null);
+    if (bankrLaunch) {
+      const { buildBankrTokenEmbed } = await import("../utils/bankrEmbeds");
+      const embed = await buildBankrTokenEmbed(bankrLaunch);
+      await message.reply({
+        content: `Bankr token detected for \`${address}\`.`,
+        embeds: [embed],
+      });
+      return true;
+    }
+  }
+
   const tokens = await fetchTokensByAddress(address);
   const directClankerMatches = tokens.filter(
     (token) => token.contract_address?.toLowerCase() === normalizedAddress,

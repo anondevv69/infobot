@@ -195,6 +195,26 @@ async function handleWalletSearch(
   guildId?: string,
   channelId?: string,
 ): Promise<void> {
+  // Check Bankr API for Base token launches (deployer, fee recipient, X, Farcaster)
+  if (isEthAddress(address) && process.env.BANKR_API_KEY) {
+    const bankrLaunch = await import("../services/bankr")
+      .then((m) => m.fetchBankrTokenByAddress(address))
+      .catch(() => null);
+    if (bankrLaunch) {
+      const { buildBankrTokenEmbed } = await import("../utils/bankrEmbeds");
+      const embed = await buildBankrTokenEmbed(bankrLaunch);
+      await interaction.editReply({
+        content: `Bankr token detected for \`${address}\`.`,
+        embeds: [embed],
+      });
+      logger.search(address, "discord", userId, guildId, channelId, {
+        success: true,
+        type: "bankr",
+      });
+      return;
+    }
+  }
+
   // IMPORTANT: Check Clanker tokens FIRST before checking for Farcaster users
   // This ensures contract addresses show as Clanker tokens, not wallet profiles
   const clankerTokens = await fetchTokensByAddress(address);

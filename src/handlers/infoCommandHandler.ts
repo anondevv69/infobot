@@ -94,6 +94,11 @@ function detectAutoSearchUrls(query: string): string[] {
     detected.push("farcaster");
   }
   
+  // Bankr launch links
+  if (/https?:\/\/(?:www\.)?bankr\.bot\/launches\/0x[a-fA-F0-9]{40}/i.test(query)) {
+    detected.push("bankr");
+  }
+
   // Clanker links
   if (/https?:\/\/(?:www\.)?clanker\.world\/[^\s<>()]+/i.test(query)) {
     detected.push("clanker");
@@ -166,6 +171,22 @@ async function handleAutoSearchUrl(
       // Fall through to search command
       break;
       
+    case "bankr":
+      // Extract token address from bankr.bot/launches/0x...
+      const bankrAddressMatch = query.match(/bankr\.bot\/launches\/(0x[a-fA-F0-9]{40})/i);
+      if (bankrAddressMatch) {
+        const bankrAddress = bankrAddressMatch[1].toLowerCase();
+        const { handleClankerAddressMessage } = await import("./clankerAddress");
+        const fakeMessage = {
+          ...message,
+          content: bankrAddress,
+        } as Message;
+        if (await handleClankerAddressMessage(fakeMessage)) {
+          return true;
+        }
+      }
+      break;
+
     case "clanker":
       // Extract address from Clanker URL if present
       const clankerAddressMatch = query.match(/0x[a-fA-F0-9]{40}/i);

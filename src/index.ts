@@ -209,6 +209,7 @@ async function main(): Promise<void> {
       text.includes("farcaster.xyz") || // Farcaster links
       text.includes("zora.co") || // Zora links
       text.includes("clanker.world") || // Clanker links
+      text.includes("bankr.bot") || // Bankr launch links
       text.includes("paragraph.com") || text.includes("paragraph.xyz"); // Paragraph links
 
     if (mightTriggerResponse) {

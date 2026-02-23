@@ -51,6 +51,12 @@ export function detectPastedContent(message: Message): { type: string; query: st
     return { type: "x_link", query: twitterMatch[0] };
   }
 
+  // Check for Bankr launch URLs
+  const bankrMatch = content.match(/https?:\/\/(?:www\.)?bankr\.bot\/launches\/(0x[a-fA-F0-9]{40})/i);
+  if (bankrMatch) {
+    return { type: "bankr", query: bankrMatch[1] };
+  }
+
   // Check for Zora links (but not if it's already being handled by URL handlers)
   if (/https?:\/\/zora\.co\/[^\s<>()]+/i.test(content)) {
     // Extract address from Zora URL if present
@@ -107,6 +113,9 @@ export async function showAutoDetectPrompt(
     const username = detected.query.match(/(?:x|twitter)\.com\/([a-zA-Z0-9_]+)/i)?.[1];
     promptText = `🔍 Found an X/Twitter link: ${username ? `@${username}` : detected.query}\n\nWould you like me to search for the linked Farcaster profile?`;
     searchType = "x_account";
+  } else if (detected.type === "bankr") {
+    promptText = `🔍 Found a Bankr token link: \`${detected.query}\`\n\nWould you like me to look up this Bankr token (deployer, fee recipient, X, Farcaster)?`;
+    searchType = "contract";
   } else if (detected.type === "zora") {
     promptText = `🔍 Found a Zora link or address: \`${detected.query}\`\n\nWould you like me to search for this Zora profile or token?`;
     searchType = "zora";
