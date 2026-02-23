@@ -53,7 +53,7 @@ export async function registerCommands(): Promise<void> {
       ),
     new SlashCommandBuilder()
       .setName("cl")
-      .setDescription("Clanker token deployment search - search by Farcaster username or wallet address to see all deployments.")
+      .setDescription("Clanker token search by Farcaster username, wallet, token name, or symbol.")
       .addStringOption((option) =>
         option
           .setName("query")
