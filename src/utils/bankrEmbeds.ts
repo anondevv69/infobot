@@ -1,11 +1,20 @@
 import { EmbedBuilder } from "discord.js";
 import type { User } from "@neynar/nodejs-sdk/build/api";
 import type { BankrLaunch } from "../services/bankr";
-import { findUserByWallet, findUserByUsername } from "../services/neynar";
+import type { TokenMetrics } from "../services/dexscreener";
+import { findUserByWallet } from "../services/neynar";
 import { buildTradingLinks } from "./tradingButtons";
 import { applyBranding } from "./branding";
 
 const BASESCAN = "https://basescan.org";
+
+function formatCurrency(value?: number | null): string {
+  if (value == null) return "N/A";
+  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(2)}B`;
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(2)}K`;
+  return `$${value.toFixed(6)}`;
+}
 
 function xProfileUrl(handle: string): string {
   const u = handle.startsWith("@") ? handle.slice(1) : handle;
@@ -60,6 +69,7 @@ function buildEntitySection(
 
 export async function buildBankrTokenEmbed(
   launch: BankrLaunch,
+  metrics?: TokenMetrics | null,
 ): Promise<EmbedBuilder> {
   const tokenName = launch.tokenName ?? "Token";
   const tokenSymbol = launch.tokenSymbol ?? "?";
@@ -69,7 +79,7 @@ export async function buildBankrTokenEmbed(
   const img = imageUrl(launch.imageUri);
 
   const deployerWallet = launch.deployer?.walletAddress ?? null;
-  const deployerX = launch.deployer?.xUsername ?? launch.deployer?.xUsername ?? null;
+  const deployerX = launch.deployer?.xUsername ?? null;
   const deployerFc =
     launch.deployer?.farcasterUsername ??
     launch.deployer?.farcaster ??
