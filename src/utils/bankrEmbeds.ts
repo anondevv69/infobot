@@ -69,7 +69,7 @@ export async function buildBankrTokenEmbed(
   const img = imageUrl(launch.imageUri);
 
   const deployerWallet = launch.deployer?.walletAddress ?? null;
-  const deployerX = launch.deployer?.xUsername ?? null;
+  const deployerX = launch.deployer?.xUsername ?? launch.deployer?.xUsername ?? null;
   const deployerFc =
     launch.deployer?.farcasterUsername ??
     launch.deployer?.farcaster ??
@@ -103,9 +103,18 @@ export async function buildBankrTokenEmbed(
   if (img) embed.setThumbnail(img);
 
   const tokenLines = [
+    `**Chain:** Base`,
     `**CA:** [\`${tokenAddress.slice(0, 10)}...\`](${basescanTokenUrl})`,
     `**Bankr:** [View Launch](${bankrUrl})`,
   ];
+  if (metrics?.marketCap != null && metrics.marketCap > 0) {
+    tokenLines.push(`**Market Cap:** ${formatCurrency(metrics.marketCap)}`);
+  }
+  if (metrics?.trades24h && (metrics.trades24h.buys ?? 0) + (metrics.trades24h.sells ?? 0) > 0) {
+    const buys = metrics.trades24h.buys ?? 0;
+    const sells = metrics.trades24h.sells ?? 0;
+    tokenLines.push(`**24H:** 🟢 ${buys} buys • 🔴 ${sells} sells`);
+  }
   embed.addFields({
     name: "Token",
     value: tokenLines.join("\n"),

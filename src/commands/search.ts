@@ -197,14 +197,15 @@ async function handleWalletSearch(
 ): Promise<void> {
   // Check Bankr API for Base token launches (deployer, fee recipient, X, Farcaster)
   if (isEthAddress(address) && process.env.BANKR_API_KEY) {
-    const bankrLaunch = await import("../services/bankr")
-      .then((m) => m.fetchBankrTokenByAddress(address))
-      .catch(() => null);
+    const [bankrLaunch, baseTokenData] = await Promise.all([
+      import("../services/bankr").then((m) => m.fetchBankrTokenByAddress(address)).catch(() => null),
+      import("../services/dexscreener").then((m) => m.fetchBaseTokenData(address)).catch(() => null),
+    ]);
     if (bankrLaunch) {
       const { buildBankrTokenEmbed } = await import("../utils/bankrEmbeds");
-      const embed = await buildBankrTokenEmbed(bankrLaunch);
+      const embed = await buildBankrTokenEmbed(bankrLaunch, baseTokenData ?? null);
       await interaction.editReply({
-        content: `Bankr token detected for \`${address}\`.`,
+        content: `Bankr + Base token detected for \`${address}\`.`,
         embeds: [embed],
       });
       logger.search(address, "discord", userId, guildId, channelId, {

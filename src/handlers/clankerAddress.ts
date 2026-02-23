@@ -678,6 +678,22 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           }
         }
 
+        // If Bankr has this token, show Bankr embed (deployer, fee recipient) with Base metrics
+        if (process.env.BANKR_API_KEY) {
+          const bankrLaunch = await import("../services/bankr")
+            .then((m) => m.fetchBankrTokenByAddress(address))
+            .catch(() => null);
+          if (bankrLaunch) {
+            const { buildBankrTokenEmbed } = await import("../utils/bankrEmbeds");
+            const embed = await buildBankrTokenEmbed(bankrLaunch, baseTokenData);
+            await message.reply({
+              content: `Bankr + Base token detected for \`${address}\`.`,
+              embeds: [embed],
+            });
+            return true;
+          }
+        }
+
         const { embed, components } = await buildBaseTokenEmbed(
           address,
           baseTokenData?.tokenName ?? null, // Token name from DexScreener
