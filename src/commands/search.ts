@@ -205,7 +205,7 @@ async function handleWalletSearch(
       const { buildBankrTokenEmbed } = await import("../utils/bankrEmbeds");
       const embed = await buildBankrTokenEmbed(bankrLaunch, baseTokenData ?? null);
       await interaction.editReply({
-        content: `Bankr + Base token detected for \`${address}\`.`,
+        content: `Bankr token detected for \`${address}\`.`,
         embeds: [embed],
       });
       logger.search(address, "discord", userId, guildId, channelId, {

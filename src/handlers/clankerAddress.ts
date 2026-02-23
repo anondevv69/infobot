@@ -687,7 +687,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
             const { buildBankrTokenEmbed } = await import("../utils/bankrEmbeds");
             const embed = await buildBankrTokenEmbed(bankrLaunch, baseTokenData);
             await message.reply({
-              content: `Bankr + Base token detected for \`${address}\`.`,
+              content: `Bankr token detected for \`${address}\`.`,
               embeds: [embed],
             });
             return true;

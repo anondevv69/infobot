@@ -460,6 +460,30 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
           ]);
 
           if (baseTokenData) {
+            // If Bankr has this token, show Bankr embed (deployer, fee recipient) with Base metrics
+            if (process.env.BANKR_API_KEY) {
+              const bankrLaunch = await import("../../../services/bankr")
+                .then((m) => m.fetchBankrTokenByAddress(address))
+                .catch(() => null);
+              if (bankrLaunch) {
+                const { buildBankrTokenEmbed } = await import("../../../utils/bankrEmbeds");
+                const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
+                const embed = await buildBankrTokenEmbed(bankrLaunch, baseTokenData ?? undefined);
+                const telegramMessages = embedsToTelegram([embed]);
+                const telegramText = Array.isArray(telegramMessages) ? telegramMessages.join("\n\n") : telegramMessages;
+                await bot.sendMessage(chatId, telegramText, {
+                  parse_mode: "HTML",
+                  disable_web_page_preview: true,
+                });
+                logger.search(query, "telegram", userId?.toString(), chatId.toString(), chatId.toString(), {
+                  success: true,
+                  type: "bankr",
+                });
+                trackResponseTime(Date.now() - startTime);
+                return;
+              }
+            }
+
             // Fetch creator address for Base tokens
             const contractCreation = await getContractCreation(address, "base").catch(() => null);
             
