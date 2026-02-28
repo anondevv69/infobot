@@ -11,6 +11,12 @@ export function isEthAddress(value: string): boolean {
   return ETH_ADDRESS_REGEX.test(value);
 }
 
+/** True if address is a valid 0x+40hex that ends in "ba3" (Bankr token convention). */
+export function isBankrTokenAddress(value: string): boolean {
+  const s = (value || "").trim().toLowerCase();
+  return /^0x[a-f0-9]{40}$/.test(s) && s.endsWith("ba3");
+}
+
 export function isSolAddress(value: string): boolean {
   return SOL_ADDRESS_REGEX.test(value);
 }

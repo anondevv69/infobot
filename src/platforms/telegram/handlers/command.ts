@@ -1,5 +1,5 @@
 import TelegramBot from "node-telegram-bot-api";
-import { isEthAddress, isSolAddress } from "../../../utils/address";
+import { isBankrTokenAddress, isEthAddress, isSolAddress } from "../../../utils/address";
 import { findBestZoraSummary } from "../../../services/zora";
 import { fetchTokensByQuery, fetchTokensByAddress } from "../../../services/clanker";
 import { findUserByUsername, findUserByWallet } from "../../../services/neynar";
@@ -460,8 +460,8 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
           ]);
 
           if (baseTokenData) {
-            // If Bankr has this token, show Bankr embed (deployer, fee recipient) with Base metrics
-            if (process.env.BANKR_API_KEY) {
+            // Bankr only for addresses ending in ba3 (Bankr convention)
+            if (isBankrTokenAddress(address) && process.env.BANKR_API_KEY) {
               const bankrLaunch = await import("../../../services/bankr")
                 .then((m) => m.fetchBankrTokenByAddress(address))
                 .catch(() => null);

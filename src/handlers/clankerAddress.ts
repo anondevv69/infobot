@@ -14,6 +14,7 @@ import {
 import {
   extractFirstAddress,
   extractZoraContractReference,
+  isBankrTokenAddress,
   isEthAddress,
   isSolAddress,
 } from "../utils/address";
@@ -106,8 +107,14 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
     }
   }
 
-  // Check Bankr API for Base token launches (deployer + fee recipient)
-  if (isEthAddress(address) && process.env.BANKR_API_KEY) {
+  // Check Clanker first (by contract) so Clanker coins show as Clanker, not Bankr
+  const tokens = await fetchTokensByAddress(address);
+  const directClankerMatches = tokens.filter(
+    (token) => token.contract_address?.toLowerCase() === normalizedAddress,
+  );
+
+  // Only show Bankr when address ends in ba3 (Bankr convention) and is not a Clanker token
+  if (directClankerMatches.length === 0 && isBankrTokenAddress(address) && process.env.BANKR_API_KEY) {
     const bankrLaunch = await import("../services/bankr")
       .then((m) => m.fetchBankrTokenByAddress(address))
       .catch(() => null);
@@ -121,11 +128,6 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
       return true;
     }
   }
-
-  const tokens = await fetchTokensByAddress(address);
-  const directClankerMatches = tokens.filter(
-    (token) => token.contract_address?.toLowerCase() === normalizedAddress,
-  );
 
   let user = await findUserByWallet(address).catch((error) => {
     console.warn("Failed Neynar wallet lookup, continuing:", error);
@@ -678,8 +680,8 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
           }
         }
 
-        // If Bankr has this token, show Bankr embed (deployer, fee recipient) with Base metrics
-        if (process.env.BANKR_API_KEY) {
+        // Bankr only for addresses ending in ba3 (Bankr convention)
+        if (isBankrTokenAddress(address) && process.env.BANKR_API_KEY) {
           const bankrLaunch = await import("../services/bankr")
             .then((m) => m.fetchBankrTokenByAddress(address))
             .catch(() => null);

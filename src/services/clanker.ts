@@ -39,37 +39,42 @@ export interface ClankerToken {
   };
 }
 
-interface ClankerApiResponse {
+interface ClankerTokensResponse {
   data: ClankerToken[];
-  total: number;
+  total?: number;
   cursor?: string;
+  tokensDeployed?: number;
+}
+
+/** Search-creator response: https://clanker.gitbook.io/clanker-documentation/public/get-tokens-by-creator */
+interface SearchCreatorResponse {
+  tokens: ClankerToken[];
+  user?: unknown;
+  searchedAddress?: string;
+  total?: number;
+  hasMore?: boolean;
 }
 
 const CLANKER_API_BASE = "https://www.clanker.world/api";
+const CLANKER_SEARCH_CREATOR_BASE = "https://clanker.world/api";
 
 async function executeClankerRequest(url: URL, timeoutMs: number = 5000): Promise<ClankerToken[]> {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    
     try {
       const response = await fetch(url, { signal: controller.signal });
       clearTimeout(timeoutId);
-      
       if (!response.ok) {
-        if (response.status === 404) {
-          return [];
-        }
-        console.warn(
-          `Clanker request failed (${response.status}): ${response.statusText} – ${url.toString()}`,
-        );
+        if (response.status === 404) return [];
+        console.warn(`Clanker request failed (${response.status}): ${response.statusText} – ${url.toString()}`);
         return [];
       }
-      const json = (await response.json()) as ClankerApiResponse;
+      const json = (await response.json()) as ClankerTokensResponse;
       return json.data ?? [];
-    } catch (error: any) {
+    } catch (error: unknown) {
       clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
+      if (error instanceof Error && error.name === "AbortError") {
         console.warn(`Clanker request timeout after ${timeoutMs}ms: ${url.toString()}`);
         return [];
       }
@@ -81,78 +86,105 @@ async function executeClankerRequest(url: URL, timeoutMs: number = 5000): Promis
   }
 }
 
+async function executeSearchCreatorRequest(url: URL, timeoutMs: number = 5000): Promise<ClankerToken[]> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        if (response.status === 404) return [];
+        console.warn(`Clanker search-creator failed (${response.status}): ${response.statusText} – ${url.toString()}`);
+        return [];
+      }
+      const json = (await response.json()) as SearchCreatorResponse;
+      return json.tokens ?? [];
+    } catch (error: unknown) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === "AbortError") {
+        console.warn(`Clanker search-creator timeout after ${timeoutMs}ms: ${url.toString()}`);
+        return [];
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error("Unexpected error calling Clanker search-creator:", error);
+    return [];
+  }
+}
+
+/** Get paginated list of tokens: https://clanker.gitbook.io/clanker-documentation/public/get-paginated-list-of-tokens */
 export async function fetchTokensByFid(fid: number): Promise<ClankerToken[]> {
   const url = new URL(`${CLANKER_API_BASE}/tokens`);
-  url.searchParams.set("fids", fid.toString());
+  url.searchParams.set("fid", fid.toString());
   url.searchParams.set("limit", "20");
   url.searchParams.set("includeUser", "true");
   url.searchParams.set("includeMarket", "true");
-  return executeClankerRequest(url, 5000); // 5 second timeout
+  return executeClankerRequest(url, 5000);
 }
 
+/** Search by token name/symbol (or contract address via q). */
 export async function fetchTokensByQuery(query: string): Promise<ClankerToken[]> {
   const url = new URL(`${CLANKER_API_BASE}/tokens`);
   url.searchParams.set("q", query);
   url.searchParams.set("limit", "10");
   url.searchParams.set("includeUser", "true");
   url.searchParams.set("includeMarket", "true");
-  return executeClankerRequest(url, 5000); // 5 second timeout
+  return executeClankerRequest(url, 5000);
 }
 
-export async function fetchTokensByAddress(
-  address: string,
+/**
+ * Get tokens by creator (Farcaster username or wallet).
+ * Uses search-creator: https://clanker.gitbook.io/clanker-documentation/public/get-tokens-by-creator
+ */
+export async function fetchTokensByCreator(
+  q: string,
+  options?: { limit?: number; offset?: number; sort?: "asc" | "desc"; trustedOnly?: boolean },
 ): Promise<ClankerToken[]> {
+  const url = new URL(`${CLANKER_SEARCH_CREATOR_BASE}/search-creator`);
+  url.searchParams.set("q", q);
+  url.searchParams.set("limit", String(options?.limit ?? 20));
+  if (options?.offset != null) url.searchParams.set("offset", String(options.offset));
+  if (options?.sort) url.searchParams.set("sort", options.sort);
+  if (options?.trustedOnly) url.searchParams.set("trustedOnly", "true");
+  return executeSearchCreatorRequest(url, 5000);
+}
+
+/**
+ * Fetch tokens by contract address, query (q), or pair.
+ * Uses get-paginated-list-of-tokens: https://clanker.gitbook.io/clanker-documentation/public/get-paginated-list-of-tokens
+ */
+export async function fetchTokensByAddress(address: string): Promise<ClankerToken[]> {
   const normalizedAddress = address.toLowerCase();
-  
-  // Run all three searches in PARALLEL with timeouts (major performance improvement)
-  const contractUrl = new URL(`${CLANKER_API_BASE}/tokens`);
-  contractUrl.searchParams.set("contractAddress", normalizedAddress);
-  contractUrl.searchParams.set("limit", "10");
-  contractUrl.searchParams.set("includeUser", "true");
-  contractUrl.searchParams.set("includeMarket", "true");
-  
-  const queryUrl = new URL(`${CLANKER_API_BASE}/tokens`);
-  queryUrl.searchParams.set("q", address);
-  queryUrl.searchParams.set("limit", "10");
-  queryUrl.searchParams.set("includeUser", "true");
-  queryUrl.searchParams.set("includeMarket", "true");
-  
+  const limit = "10";
+  const commonParams = { limit, includeUser: "true", includeMarket: "true" };
+
+  const byContractUrl = new URL(`${CLANKER_API_BASE}/tokens`);
+  byContractUrl.searchParams.set("q", normalizedAddress);
+  byContractUrl.searchParams.set("limit", limit);
+  byContractUrl.searchParams.set("includeUser", "true");
+  byContractUrl.searchParams.set("includeMarket", "true");
+
   const pairUrl = new URL(`${CLANKER_API_BASE}/tokens`);
-  pairUrl.searchParams.set("pairAddress", address);
-  pairUrl.searchParams.set("limit", "10");
+  pairUrl.searchParams.set("pairAddress", normalizedAddress);
+  pairUrl.searchParams.set("limit", limit);
   pairUrl.searchParams.set("includeUser", "true");
   pairUrl.searchParams.set("includeMarket", "true");
-  
-  // Execute all three searches in parallel (3 seconds timeout each)
-  const [byContract, byQuery, byPair] = await Promise.all([
-    executeClankerRequest(contractUrl, 3000),
-    executeClankerRequest(queryUrl, 3000),
+
+  const [byQuery, byPair] = await Promise.all([
+    executeClankerRequest(byContractUrl, 3000),
     executeClankerRequest(pairUrl, 3000),
   ]);
-  
-  // Check results in priority order: contract > query > pair
-  if (byContract.length > 0) {
-    const exactMatches = byContract.filter(
-      (token) => token.contract_address?.toLowerCase() === normalizedAddress,
-    );
-    if (exactMatches.length > 0) {
-      return exactMatches;
-    }
-  }
-  
+
+  const exactContract = (list: ClankerToken[]) =>
+    list.filter((t) => t.contract_address?.toLowerCase() === normalizedAddress);
+
   if (byQuery.length > 0) {
-    const exactMatches = byQuery.filter(
-      (token) => token.contract_address?.toLowerCase() === normalizedAddress,
-    );
-    if (exactMatches.length > 0) {
-      return exactMatches;
-    }
+    const exact = exactContract(byQuery);
+    if (exact.length > 0) return exact;
   }
-  
-  // Return pair results (filtered)
-  return byPair.filter(
-    (token) => token.contract_address?.toLowerCase() === normalizedAddress,
-  );
+  return exactContract(byPair);
 }
 
 /**

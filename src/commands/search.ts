@@ -22,7 +22,7 @@ import {
   resolveUserFromToken,
 } from "../utils/clankerEmbeds";
 import { safeFetchMostRecentCast, safeFetchTokensByFid, safeFetchEarliestCastByQuery } from "../utils/farcasterHelpers";
-import { isEthAddress, isSolAddress, isTransactionHash } from "../utils/address";
+import { isBankrTokenAddress, isEthAddress, isSolAddress, isTransactionHash } from "../utils/address";
 import { extractTransactionHash } from "../services/relay";
 import { lookupTransaction, detectChainFromTransactionLink } from "../services/transactionLookup";
 import { lookupAddress } from "../services/addressLookup";
@@ -195,33 +195,16 @@ async function handleWalletSearch(
   guildId?: string,
   channelId?: string,
 ): Promise<void> {
-  // Check Bankr API for Base token launches (deployer, fee recipient, X, Farcaster)
-  if (isEthAddress(address) && process.env.BANKR_API_KEY) {
-    const [bankrLaunch, baseTokenData] = await Promise.all([
-      import("../services/bankr").then((m) => m.fetchBankrTokenByAddress(address)).catch(() => null),
-      import("../services/dexscreener").then((m) => m.fetchBaseTokenData(address)).catch(() => null),
-    ]);
-    if (bankrLaunch) {
-      const { buildBankrTokenEmbed } = await import("../utils/bankrEmbeds");
-      const embed = await buildBankrTokenEmbed(bankrLaunch, address);
-      await interaction.editReply({
-        content: `Bankr token detected for \`${address}\`.`,
-        embeds: [embed],
-      });
-      logger.search(address, "discord", userId, guildId, channelId, {
-        success: true,
-        type: "bankr",
-      });
-      return;
-    }
-  }
-
-  // IMPORTANT: Check Clanker tokens FIRST before checking for Farcaster users
-  // This ensures contract addresses show as Clanker tokens, not wallet profiles
+  // IMPORTANT: Check Clanker tokens FIRST (before Bankr) when searching by contract address
+  // So a Clanker coin shows as Clanker, not as Bankr when both APIs have the token
   const clankerTokens = await fetchTokensByAddress(address);
-  
-  if (clankerTokens.length > 0) {
-    const firstToken = clankerTokens[0];
+  const directClankerMatch = clankerTokens.find(
+    (t) => t.contract_address?.toLowerCase() === address.toLowerCase(),
+  );
+
+  // If this contract is a Clanker token, show Clanker (not Bankr)
+  if (directClankerMatch) {
+    const firstToken = directClankerMatch;
     // Resolve user with timeout (3 seconds max)
     const associatedUser = await Promise.race([
       resolveUserFromToken(firstToken),
@@ -269,11 +252,81 @@ async function handleWalletSearch(
     }
 
     await interaction.editReply({
-      content: `No Farcaster profile linked directly to \`${address}\`. Showing Clanker token associated with this address:`,
+      content: `Clanker token \`${address}\`.`,
       embeds: [embeds[0]],
       components,
     });
     
+    logger.search(address, "discord", userId, guildId, channelId, {
+      success: true,
+      type: "wallet_clanker_token",
+    });
+    return;
+  }
+
+  // Bankr only for addresses ending in ba3 (Bankr convention) and when not a Clanker token
+  if (isBankrTokenAddress(address) && process.env.BANKR_API_KEY) {
+    const [bankrLaunch, baseTokenData] = await Promise.all([
+      import("../services/bankr").then((m) => m.fetchBankrTokenByAddress(address)).catch(() => null),
+      import("../services/dexscreener").then((m) => m.fetchBaseTokenData(address)).catch(() => null),
+    ]);
+    if (bankrLaunch) {
+      const { buildBankrTokenEmbed } = await import("../utils/bankrEmbeds");
+      const embed = await buildBankrTokenEmbed(bankrLaunch, address);
+      await interaction.editReply({
+        content: `Bankr token detected for \`${address}\`.`,
+        embeds: [embed],
+      });
+      logger.search(address, "discord", userId, guildId, channelId, {
+        success: true,
+        type: "bankr",
+      });
+      return;
+    }
+  }
+
+  // Wallet with Clanker tokens but address is not a token contract (e.g. deployer wallet)
+  if (clankerTokens.length > 0) {
+    const firstToken = clankerTokens[0];
+    const associatedUser = await Promise.race([
+      resolveUserFromToken(firstToken),
+      new Promise<User | null>((resolve) =>
+        setTimeout(() => resolve(null), 3000)
+      ),
+    ]);
+    const zoraSummaryFromAddress = await findBestZoraSummary([address]).catch(() => null);
+    const zoraSummaryForCreator = associatedUser
+      ? await findBestZoraSummary(collectZoraIdentifiers(associatedUser, address)).catch(() => null)
+      : null;
+    const associatedSummary =
+      zoraSummaryForCreator &&
+      associatedUser &&
+      isSummaryAssociatedWithUser(associatedUser, zoraSummaryForCreator)
+        ? zoraSummaryForCreator
+        : zoraSummaryFromAddress;
+    const earliestCast = firstToken.contract_address
+      ? await safeFetchEarliestCastByQuery(firstToken.contract_address)
+      : null;
+    const tokenEmbed = await buildTokenEmbed(firstToken, {
+      farcasterUser: associatedUser ?? undefined,
+      zoraSummary: associatedSummary ?? undefined,
+      earliestCast,
+    });
+    const embeds = splitEmbedIntoPages(tokenEmbed, 15);
+    const totalPages = embeds.length;
+    const identifier = `clanker_token_${firstToken.contract_address ?? address}`;
+    if (totalPages > 1) {
+      storeEmbedForPagination(identifier, tokenEmbed);
+    }
+    const components: typeof buildPaginationButtons extends (...args: any[]) => infer R ? R : never = [];
+    if (totalPages > 1) {
+      components.push(...buildPaginationButtons(0, totalPages, identifier));
+    }
+    await interaction.editReply({
+      content: `No Farcaster profile linked directly to \`${address}\`. Showing Clanker token associated with this address:`,
+      embeds: [embeds[0]],
+      components,
+    });
     logger.search(address, "discord", userId, guildId, channelId, {
       success: true,
       type: "wallet_clanker_token",
