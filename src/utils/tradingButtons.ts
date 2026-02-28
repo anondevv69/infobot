@@ -1,3 +1,5 @@
+const GMGN_REFERRAL = "infobot";
+
 /**
  * Build trading links as plain text for embedding in token cards
  * Returns a formatted string with plain text links (not markdown)
@@ -7,9 +9,10 @@ export function buildTradingLinks(contractAddress: string, chainId?: string | nu
   const chainIdLower = String(chainId || "base").toLowerCase();
   const isMonad = chainIdLower === "5001" || chainIdLower === "monad";
   
-  // GMGN.ai link with referral (supports Base and Monad)
-  const gmgnChain = isMonad ? "monad" : "base";
-  const gmgnUrl = `https://gmgn.ai/token/${gmgnChain}/${normalizedAddress}?ref=r_infobot`;
+  // GMGN: Telegram bot with referral for Base (ETH chain); gmgn.ai with ref for Monad
+  const gmgnUrl = isMonad
+    ? `https://gmgn.ai/token/monad/${normalizedAddress}?ref=r_${GMGN_REFERRAL}`
+    : `https://t.me/GMGN_swap_bot?start=i_${GMGN_REFERRAL}_c_${normalizedAddress}`;
   
   // Telegram bot link with referral (uses BaseBot for Base, Nad.fun for Monad)
   // Format: r_{referrer}_{action}_{address} where action 'b' = buy
@@ -31,8 +34,7 @@ export function buildTradingLinks(contractAddress: string, chainId?: string | nu
  */
 export function buildTelegramTradingButtons(contractAddress: string): Array<Array<{ text: string; url: string }>> {
   const normalizedAddress = contractAddress.toLowerCase();
-  
-  const gmgnUrl = `https://gmgn.ai/token/base/${normalizedAddress}?ref=r_infobot`;
+  const gmgnUrl = `https://t.me/GMGN_swap_bot?start=i_${GMGN_REFERRAL}_c_${normalizedAddress}`;
   // Format: r_{referrer}_{action}_{address} where action 'b' = buy (matches Rick Bot format)
   const telegramUrl = `https://t.me/based_eth_bot?start=r_infobot_b_${normalizedAddress}`;
   const basebotUrl = `https://basebot.xyz/trade/${normalizedAddress}`;
