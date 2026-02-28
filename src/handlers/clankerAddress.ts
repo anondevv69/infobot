@@ -113,7 +113,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
       .catch(() => null);
     if (bankrLaunch) {
       const { buildBankrTokenEmbed } = await import("../utils/bankrEmbeds");
-      const embed = await buildBankrTokenEmbed(bankrLaunch);
+      const embed = await buildBankrTokenEmbed(bankrLaunch, address);
       await message.reply({
         content: `Bankr token detected for \`${address}\`.`,
         embeds: [embed],
@@ -685,7 +685,7 @@ export async function handleClankerAddressMessage(message: Message): Promise<boo
             .catch(() => null);
           if (bankrLaunch) {
             const { buildBankrTokenEmbed } = await import("../utils/bankrEmbeds");
-            const embed = await buildBankrTokenEmbed(bankrLaunch, baseTokenData);
+            const embed = await buildBankrTokenEmbed(bankrLaunch, address);
             await message.reply({
               content: `Bankr token detected for \`${address}\`.`,
               embeds: [embed],

@@ -203,7 +203,7 @@ async function handleWalletSearch(
     ]);
     if (bankrLaunch) {
       const { buildBankrTokenEmbed } = await import("../utils/bankrEmbeds");
-      const embed = await buildBankrTokenEmbed(bankrLaunch, baseTokenData ?? null);
+      const embed = await buildBankrTokenEmbed(bankrLaunch, address);
       await interaction.editReply({
         content: `Bankr token detected for \`${address}\`.`,
         embeds: [embed],

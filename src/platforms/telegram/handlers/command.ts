@@ -468,7 +468,7 @@ async function handleSearchQuery(bot: TelegramBot, chatId: number, query: string
               if (bankrLaunch) {
                 const { buildBankrTokenEmbed } = await import("../../../utils/bankrEmbeds");
                 const { embedsToTelegram } = await import("../../telegram/adapters/telegramAdapter");
-                const embed = await buildBankrTokenEmbed(bankrLaunch, baseTokenData ?? undefined);
+                const embed = await buildBankrTokenEmbed(bankrLaunch, address);
                 const telegramMessages = embedsToTelegram([embed]);
                 const telegramText = Array.isArray(telegramMessages) ? telegramMessages.join("\n\n") : telegramMessages;
                 await bot.sendMessage(chatId, telegramText, {

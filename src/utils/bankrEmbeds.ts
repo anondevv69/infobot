@@ -60,10 +60,15 @@ function buildEntitySection(
 
 export async function buildBankrTokenEmbed(
   launch: BankrLaunch,
+  /** Optional full token address (e.g. from user query) so CA always shows full, not API-truncated */
+  fullTokenAddress?: string | null,
 ): Promise<EmbedBuilder> {
   const tokenName = launch.tokenName ?? "Token";
   const tokenSymbol = launch.tokenSymbol ?? "?";
-  const tokenAddress = launch.tokenAddress;
+  const tokenAddress =
+    fullTokenAddress && /^0x[a-fA-F0-9]{40}$/i.test(fullTokenAddress)
+      ? fullTokenAddress.toLowerCase()
+      : launch.tokenAddress?.toLowerCase() ?? launch.tokenAddress ?? "";
   const bankrUrl = `https://bankr.bot/launches/${tokenAddress}`;
   const basescanTokenUrl = `${BASESCAN}/token/${tokenAddress}`;
   const img = imageUrl(launch.imageUri);
