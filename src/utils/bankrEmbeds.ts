@@ -103,7 +103,7 @@ export async function buildBankrTokenEmbed(
   if (img) embed.setThumbnail(img);
 
   const tokenLines = [
-    `**CA:** \`${tokenAddress}\` • [Basescan](${basescanTokenUrl})`,
+    `**CA:** \`${tokenAddress}\``,
     `**Bankr:** [View Launch](${bankrUrl})`,
   ];
   embed.addFields({
