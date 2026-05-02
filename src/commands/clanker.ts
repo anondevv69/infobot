@@ -7,12 +7,16 @@ import {
   ButtonStyle,
 } from "discord.js";
 import type { User } from "@neynar/nodejs-sdk/build/api";
+import { env } from "../config";
 import {
   fetchTokensByAddress,
   fetchTokensByQuery,
+  fetchCreatorTokensAndUsers,
+  fetchAllTokensByAdmin,
+  dedupeClankerTokens,
   type ClankerToken,
 } from "../services/clanker";
-import { findUserByUsername, findUserByWallet } from "../services/neynar";
+import { findUserByUsername, findUserByWallet, findUserByFid } from "../services/neynar";
 import { safeFetchTokensByFid } from "../utils/farcasterHelpers";
 import { splitClankerTokens } from "../utils/clankerAssociation";
 import { sortClankerTokens, formatClankerTokenDetails } from "../utils/clankerEmbeds";
@@ -23,6 +27,14 @@ import { buildTradingLinks } from "../utils/tradingButtons";
 
 const WALLET_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 const TOKENS_PER_PAGE = 8; // Reduced to prevent field value length issues
+
+/** When Neynar has no user but Clanker search-creator returned a Farcaster row */
+interface ClankerListProfileHint {
+  fid: number;
+  username: string;
+  displayName?: string;
+  pfpUrl?: string;
+}
 
 export async function handleClankerCommand(
   interaction: ChatInputCommandInteraction,
@@ -36,42 +48,77 @@ export async function handleClankerCommand(
     return;
   }
 
-  await interaction.deferReply();
-
   // Check if it's a Farcaster username or wallet address
   const normalizedQuery = query.replace(/^@/, "").toLowerCase();
   let user: User | null = null;
+  let clankerProfileHint: ClankerListProfileHint | null = null;
   let allTokens: ClankerToken[] = [];
 
   if (isEthAddress(query) || isSolAddress(query)) {
     try {
       user = await findUserByWallet(query);
       if (user) {
-        allTokens = await safeFetchTokensByFid(user.fid);
-        const { deployed } = splitClankerTokens(allTokens, user);
-        allTokens = deployed;
+        const fromFid = await safeFetchTokensByFid(user.fid);
+        const { deployed } = splitClankerTokens(fromFid, user);
+        let merged = [...deployed];
+        if (isEthAddress(query) && env.clankerApiKey) {
+          const byAdmin = await fetchAllTokensByAdmin(query);
+          merged = dedupeClankerTokens([...merged, ...byAdmin]);
+        }
+        allTokens = merged;
       } else {
-        allTokens = await fetchTokensByAddress(query);
+        const [byContract, byAdmin] = await Promise.all([
+          fetchTokensByAddress(query),
+          isEthAddress(query) && env.clankerApiKey
+            ? fetchAllTokensByAdmin(query)
+            : Promise.resolve([]),
+        ]);
+        allTokens = dedupeClankerTokens([...byContract, ...byAdmin]);
       }
     } catch (error) {
       console.warn("Failed to lookup user by wallet:", error);
-      allTokens = await fetchTokensByAddress(query);
+      const [byContract, byAdmin] = await Promise.all([
+        fetchTokensByAddress(query),
+        isEthAddress(query) && env.clankerApiKey
+          ? fetchAllTokensByAdmin(query)
+          : Promise.resolve([]),
+      ]);
+      allTokens = dedupeClankerTokens([...byContract, ...byAdmin]);
     }
   } else {
-    // Try as Farcaster username first
-    try {
-      user = await findUserByUsername(normalizedQuery);
-      if (user) {
-        allTokens = await safeFetchTokensByFid(user.fid);
-        const { deployed } = splitClankerTokens(allTokens, user);
-        allTokens = deployed;
+    const creatorLookup = await fetchCreatorTokensAndUsers(normalizedQuery, {
+      limit: 100,
+      sort: "asc",
+    });
+    if (creatorLookup.tokens.length > 0) {
+      allTokens = creatorLookup.tokens;
+      const fc = creatorLookup.farcasterCreators[0];
+      if (fc?.fid != null) {
+        user = await findUserByFid(fc.fid).catch(() => null);
       }
-    } catch (error) {
-      console.warn("Failed to lookup user by username:", error);
+      if (!user && fc?.fid != null && fc.username) {
+        clankerProfileHint = {
+          fid: fc.fid,
+          username: fc.username.replace(/^@/, ""),
+          displayName: fc.displayName,
+          pfpUrl: fc.pfpUrl,
+        };
+      }
     }
 
-    // Only try token query if no user was found
-    // If a user was found, we should only show their deployed tokens (even if empty)
+    if (allTokens.length === 0) {
+      try {
+        user = await findUserByUsername(normalizedQuery);
+        if (user) {
+          allTokens = await safeFetchTokensByFid(user.fid);
+          const { deployed } = splitClankerTokens(allTokens, user);
+          allTokens = deployed;
+        }
+      } catch (error) {
+        console.warn("Failed to lookup user by username:", error);
+      }
+    }
+
     if (!user && allTokens.length === 0) {
       allTokens = await fetchTokensByQuery(query);
     }
@@ -106,6 +153,7 @@ export async function handleClankerCommand(
     query,
     allTokens.length,
     hasManyClanks,
+    clankerProfileHint,
   );
 
   // Use embed description instead of content to avoid 2000 character limit
@@ -142,36 +190,74 @@ export async function handleClankerPagination(
 
   const normalizedQuery = query.replace(/^@/, "").toLowerCase();
   let user: User | null = null;
+  let clankerProfileHint: ClankerListProfileHint | null = null;
   let allTokens: ClankerToken[] = [];
 
   if (isEthAddress(query) || isSolAddress(query)) {
     try {
       user = await findUserByWallet(query);
       if (user) {
-        allTokens = await safeFetchTokensByFid(user.fid);
-        const { deployed } = splitClankerTokens(allTokens, user);
-        allTokens = deployed;
+        const fromFid = await safeFetchTokensByFid(user.fid);
+        const { deployed } = splitClankerTokens(fromFid, user);
+        let merged = [...deployed];
+        if (isEthAddress(query) && env.clankerApiKey) {
+          const byAdmin = await fetchAllTokensByAdmin(query);
+          merged = dedupeClankerTokens([...merged, ...byAdmin]);
+        }
+        allTokens = merged;
       } else {
-        allTokens = await fetchTokensByAddress(query);
+        const [byContract, byAdmin] = await Promise.all([
+          fetchTokensByAddress(query),
+          isEthAddress(query) && env.clankerApiKey
+            ? fetchAllTokensByAdmin(query)
+            : Promise.resolve([]),
+        ]);
+        allTokens = dedupeClankerTokens([...byContract, ...byAdmin]);
       }
     } catch (error) {
       console.warn("Failed to lookup user by wallet:", error);
-      allTokens = await fetchTokensByAddress(query);
+      const [byContract, byAdmin] = await Promise.all([
+        fetchTokensByAddress(query),
+        isEthAddress(query) && env.clankerApiKey
+          ? fetchAllTokensByAdmin(query)
+          : Promise.resolve([]),
+      ]);
+      allTokens = dedupeClankerTokens([...byContract, ...byAdmin]);
     }
   } else {
-    try {
-      user = await findUserByUsername(normalizedQuery);
-      if (user) {
-        allTokens = await safeFetchTokensByFid(user.fid);
-        const { deployed } = splitClankerTokens(allTokens, user);
-        allTokens = deployed;
+    const creatorLookup = await fetchCreatorTokensAndUsers(normalizedQuery, {
+      limit: 100,
+      sort: "asc",
+    });
+    if (creatorLookup.tokens.length > 0) {
+      allTokens = creatorLookup.tokens;
+      const fc = creatorLookup.farcasterCreators[0];
+      if (fc?.fid != null) {
+        user = await findUserByFid(fc.fid).catch(() => null);
       }
-    } catch (error) {
-      console.warn("Failed to lookup user by username:", error);
+      if (!user && fc?.fid != null && fc.username) {
+        clankerProfileHint = {
+          fid: fc.fid,
+          username: fc.username.replace(/^@/, ""),
+          displayName: fc.displayName,
+          pfpUrl: fc.pfpUrl,
+        };
+      }
     }
 
-    // Only try token query if no user was found
-    // If a user was found, we should only show their deployed tokens (even if empty)
+    if (allTokens.length === 0) {
+      try {
+        user = await findUserByUsername(normalizedQuery);
+        if (user) {
+          allTokens = await safeFetchTokensByFid(user.fid);
+          const { deployed } = splitClankerTokens(allTokens, user);
+          allTokens = deployed;
+        }
+      } catch (error) {
+        console.warn("Failed to lookup user by username:", error);
+      }
+    }
+
     if (!user && allTokens.length === 0) {
       allTokens = await fetchTokensByQuery(query);
     }
@@ -203,6 +289,7 @@ export async function handleClankerPagination(
     query,
     allTokens.length,
     hasManyClanks,
+    clankerProfileHint,
   );
 
   // Use embed description instead of content to avoid 2000 character limit
@@ -255,14 +342,21 @@ function buildClankerPage(
   query: string,
   totalCount: number,
   hasManyClanks: boolean,
+  clankerProfile: ClankerListProfileHint | null = null,
 ): { embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[] } {
   const startIdx = page * TOKENS_PER_PAGE;
   const endIdx = Math.min(startIdx + TOKENS_PER_PAGE, tokens.length);
   const pageTokens = tokens.slice(startIdx, endIdx);
 
+  const title = user
+    ? `Clanker Deployments: @${user.username}`
+    : clankerProfile
+      ? `Clanker Deployments: @${clankerProfile.username}`
+      : `Clanker Results: ${query}`;
+
   const embed = new EmbedBuilder()
     .setColor(0x3b82f6)
-    .setTitle(user ? `Clanker Deployments: @${user.username}` : `Clanker Results: ${query}`)
+    .setTitle(title)
     .setDescription(
       hasManyClanks
         ? `⚠️ This user has deployed **${totalCount}** Clanker tokens. Showing first and latest first, then paginated results.`
@@ -274,6 +368,15 @@ function buildClankerPage(
     embed.addFields({
       name: "Farcaster Profile",
       value: `[@${user.username}](${buildFarcasterProfileUrl(user.username)}) • FID ${user.fid}\nFollowers: ${user.follower_count.toLocaleString()}`,
+      inline: false,
+    });
+  } else if (clankerProfile) {
+    embed.setThumbnail(clankerProfile.pfpUrl ?? null);
+    embed.addFields({
+      name: "Farcaster (Clanker)",
+      value: `[@${clankerProfile.username}](${buildFarcasterProfileUrl(clankerProfile.username)}) • FID ${clankerProfile.fid}${
+        clankerProfile.displayName ? `\n${clankerProfile.displayName}` : ""
+      }`,
       inline: false,
     });
   }

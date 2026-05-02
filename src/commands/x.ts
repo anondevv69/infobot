@@ -69,8 +69,6 @@ export async function handleXCommand(
   trackUser(userId, "discord");
   const startTime = Date.now();
 
-  await interaction.deferReply();
-
   try {
     const handle = parseHandleFromInput(query);
     if (!handle) {

@@ -55,7 +55,7 @@ export async function handleSearchCommand(
   logger.command("search", "discord", userId, guildId, channelId, { query });
 
   if (!query) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "Please provide a wallet address, username, or token to search.",
     });
     return;
@@ -67,9 +67,7 @@ export async function handleSearchCommand(
     type: "pending",
   });
 
-  // Track response time
   const startTime = Date.now();
-  await interaction.deferReply();
 
   try {
     // Check if it's a transaction hash first

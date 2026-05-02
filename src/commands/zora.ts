@@ -18,8 +18,6 @@ export async function handleZoraProfileCommand(
     return;
   }
 
-  await interaction.deferReply();
-
   // Check if it's a contract address (Zora coin or creator coin)
   if (isEthAddress(rawQuery)) {
     await replyWithCoin(interaction, rawQuery);

@@ -7,7 +7,7 @@ import {
 import type { Cast, User } from "@neynar/nodejs-sdk/build/api";
 import type { ClankerToken } from "../services/clanker";
 import type { ZoraLookupResult } from "../services/zora";
-import { findUserByUsername, findUserByWallet } from "../services/neynar";
+import { findUserByUsername, findUserByWallet, findUserByFid } from "../services/neynar";
 import { formatAddressLink } from "./addressLinks";
 import { appendZoraSummaryFields } from "./zoraEmbeds";
 import { applyBranding } from "./branding";
@@ -358,6 +358,9 @@ export async function buildTokenEmbed(
     token.symbol ? `Symbol: ${token.symbol}` : null,
     `Chain: ${formatChainName(token.chain_id)}`,
     marketCap != null && marketCap > 0 ? `MC: ${formatCompactNumber(marketCap)}` : null,
+    token.starting_market_cap != null
+      ? `Launch MC: ~${Number(token.starting_market_cap).toFixed(2)} ETH (from Clanker)`
+      : null,
     interfaceName ? `Interface: ${interfaceName}` : null,
     platformName ? `Platform: ${platformName}` : null,
   ].filter(Boolean);
@@ -367,6 +370,50 @@ export async function buildTokenEmbed(
     value: tokenLines.length > 0 ? tokenLines.join(" • ") : "—",
     inline: false,
   });
+
+  if (token.pool_config && (token.pool_config.pairedToken || token.pool_config.type)) {
+    const pairNote = token.pool_config.pairedToken
+      ? `Paired: \`${token.pool_config.pairedToken.slice(0, 10)}…\``
+      : null;
+    const typeNote = token.pool_config.type ? `Type: ${token.pool_config.type}` : null;
+    const poolLine = [typeNote, pairNote].filter(Boolean).join(" • ");
+    embed.addFields({
+      name: "Pool",
+      value: poolLine || "—",
+      inline: true,
+    });
+  }
+
+  if (token.warnings && token.warnings.length > 0) {
+    embed.addFields({
+      name: "Warnings",
+      value: token.warnings.map((w) => `• ${w}`).join("\n").slice(0, 1000),
+      inline: false,
+    });
+    embed.setColor(0xff9900);
+  }
+
+  if (token.trustStatus) {
+    const ts = token.trustStatus;
+    const lines = [
+      ts.isTrustedDeployer != null
+        ? `Trusted deployer: ${ts.isTrustedDeployer ? "yes" : "no"}`
+        : null,
+      ts.fidMatchesDeployer != null
+        ? `FID matches deployer: ${ts.fidMatchesDeployer ? "yes" : "no"}`
+        : null,
+      ts.verifiedAddresses && ts.verifiedAddresses.length > 0
+        ? `Verified addrs: ${ts.verifiedAddresses.length}`
+        : null,
+    ].filter(Boolean);
+    if (lines.length > 0) {
+      embed.addFields({
+        name: "Trust",
+        value: lines.join("\n"),
+        inline: false,
+      });
+    }
+  }
 
   embed.addFields({
     name: "Deployment",
@@ -469,48 +516,28 @@ export function addTradingLinksToEmbed(embed: EmbedBuilder, contractAddress: str
 export async function resolveUserFromToken(
   token: ClankerToken,
 ): Promise<User | null> {
-  // Run both lookups in parallel for speed (major performance improvement)
-  const promises: Promise<User | null>[] = [];
+  // Prefer FID (precise), then username, then deployer wallet — at most one Neynar match path when possible.
+  if (token.related?.user?.fid != null) {
+    const u = await findUserByFid(token.related.user.fid).catch((error) => {
+      console.warn("Failed to resolve user by FID from token", error);
+      return null;
+    });
+    if (u) return u;
+  }
 
   if (token.related?.user?.username) {
-    promises.push(
-      findUserByUsername(token.related.user.username).catch((error) => {
-        console.warn("Failed to resolve user by username from token", error);
-        return null;
-      })
-    );
+    const u = await findUserByUsername(token.related.user.username).catch((error) => {
+      console.warn("Failed to resolve user by username from token", error);
+      return null;
+    });
+    if (u) return u;
   }
 
   if (token.msg_sender) {
-    promises.push(
-      findUserByWallet(token.msg_sender).catch((error) => {
-        console.warn("Failed to resolve user by wallet from token", error);
-        return null;
-      })
-    );
-  }
-
-  if (promises.length === 0) {
-    return null;
-  }
-
-  // Wait for first successful result with timeout
-  try {
-    const results = await Promise.race([
-      Promise.all(promises),
-      new Promise<User[]>((resolve) => 
-        setTimeout(() => resolve([]), 3000) // 3 second timeout
-      ),
-    ]);
-    
-    // Return first non-null result
-    for (const user of results) {
-      if (user) {
-        return user;
-      }
-    }
-  } catch (error) {
-    console.warn("Error resolving user from token", error);
+    return findUserByWallet(token.msg_sender).catch((error) => {
+      console.warn("Failed to resolve user by wallet from token", error);
+      return null;
+    });
   }
 
   return null;
@@ -546,6 +573,9 @@ export function formatClankerTokenDetails(token: ClankerToken): string {
   if (marketCap != null && marketCap > 0) {
     const formattedMC = formatCompactNumber(marketCap);
     title = `${title} • MC: ${formattedMC}`;
+  }
+  if (token.warnings && token.warnings.length > 0) {
+    title = `${title} ⚠️`;
   }
 
   return `${title}\n${contractBlock}`;

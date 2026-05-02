@@ -12,7 +12,7 @@ const requiredEnv = [
 type RequiredEnvKey = typeof requiredEnv[number];
 
 export const env = {
-  discordToken: process.env.DISCORD_TOKEN,
+  discordToken: process.env.DISCORD_TOKEN || process.env.DISCORD_BOT_TOKEN,
   discordClientId: process.env.DISCORD_CLIENT_ID,
   discordGuildId: process.env.DISCORD_GUILD_ID,
   discordGuildIds: process.env.DISCORD_GUILD_IDS,
@@ -25,6 +25,8 @@ export const env = {
   oneinchApiKey: process.env.ONEINCH_API_KEY, // Optional: for 1inch DEX aggregator (better rate limits)
   blockvisionApiKey: process.env.BLOCKVISION_API_KEY || "35tVwNXLcX6v9pGXcxQYrb852Qx", // BlockVision API key for Monad
   bankrApiKey: process.env.BANKR_API_KEY ?? null, // Bankr API key for token launch lookups (optional)
+  /** Optional; enables authenticated Clanker routes and x-api-key on public routes (see Clanker docs). */
+  clankerApiKey: process.env.CLANKER_API_KEY?.trim() || null,
   farcasterReferralCode: process.env.FARCASTER_REFERRAL_CODE ?? "2ORGMS",
   backendUrl: process.env.BACKEND_URL || "https://infobot-production-f74e.up.railway.app", // Backend URL for SIWF callbacks
   miniappUrl: process.env.MINIAPP_URL || "https://farcaster.xyz/miniapps/J68v-h9yA2J3/infobot", // Mini App URL for Farcaster authentication (Farcaster-hosted URL)
@@ -49,7 +51,16 @@ export function requireEnv(value: string | undefined, key: RequiredEnvKey): stri
 }
 
 export function validateRequiredEnv(): void {
-  requiredEnv.forEach((key) => requireEnv(envMap[key], key));
+  const missing: string[] = [];
+  requiredEnv.forEach((key) => {
+    const v = envMap[key];
+    if (v === undefined || v === null || String(v).trim() === "") missing.push(key);
+  });
+  if (missing.length > 0) {
+    const msg = `Missing required env: ${missing.join(", ")}. Set them in Railway → Variables (or .env locally).`;
+    console.error(msg);
+    throw new Error(msg);
+  }
 }
 
 const envMap: Record<RequiredEnvKey, string | undefined> = {

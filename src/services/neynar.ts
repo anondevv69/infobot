@@ -105,6 +105,34 @@ export async function findUserByUsername(username: string): Promise<User | null>
   }
 }
 
+/** Single FID lookup — prefer this when Clanker already provides `fid` to avoid duplicate wallet/username searches. */
+export async function findUserByFid(fid: number): Promise<User | null> {
+  const apiKey = requireEnv(env.neynarApiKey, "NEYNAR_API_KEY");
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  try {
+    const url = `https://api.neynar.com/v2/farcaster/user/bulk/?fids=${encodeURIComponent(String(fid))}`;
+    const response = await fetch(url, {
+      headers: { "x-api-key": apiKey },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const data = (await response.json()) as { users?: User[] };
+    return data.users?.[0] ?? null;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      console.warn(`[Neynar] FID lookup timeout for ${fid}`);
+      return null;
+    }
+    console.warn("Failed to resolve user by FID", error);
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function findUserByXHandle(handle: string): Promise<User | null> {
   const normalized = handle.replace(/^@/, "").trim().toLowerCase();
   if (!normalized) {

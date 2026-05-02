@@ -21,8 +21,6 @@ export async function handleFarCommand(
   trackUser(userId, "discord");
   const startTime = Date.now();
 
-  await interaction.deferReply();
-
   try {
     // Try as wallet address first
     if (isEthAddress(query) || isSolAddress(query)) {

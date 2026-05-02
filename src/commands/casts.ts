@@ -38,8 +38,6 @@ export async function handleCastsCommand(
     Math.min(recentCount, MAX_RECENT_RESULTS),
   );
 
-  await interaction.deferReply();
-
   try {
     const { firstMatch, recent } = await searchCastsByKeyword(
       keyword,

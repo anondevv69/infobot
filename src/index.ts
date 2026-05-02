@@ -34,9 +34,9 @@ import { showDiscordTypingIndicator, showDiscordCommandTyping } from "./utils/ty
 import { logger } from "./utils/logger";
 
 async function main(): Promise<void> {
+  console.log("[InfoBot] Starting...");
   validateRequiredEnv();
-
-  // Wallet integration code removed - no SIWF configuration check needed
+  console.log("[InfoBot] Env OK, connecting to Discord...");
 
   // Handle unhandled promise rejections to prevent crashes
   process.on("unhandledRejection", (error) => {
@@ -57,6 +57,18 @@ async function main(): Promise<void> {
       GatewayIntentBits.MessageContent,
     ],
   });
+
+  client.on("error", (err) => {
+    logger.error("Discord client error", err);
+  });
+
+  const discordToken = requireEnv(env.discordToken, "DISCORD_TOKEN");
+  if (!discordToken || discordToken.length < 50) {
+    console.error("[InfoBot] DISCORD_TOKEN missing or too short. Set DISCORD_TOKEN in Railway → Variables.");
+    process.exit(1);
+  }
+  console.log("[InfoBot] Logging in to Discord...");
+  logger.info("Logging in to Discord...");
 
   client.once(Events.ClientReady, async (readyClient) => {
     logger.info(`Discord bot logged in as ${readyClient.user.tag}`);
@@ -250,7 +262,7 @@ async function main(): Promise<void> {
     // Note: Farcaster URLs are now handled by auto-detect prompt above
   });
 
-  await client.login(requireEnv(env.discordToken, "DISCORD_TOKEN"));
+  await client.login(discordToken);
 }
 
 async function handleInteraction(interaction: Interaction): Promise<void> {
@@ -267,8 +279,11 @@ async function handleInteraction(interaction: Interaction): Promise<void> {
 async function handleChatCommand(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
-  // Show typing indicator for slash commands
-  await showDiscordCommandTyping(interaction);
+  // Defer immediately for any command that does async work so Discord gets a response within 3s
+  const asyncCommands = ["info", "w", "f", "c", "cl", "z", "t", "r", "x"];
+  if (asyncCommands.includes(interaction.commandName)) {
+    await interaction.deferReply();
+  }
 
   switch (interaction.commandName) {
     case "info":

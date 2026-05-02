@@ -24,8 +24,6 @@ export async function handleWalletCommand(
   trackUser(userId, "discord");
   const startTime = Date.now();
 
-  await interaction.deferReply();
-
   try {
     // Validate address format
     if (!isEthAddress(query) && !isSolAddress(query)) {

@@ -22,10 +22,11 @@ export async function startTelegramBot(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   
   if (!token) {
-    console.warn("TELEGRAM_BOT_TOKEN not set. Telegram bot will not start.");
+    console.log("[InfoBot] Telegram: TELEGRAM_BOT_TOKEN not set, skipping.");
     return;
   }
 
+  console.log("[InfoBot] Telegram: starting...");
   const bot = new TelegramBot(token, { polling: true });
 
   // Set up bot commands for Telegram command suggestions
@@ -43,6 +44,7 @@ export async function startTelegramBot(): Promise<void> {
     { command: "r", description: "Cross-chain transaction details (Relay.link)" },
     { command: "x", description: "Farcaster profile by X/Twitter handle or URL" },
   ]);
+  console.log("[InfoBot] Telegram: ready (polling).");
 
   bot.on("message", async (msg) => {
     // Track new Telegram groups/channels

@@ -23,8 +23,6 @@ export async function handleTokenCommand(
   trackUser(userId, "discord");
   const startTime = Date.now();
 
-  await interaction.deferReply();
-
   try {
     // Validate it's an Ethereum address
     if (!isEthAddress(query)) {
